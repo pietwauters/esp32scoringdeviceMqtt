@@ -21,141 +21,59 @@
 
 static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
 
-TaskHandle_t CoreScoringMachineTask;
+constexpr int scanloop_us = 130;
+// #define MEASURE_TIMING
 
-#include <driver/gpio.h> // Ensure ESP32 GPIO driver is included
-
-// ESP32 Register Addresses
-#define GPIO_ENABLE_REG (DR_REG_GPIO_BASE + 0x20)    // GPIO 0-31 direction
-#define GPIO_ENABLE1_REG (DR_REG_GPIO_BASE + 0x24)   // GPIO 32-39 direction
-#define GPIO_OUT_W1TS_REG (DR_REG_GPIO_BASE + 0x08)  // GPIO 0-31 set HIGH
-#define GPIO_OUT_W1TC_REG (DR_REG_GPIO_BASE + 0x0C)  // GPIO 0-31 set LOW
-#define GPIO_OUT1_W1TS_REG (DR_REG_GPIO_BASE + 0x10) // GPIO 32-39 set HIGH
-#define GPIO_OUT1_W1TC_REG (DR_REG_GPIO_BASE + 0x18) // GPIO 32-39 set LOW
-
-// Precomputed masks for your GPIOs (21,23,25,5,18,19)
-constexpr uint32_t LOWER_PINS =
-    (1 << 21) | (1 << 23) | (1 << 25) | (1 << 5) | (1 << 18) | (1 << 19);
-constexpr uint32_t HIGHER_PIN_33 =
-    (1 << 1); // Bit 1 in higher registers (GPIO33 = 32 + 1)
-
-// Disable pull-up/pull-down for GPIO33 (optional)
-void disable_gpio33_pull() {
-  REG_CLR_BIT(IO_MUX_GPIO33_REG,
-              (1 << 7) | (1 << 6)); // Clear FUN_PU (bit7) and FUN_PD (bit6)
-}
-
-void Set_IODirectionAndValue(uint8_t direction, uint8_t values) {
-  // --- Lower GPIOs (21,23,25,5,18,19) ---
-  // 1. Direction (INPUT = 1, OUTPUT = 0)
-  uint32_t enable_lower = REG_READ(GPIO_ENABLE_REG);
-  enable_lower &= ~LOWER_PINS; // Clear existing bits for your pins
-  enable_lower |= ((direction & 0x02) ? 0 : (1 << 21))    // GPIO21
-                  | ((direction & 0x04) ? 0 : (1 << 23))  // GPIO23
-                  | ((direction & 0x08) ? 0 : (1 << 25))  // GPIO25
-                  | ((direction & 0x10) ? 0 : (1 << 5))   // GPIO5
-                  | ((direction & 0x20) ? 0 : (1 << 18))  // GPIO18
-                  | ((direction & 0x40) ? 0 : (1 << 19)); // GPIO19
-  REG_WRITE(GPIO_ENABLE_REG, enable_lower);
-
-  // 2. Output levels (only for OUTPUT pins)
-  uint32_t lower_levels = ((values & 0x02) ? (1 << 21) : 0)    // GPIO21
-                          | ((values & 0x04) ? (1 << 23) : 0)  // GPIO23
-                          | ((values & 0x08) ? (1 << 25) : 0)  // GPIO25
-                          | ((values & 0x10) ? (1 << 5) : 0)   // GPIO5
-                          | ((values & 0x20) ? (1 << 18) : 0)  // GPIO18
-                          | ((values & 0x40) ? (1 << 19) : 0); // GPIO19
-  // Atomic writes (only modify your pins)
-  REG_WRITE(GPIO_OUT_W1TS_REG, lower_levels);                 // Set HIGH
-  REG_WRITE(GPIO_OUT_W1TC_REG, (~lower_levels) & LOWER_PINS); // Set LOW
-
-  // --- Higher GPIO33 (32-39) ---
-  if (direction & 0x01) {
-    gpio_set_direction(GPIO_NUM_33, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(GPIO_NUM_33, GPIO_FLOATING);
-  } else {
-    gpio_set_direction(GPIO_NUM_33, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_33, (values & 0x01));
-  }
-}
-
-void CoreScoringMachineHandler(void *parameter) {
+#ifndef MEASURE_TIMING
+// Timer callback (runs in timer task context, not ISR)
+void scan_timer_callback(void *arg) {
   MultiWeaponSensor &MyLocalSensor = MultiWeaponSensor::getInstance();
-  /*long start;
-  volatile int test;
-
-  MyLocalSensor.Setweapon_detection_mode(MANUAL);
-  MyLocalSensor.SetActualWeapon(SABRE);
-  while(true){
-    start = millis();
-  for(int i = 0; i < 10000; i++){
-    MyLocalSensor.DoFoil();
-
-
-    //esp_task_wdt_reset();
+  MyLocalSensor.DoFullScan();
+  vTaskDelay(0);
+}
+#else
+void scan_timer_callback(void *arg) {
+  static int64_t last_time = 0;
+  static int errorcounter = 0;
+  int64_t now = esp_timer_get_time();
+  if (last_time != 0) {
+    int64_t dt = now - last_time;
+    if (dt > 220) {
+      errorcounter++;
+      if (errorcounter > 1) {
+        Serial.printf("Interval: %lld us\n", dt);
+        errorcounter = 0;
+      }
+    }
   }
-  std::cout << "Duration = " << millis() - start << std::endl;
+  last_time = now;
+
+  MultiWeaponSensor &MyLocalSensor = MultiWeaponSensor::getInstance();
+  MyLocalSensor.DoFullScan();
+  vTaskDelay(0);
 }
-*/
-  while (true) {
-    MyLocalSensor.DoFullScan();
-    // esp_task_wdt_reset();
-  }
-}
-
-// using namespace std;
-
-// I have 7 Output /Tristate pins (3 per weapon + piste)
-const uint8_t driverpins[] = {al_driver, bl_driver, cl_driver,   ar_driver,
-                              br_driver, cr_driver, piste_driver};
-// I use 5 analog inputs
-// const uint8_t ADpins[] = {cl_analog, bl_analog, piste_analog, cr_analog,
-// br_analog};
-
-volatile SemaphoreHandle_t timerSemaphore;
-void IRAM_ATTR onTimer() {
-  // Give a semaphore that we can check in the loop
-  xSemaphoreGiveFromISR(timerSemaphore, NULL);
-}
-
-// 0.05 milliseconds
-#define TimeInMicroSeconds 4800
+#endif
 
 MultiWeaponSensor::MultiWeaponSensor() {
   // ctor
-  int hw_timer_nr = 1;
 
-  // Create semaphore to inform us when the timer has fired
-  // timerSemaphore = xSemaphoreCreateCounting(20,0);
-  // Use 2nd timer of 4 (counted from zero). It seems timer0 is already in use
-  // (with a different scaler?) Set 4 divider for prescaler (see ESP32 Technical
-  // Reference Manual for more info).
-  // timer = timerBegin(hw_timer_nr, 8, true);
-  // Attach onTimer function to our timer.
-  // timerAttachInterrupt(timer, &onTimer, true);
-  // Set alarm to call onTimer function every x microsecond microseconds.
-  // Repeat the alarm (third parameter)
-  // timerAlarmWrite(timer, TimeInMicroSeconds, true);
-  // Start an alarm
-  // timerAlarmEnable(timer);
-
-  Const_COUNT_B1_INIT_FOIL = COUNT_B1_INIT_FOIL;
-  Const_COUNT_C1_INIT_FOIL = COUNT_C1_INIT_FOIL;
-  Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE;
-  Const_COUNT_C1_INIT_SABRE = COUNT_C1_INIT_SABRE;
   Const_FOIL_PARRY_ON_TIME = 5;
   Const_FOIL_PARRY_OFF_TIME = 43;
-  Const_FOIL_LOCK_TIME = FOIL_LOCK_TIME;
-  LongCounter_b1 = LONG_COUNT_B_INIT_FOIL;
-  LongCounter_b2 = LONG_COUNT_B_INIT_FOIL;
-  LongCounter_c1 = LONG_COUNT_C_INIT_FOIL;
-  LongCounter_c2 = LONG_COUNT_C_INIT_FOIL;
-  LongCounter_NotConnected = LONG_COUNT_NOTCONNECTED_INIT;
-  LongCounter_AtLeastOneNotConnected = LONG_COUNT_NOTCONNECTED_STOP_BUZZING;
+
+  // Init long debouncers
+  DebounceLong_b1.setRequiredUs(2500000);
+  DebounceLong_b2.setRequiredUs(2500000);
+  DebounceLong_c1.setRequiredUs(2500000);
+  DebounceLong_c2.setRequiredUs(2500000);
+  DebounceLong_al_cr.setRequiredUs(2500000);
+  DebounceLong_ar_cl.setRequiredUs(2500000);
+  DebounceLong_al_cl.setRequiredUs(2500000);
+  DebounceLong_ar_cr.setRequiredUs(2500000);
+
+  Debounce_NotConnected.setRequiredUs(120000000);
+  Debounce_AtLeastOneNotConnected.setRequiredUs(10000);
   gpio_pad_select_gpio(GPIO_NUM_33); // Route pin to GPIO (not peripheral)
   gpio_set_direction(GPIO_NUM_33, GPIO_MODE_INPUT_OUTPUT);
-
-  SensorMutex = xSemaphoreCreateBinary();
 }
 
 void MultiWeaponSensor::begin() {
@@ -187,95 +105,57 @@ void MultiWeaponSensor::begin() {
     m_ActualWeapon = EPEE;
   }
   mypreferences.end();
-  gpio_deep_sleep_hold_dis();
-  gpio_hold_dis((gpio_num_t)al_driver);
-  gpio_hold_dis((gpio_num_t)bl_driver);
-  gpio_hold_dis((gpio_num_t)cl_driver);
-  gpio_hold_dis((gpio_num_t)ar_driver);
-  gpio_hold_dis((gpio_num_t)br_driver);
-  gpio_hold_dis((gpio_num_t)cr_driver);
-  gpio_hold_dis((gpio_num_t)PIN);
 
-  adc1_fast_begin();
+  adc1_fast_register_channel(ADC1_CHANNEL_0);
+  adc1_fast_register_channel(ADC1_CHANNEL_3);
+  adc1_fast_register_channel(ADC1_CHANNEL_4);
+  adc1_fast_register_channel(ADC1_CHANNEL_6);
+  adc1_fast_register_channel(ADC1_CHANNEL_7);
+
+  adc1_fast_begin_unsafe();
+  gpio_reset_pin(GPIO_NUM_33); // Reset function to digital
+  gpio_set_direction(GPIO_NUM_33, GPIO_MODE_OUTPUT);
+  gpio_set_level(GPIO_NUM_33, 0); // or 1, as needed
+  gpio_reset_pin(GPIO_NUM_2);     // Reset function to digital
+  gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
+
   // int fast_raw = fast_adc1_get_raw(ADC1_CHANNEL_3);
   /*int64_t t0 = esp_timer_get_time();
   volatile int sum1 = 0;
   int samples = 10000; // Number of samples to take
+  FullScanCounter = 1;
   for (int i = 0; i < samples; ++i) {
-    DoEpee();
+    if (FullScanCounter)
+      FullScanCounter--;
+    else
+      FullScanCounter = SABRE_SCANCOUNTER_INIT;
+    DoFoil();
   }
   // fast_adc1_get_raw_inline(ADC1_CHANNEL_6);
   int64_t t1 = esp_timer_get_time();
   printf("Total time: %lld us\n", t1 - t0);
   printf("Total samples: %d\n", samples);
-  printf("Average time per sample: %lld us\n", (t1 - t0) / samples);
-*/
+  printf("Average time per sample: %lld us\n", (t1 - t0) / samples);*/
 
   DoReset();
-  xTaskCreatePinnedToCore(
-      CoreScoringMachineHandler,   /* Task function. */
-      "CoreScoringMachineHandler", /* String with name of task. */
-      24576,                       /* Stack size in words. */
-      NULL,                        /* Parameter passed as input of the task */
-      0,                           /* Priority of the task. */
-      &CoreScoringMachineTask,     /* Task handle. */
-      0);
-  // esp_task_wdt_add(CoreScoringMachineTask);
-}
 
-void OldSet_IODirectionAndValue(uint8_t setting, uint8_t values) {
-  uint8_t mask = 1;
-  for (int i = 0; i < 7; i++) {
-    if (setting & mask) {
-      pinMode(driverpins[i], INPUT);
-    } else {
-      pinMode(driverpins[i], OUTPUT);
-      if (values & mask) {
-        digitalWrite(driverpins[i], HIGH);
-      } else {
-        digitalWrite(driverpins[i], LOW);
-      }
-    }
-    mask <<= 1;
-  }
+  // Timer config
+  static esp_timer_handle_t scan_timer;
+  const esp_timer_create_args_t scan_timer_args = {
+      .callback = &scan_timer_callback,
+      .arg = nullptr,
+      .dispatch_method =
+          ESP_TIMER_TASK, // Use ESP_TIMER_TASK for longer callbacks
+      .name = "scan_timer"};
+  esp_timer_create(&scan_timer_args, &scan_timer);
+
+  // Start timer: period in microseconds (e.g., 250 us = 0.25 ms)
+  esp_timer_start_periodic(scan_timer, scanloop_us); // 250 us interval
 }
 
 adc1_channel_t ADC1_CHANNELS[] = {
     ADC1_CHANNEL_0, ADC1_CHANNEL_1, ADC1_CHANNEL_2, ADC1_CHANNEL_3,
     ADC1_CHANNEL_4, ADC1_CHANNEL_5, ADC1_CHANNEL_6, ADC1_CHANNEL_7};
-
-bool MultiWeaponSensor::Do_Common_Start() {
-  // tempADValue = adc1_get_raw(ADC1_CHANNELS[Set->ADChannel]);
-
-  tempADValue = fast_adc1_get_raw_inline(ADC1_CHANNELS[Set->ADChannel]);
-
-  Set_IODirectionAndValue(Set->IODirection, Set->IOValues);
-  // setGPIO(Set->IODirection, Set->IOValues);
-
-  if (tempADValue > Set->ADThreashold) {
-    Set++;
-    return true;
-  } else {
-    Set++;
-    return false;
-  }
-}
-
-void MultiWeaponSensor::Skip_phase() {
-  // while (!xSemaphoreTake(timerSemaphore, 1 / (portTICK_PERIOD_MS)) ==
-  // pdTRUE); while (!xSemaphoreTake(timerSemaphore, 0) == pdTRUE);
-  Set_IODirectionAndValue(Set->IODirection, Set->IOValues);
-  Set++;
-  return;
-}
-
-bool MultiWeaponSensor::Wait_For_Next_Timer_Tick() {
-  // while (!xSemaphoreTake(timerSemaphore, 1 / (portTICK_PERIOD_MS)) ==
-  // pdTRUE);
-  while (!xSemaphoreTake(timerSemaphore, 0) == pdTRUE)
-    ;
-  return true;
-}
 
 MultiWeaponSensor::~MultiWeaponSensor() {
   // dtor
@@ -372,55 +252,53 @@ void MultiWeaponSensor::DoReset() {
   WeaponContact = false;
   WaitingForResetStarted = false;
   // chronostatus = CHRONO_RUNNING;
-  Const_COUNT_B1_INIT_FOIL = COUNT_B1_INIT_FOIL;
-  Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE;
-  Const_COUNT_C1_INIT_SABRE = COUNT_C1_INIT_SABRE;
-  b1_reached1 = false;
-  b2_reached1 = false;
-  c1_reached1 = false;
-  c2_reached1 = false;
+
   PossiblyRed = false;
   PossiblyGreen = false;
   WeHaveBlockedAhit = false;
   BlockedAHitCounter = 650;
-  FullScanCounter = 1;
 
   switch (m_ActualWeapon) {
   case FOIL:
-    Counter_b1 = Const_COUNT_B1_INIT_FOIL;
-    Counter_b2 = Const_COUNT_B1_INIT_FOIL;
-    Counter_c1 = Const_COUNT_C1_INIT_FOIL;
-    Counter_c2 = Const_COUNT_C1_INIT_FOIL;
-    Const_FOIL_LOCK_TIME = FOIL_LOCK_TIME;
-    CurrentPhaseDuration = FULLSCANDURATION_FOIL;
+
+    Debounce_b1.setRequiredUs(FoilContactTime_us); // 14ms for foil
+    Debounce_b1.reset();
+    Debounce_b2.setRequiredUs(FoilContactTime_us);
+    Debounce_b2.reset();
+    Debounce_c1.setRequiredUs(Foil_LameLeak_us);
+    Debounce_c1.reset();
+    Debounce_c2.setRequiredUs(Foil_LameLeak_us);
+    Debounce_c2.reset();
 
     break;
 
   case EPEE:
-    Counter_c1 = Const_COUNT_Cx_INIT_EPEE;
-    Counter_c2 = Const_COUNT_Cx_INIT_EPEE;
-    CurrentPhaseDuration = FULLSCANDURATION_EPEE;
+
+    Debounce_c1.setRequiredUs(6000); // 6 ms for epee
+    Debounce_c2.setRequiredUs(6000); // 6 ms for epee
 
     break;
 
   case SABRE:
-    Counter_b1 = COUNT_B1_INIT_SABRE;
-    Counter_b2 = COUNT_B1_INIT_SABRE;
-    Counter_c1 = Const_COUNT_C1_INIT_SABRE;
-    Counter_c2 = Const_COUNT_C1_INIT_SABRE;
-    CurrentPhaseDuration = FULLSCANDURATION_SABRE;
+    Debounce_b1.setRequiredUs(1400);
+    Debounce_b2.setRequiredUs(1400);
+    Debounce_c1.setRequiredUs(110);
+    Debounce_c2.setRequiredUs(110);
 
     break;
   }
+  /*  This never changes, so no need to set here.
+  DebounceLong_b1.setRequiredUs(2000000); // 3 s
+  DebounceLong_b2.setRequiredUs(2000000); // 3 s
+  DebounceLong_c1.setRequiredUs(2000000); // 3 s
+  DebounceLong_c2.setRequiredUs(2000000); // 3 s
+*/
   SignalLeft = 0;
   SignalRight = 0;
   LockStarted = false;
-  /*  InitLock();
-    InitTimer2Period();*/
 
   bParrySignal = false;
-
-  Counter_parry = Const_FOIL_PARRY_ON_TIME;
+  Debounce_Parry.setRequiredUs(1500);
 
   return;
 }
@@ -441,16 +319,7 @@ bool MultiWeaponSensor::IsLocked() {
 }
 
 void MultiWeaponSensor::DoFullScan() {
-  /***************************************************************************************************/
-  /*************  Start of Dummy phase
-   * ******************************************************/
-  /***************************************************************************************************/
-  /* From now on, we go as fast as possible
-      if(esp_timer_get_time() <  TimetoNextPhase)
-        return;
 
-      TimetoNextPhase = esp_timer_get_time() + CurrentPhaseDuration;
-  */
   weapon_t temp = GetWeapon();
 
   if (m_ActualWeapon != temp) {
@@ -458,48 +327,22 @@ void MultiWeaponSensor::DoFullScan() {
     bPreventBuzzer = false;
     SensorStateChanged(EVENT_WEAPON | temp);
     DoReset();
+    vTaskDelay(0);
   }
 
-  if (WeHaveBlockedAhit) {
-    BlockedAHitCounter--;
-    if (!BlockedAHitCounter) {
-      // after the blocking time we forget that we've blocked out a hit and
-      // reset the counters
-      Const_COUNT_B1_INIT_FOIL = COUNT_B1_INIT_FOIL;
-      Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE;
-      Const_COUNT_C1_INIT_SABRE = COUNT_C1_INIT_SABRE;
-      WeHaveBlockedAhit = false;
-      switch (m_ActualWeapon) {
-      case EPEE:
-        BlockedAHitCounter = 95;
-        break;
-
-      case FOIL:
-        BlockedAHitCounter = 670;
-        break;
-
-      case SABRE:
-        BlockedAHitCounter = 340;
-        break;
-      }
-    }
-  }
   if (IsLocked()) {
     SignalLeft = 1;  // Now no changes will be registered for left
     SignalRight = 1; // Same for right
     if (OKtoReset()) {
       DoReset();
     }
+    vTaskDelay(0);
   }
   HandleLights();
 
   switch (m_ActualWeapon) {
   case FOIL:
     DoFoil();
-    if (FullScanCounter)
-      FullScanCounter--;
-    else
-      FullScanCounter = 4;
     break;
 
   case EPEE:
@@ -508,10 +351,6 @@ void MultiWeaponSensor::DoFullScan() {
 
   case SABRE:
     DoSabre();
-    if (FullScanCounter)
-      FullScanCounter--;
-    else
-      FullScanCounter = 3;
     break;
   }
 }
@@ -521,38 +360,33 @@ weapon_t MultiWeaponSensor::GetWeapon() {
   if (m_ActualWeapon !=
       EPEE) { // In foil or sabre: check if both sides are disconnected
     if (NotConnectedRight || NotConnectedLeft) {
-      LongCounter_AtLeastOneNotConnected--;
-      if (!LongCounter_AtLeastOneNotConnected) {
-        bPreventBuzzer = true;
+      bPreventBuzzer = Debounce_AtLeastOneNotConnected.update(true);
+
+      if (NotConnectedRight && NotConnectedLeft) {
+        Debounce_NotConnected.update(true);
+
+      } else {
+        Debounce_NotConnected.reset();
+        // bPreventBuzzer = false;
+      }
+      if (Debounce_NotConnected.isOK()) // We've reached zero, so we switch back
+                                        // to default Epee
+      {
+
+        bPreventBuzzer = false;
+        Debounce_AtLeastOneNotConnected.reset();
+        if (m_DectionMode != MANUAL) {
+          m_DetectedWeapon = EPEE;
+
+          return EPEE;
+        }
       }
     } else {
-      LongCounter_AtLeastOneNotConnected = LONG_COUNT_NOTCONNECTED_STOP_BUZZING;
+      NotConnectedRight = false;
+      NotConnectedLeft = false;
       bPreventBuzzer = false;
     }
-    if (NotConnectedRight && NotConnectedLeft) {
-      LongCounter_NotConnected--;
-
-    } else {
-      LongCounter_NotConnected = LONG_COUNT_NOTCONNECTED_INIT;
-      // bPreventBuzzer = false;
-    }
-    if (!LongCounter_NotConnected) // We've reached zero, so we switch back to
-                                   // default Epee
-    {
-
-      bPreventBuzzer = false;
-      LongCounter_AtLeastOneNotConnected = LONG_COUNT_NOTCONNECTED_STOP_BUZZING;
-      if (m_DectionMode != MANUAL) {
-        m_DetectedWeapon = EPEE;
-        return EPEE;
-      }
-    }
-  } else {
-    NotConnectedRight = false;
-    NotConnectedLeft = false;
-    bPreventBuzzer = false;
   }
-
   if (m_DectionMode == MANUAL) {
     bAutoDetect = 0;
     return m_ActualWeapon;
@@ -565,25 +399,24 @@ weapon_t MultiWeaponSensor::GetWeapon() {
   case FOIL:
     // if (ax-cx) & !(ax-bx) -> switch to epee
 
-    if ((!LongCounter_c1) && (!LongCounter_c2)) { // certainly not foil anymore)
+    if ((DebounceLong_c1.isOK()) &&
+        (DebounceLong_c2.isOK())) { // certainly not foil anymore)
 
-      if ((Counter_b1) && (Counter_b2)) {
+      if ((!Debounce_b1.isOK()) && (!Debounce_b2.isOK())) {
         m_DetectedWeapon = EPEE;
         bPreventBuzzer = false;
-        LongCounter_c1 = LONG_COUNT_C_INIT_EPEE;
-        LongCounter_c2 = LONG_COUNT_C_INIT_EPEE;
       }
     }
     // if (bx-cy) && (ax-bx) -> switch to sabre
     else {
-      if ((!LongCounter_b1) && (!LongCounter_b2)) {
-        if ((Counter_b1) && (Counter_b2)) {
+      if ((DebounceLong_c1.isOK()) && (DebounceLong_c2.isOK())) {
+        if ((!Debounce_b1.isOK()) && (!Debounce_b2.isOK())) {
           m_DetectedWeapon = SABRE;
           bPreventBuzzer = false;
-          LongCounter_b1 = LONG_COUNT_B_INIT_SABRE;
-          LongCounter_b2 = LONG_COUNT_B_INIT_SABRE;
-          LongCounter_c1 = LONG_COUNT_C_INIT_SABRE;
-          LongCounter_c2 = LONG_COUNT_C_INIT_SABRE;
+          DebounceLong_b1.reset();
+          DebounceLong_b2.reset();
+          DebounceLong_c1.reset();
+          DebounceLong_c2.reset();
         }
       }
     }
@@ -596,24 +429,25 @@ weapon_t MultiWeaponSensor::GetWeapon() {
     // if (ax-cy) & !(ax-bx) -> switch to foil
     // if (ax-cy) & (ax-by) -> switch to sabre
     // keep epee
-    if ((!LongCounter_c1) && (!LongCounter_c2)) { // certainly not epee anymore)
+    if ((DebounceLong_c1.isOK()) &&
+        (DebounceLong_c2.isOK())) { // certainly not epee anymore)
       if ((OrangeR) && (OrangeL)) {
         m_DetectedWeapon = SABRE;
         bPreventBuzzer = false;
-        LongCounter_b1 = LONG_COUNT_B_INIT_SABRE;
-        LongCounter_b2 = LONG_COUNT_B_INIT_SABRE;
-        LongCounter_c1 = LONG_COUNT_C_INIT_SABRE;
-        LongCounter_c2 = LONG_COUNT_C_INIT_SABRE;
-        LongCounter_NotConnected = LONG_COUNT_NOTCONNECTED_INIT;
+        DebounceLong_b1.reset();
+        DebounceLong_b2.reset();
+        DebounceLong_c1.reset();
+        DebounceLong_c2.reset();
+        Debounce_NotConnected.reset();
 
       } else {
         m_DetectedWeapon = FOIL;
         bPreventBuzzer = false;
-        LongCounter_b1 = LONG_COUNT_B_INIT_FOIL;
-        LongCounter_b2 = LONG_COUNT_B_INIT_FOIL;
-        LongCounter_c1 = LONG_COUNT_C_INIT_FOIL;
-        LongCounter_c2 = LONG_COUNT_C_INIT_FOIL;
-        LongCounter_NotConnected = LONG_COUNT_NOTCONNECTED_INIT;
+        DebounceLong_b1.reset();
+        DebounceLong_b2.reset();
+        DebounceLong_c1.reset();
+        DebounceLong_c2.reset();
+        Debounce_NotConnected.reset();
       }
 
       return m_DetectedWeapon;
@@ -630,85 +464,23 @@ weapon_t MultiWeaponSensor::GetWeapon() {
     {
       return SABRE;
     } else {
-      if ((!LongCounter_b1) && (!LongCounter_b2)) {
+      if ((DebounceLong_b1.isOK()) && (DebounceLong_b2.isOK())) {
         m_DetectedWeapon = FOIL;
         bPreventBuzzer = false;
-        LongCounter_b1 = LONG_COUNT_B_INIT_FOIL;
-        LongCounter_b2 = LONG_COUNT_B_INIT_FOIL;
-        LongCounter_c1 = LONG_COUNT_C_INIT_FOIL;
-        LongCounter_c2 = LONG_COUNT_C_INIT_FOIL;
+        DebounceLong_b1.reset();
+        DebounceLong_b2.reset();
+        DebounceLong_c1.reset();
+        DebounceLong_c2.reset();
       }
-      if ((!LongCounter_c1) && (!LongCounter_c2)) {
+      if ((DebounceLong_c1.isOK()) && (DebounceLong_c2.isOK())) {
         m_DetectedWeapon = EPEE;
         bPreventBuzzer = false;
-        LongCounter_c1 = LONG_COUNT_C_INIT_EPEE;
-        LongCounter_c2 = LONG_COUNT_C_INIT_EPEE;
+        DebounceLong_c1.reset();
+        DebounceLong_c2.reset();
       }
       return m_DetectedWeapon;
     }
     break;
   }
   return EPEE;
-}
-
-#define BUTTON_PIN_BITMASK(GPIO) (1ULL << GPIO) // 2 ^ GPIO_NUMBER in hex
-#define WAKEUP_GPIO_32                                                         \
-  GPIO_NUM_32 // Only RTC IO are allowed - ESP32 Pin example
-#define WAKEUP_GPIO_35                                                         \
-  GPIO_NUM_35 // Only RTC IO are allowed - ESP32 Pin example
-#define WAKEUP_GPIO_36                                                         \
-  GPIO_NUM_36 // Only RTC IO are allowed - ESP32 Pin example
-#define WAKEUP_GPIO_39                                                         \
-  GPIO_NUM_39 // Only RTC IO are allowed - ESP32 Pin example
-#define uS_TO_S_FACTOR                                                         \
-  1000000 /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP 60 * 5 /* Time ESP32 will go to sleep (in seconds) */
-
-// Define bitmask for multiple GPIOs
-uint64_t bitmask =
-    BUTTON_PIN_BITMASK(WAKEUP_GPIO_32) | BUTTON_PIN_BITMASK(WAKEUP_GPIO_35) |
-    BUTTON_PIN_BITMASK(WAKEUP_GPIO_36) | BUTTON_PIN_BITMASK(WAKEUP_GPIO_39);
-
-void prepareforDeepSleep() {
-  vTaskSuspend(CoreScoringMachineTask);
-  // Use ext1 as a wake-up source
-  esp_sleep_enable_ext1_wakeup(bitmask, ESP_EXT1_WAKEUP_ANY_HIGH);
-  // esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-
-  // Waarschijnlijk moet ik van de ADC pinnen eerst nog gewone IO pinnen maken
-  pinMode(WAKEUP_GPIO_32, INPUT);
-  pinMode(WAKEUP_GPIO_35, INPUT);
-  pinMode(WAKEUP_GPIO_36, INPUT);
-  pinMode(WAKEUP_GPIO_39, INPUT);
-
-  pinMode(al_driver, OUTPUT);
-  pinMode(bl_driver, OUTPUT);
-  pinMode(cl_driver, OUTPUT);
-  pinMode(ar_driver, OUTPUT);
-  pinMode(br_driver, OUTPUT);
-  pinMode(cr_driver, OUTPUT);
-  pinMode(PIN, OUTPUT);
-  pinMode(HSPI_SS, OUTPUT);
-  digitalWrite(al_driver, 1);
-  digitalWrite(bl_driver, 0);
-  digitalWrite(cl_driver, 0);
-  digitalWrite(ar_driver, 1);
-  digitalWrite(br_driver, 0);
-  digitalWrite(cr_driver, 0);
-  digitalWrite(PIN, 0);
-  digitalWrite(HSPI_SS, 1);
-
-  gpio_deep_sleep_hold_en();
-  gpio_hold_en((gpio_num_t)al_driver);
-  gpio_hold_en((gpio_num_t)bl_driver);
-  gpio_hold_en((gpio_num_t)cl_driver);
-  gpio_hold_en((gpio_num_t)ar_driver);
-  gpio_hold_en((gpio_num_t)br_driver);
-  gpio_hold_en((gpio_num_t)cr_driver);
-  gpio_hold_en((gpio_num_t)PIN);
-  gpio_hold_en((gpio_num_t)HSPI_SS);
-  ESP_LOGI(CORE_SCORING_MACHINE_TAG, "%s", "Going to sleep now");
-
-  vTaskDelay(300 / portTICK_PERIOD_MS);
-  esp_deep_sleep_start();
 }

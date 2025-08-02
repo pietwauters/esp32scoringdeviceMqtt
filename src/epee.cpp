@@ -1,244 +1,190 @@
-//Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
+// Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "3WeaponSensor.h"
+#include "FastADC1.h"
+#include "FastGPIOSettings.h"
 
-//MeasurementCtl EpeeSets[]={{IODirection_al_cl,IOValues_al_cl,cl_analog,1750},{IODirection_al_piste,IOValues_al_piste,cl_analog,1750},{IODirection_al_bl,IOValues_al_bl,piste_analog,1750},{IODirection_al_br,IOValues_al_br,bl_analog,1750},{IODirection_ar_cr,IOValues_ar_cr,br_analog,1750},{IODirection_ar_piste,IOValues_ar_piste,cr_analog,1750},{IODirection_ar_br,IOValues_ar_br,piste_analog,1750},{IODirection_ar_bl,IOValues_ar_bl,br_analog,1750},{IODirection_al_cr,IOValues_al_cr,bl_analog,1750},{IODirection_ar_cl,IOValues_ar_cl,cr_analog,1750},{IODirection_al_cl,IOValues_al_cl,cl_analog,1750}};
-MeasurementCtl EpeeSets[] = {{IODirection_al_piste & IODirection_al_cl, IOValues_al_cl | IOValues_al_piste, cl_analog, 1750},
-  {IODirection_al_bl & IODirection_al_cl, IOValues_al_cl | IOValues_al_bl, piste_analog, 1750},
-  {IODirection_al_br & IODirection_al_cl, IOValues_al_cl | IOValues_al_br, bl_analog, 1750},
-  {IODirection_ar_cr, IOValues_ar_cr, br_analog, 1750},
-  {IODirection_ar_piste & IODirection_ar_cr, IOValues_ar_cr | IOValues_ar_piste, cr_analog, 1750},
-  {IODirection_ar_br & IODirection_ar_cr, IOValues_ar_cr | IOValues_ar_br, piste_analog, 1750},
-  {IODirection_ar_bl & IODirection_ar_cr, IOValues_ar_cr | IOValues_ar_bl, br_analog, 1750},
-  {IODirection_al_cr, IOValues_al_cr, bl_analog, 1750},
-  {IODirection_ar_cl, IOValues_ar_cl, cr_analog, 1000},
-  {IODirection_al_cl, IOValues_al_cl, cl_analog, 1000}
+constexpr int AxMaxValue = 1800;
+constexpr int BCMaxValue = 1200;
+inline bool HitOnLame_l() {
+  Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  return (tempADValue > AxMaxValue);
+};
+inline bool HitOnGuard_l() {
+  Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
+  return (tempADValue > AxMaxValue);
+};
+inline bool HitOnPiste_l() {
+  Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
+  return (tempADValue > AxMaxValue);
 };
 
+inline bool WeaponLeak_l() {
+  Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
+  return (tempADValue > BCMaxValue);
+};
 
-void MultiWeaponSensor::DoEpee(void)
-{
-static bool TempOrangeR, TempOrangeL;
-static bool AdAboveThreshold;
-//*************************************************************************
-//    Start of epee specific code                                         *
-//*************************************************************************
+inline bool EpeeHit_l() {
+  Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  return (tempADValue > BCMaxValue);
+};
 
-    //PhaseCounter =START_OF_EPEE_TABLE;
-    Set = EpeeSets;
-    TempOrangeL = false;
-    TempOrangeR=false;
-//*************************************************************************
-//    Phas_E0: Test if point is pressed down: c1 =?= high                 *
-//*************************************************************************
+inline bool HitOnLame_r() {
+  Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  return (tempADValue > AxMaxValue);
+};
+inline bool HitOnGuard_r() {
+  Set_IODirectionAndValue(IODirection_ar_bl, IOValues_ar_bl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
+  return (tempADValue > AxMaxValue);
+};
+inline bool HitOnPiste_r() {
+  Set_IODirectionAndValue(IODirection_ar_piste, IOValues_ar_piste);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
+  return (tempADValue > AxMaxValue);
+};
 
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalLeft)
-    {
-        if (AdAboveThreshold)
-        {
-            if(Counter_c1)
-            {
-                Counter_c1--;
-                if(Counter_c1 == 1)
-                {
-                    c1_reached1 = true;
-                }
-            }
-            else
-            {
-                // Counter_c1 == 0 -> this means we did not block this hit
-                c1_reached1 = false;
-            }
+inline bool WeaponLeak_r() {
+  Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
+  return (tempADValue > BCMaxValue);
+};
+
+inline bool EpeeHit_r() {
+  Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  return (tempADValue > AxMaxValue);
+};
+
+inline bool Parry() {
+  Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
+  return (tempADValue > AxMaxValue);
+};
+
+enum EpeeState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
+
+void MultiWeaponSensor::DoEpee(void) {
+  bool cl, cr;
+  static EpeeState state = IDLE;
+  static int SubsampleCounter = 0;
+
+  if (!SignalLeft) { // No need to check again if we already have a signal on
+                     // this side
+    Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
+    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+    cl = (tempADValue > AxMaxValue);
+  }
+
+  if (!SignalRight) { // No need to check again if we already have a signal on
+                      // this side
+    Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
+    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+    cr = (tempADValue > AxMaxValue);
+  }
+
+  Debounce_c1.update(cl);
+  Debounce_c2.update(cr);
+
+  switch (state) {
+  case IDLE:
+
+    if (cl || cr) {
+      state = DEBOUNCING;
+      break;
+    } else {
+      // Do one of the optional checks
+      vTaskDelay(0);
+      switch (SubsampleCounter) {
+      case 0:
+        SubsampleCounter = 1;
+        if (Debounce_b1.update(WeaponLeak_l())) {
+          OrangeL = true;
+        } else {
+          OrangeL = false;
         }
-        else
-        {
-            if(c1_reached1 == true)
-            {
-                // this means we have blocked a hit (by just on loop too short, so we should block the otherone too
-                c1_reached1 = false;
-                Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE +1;
-                Counter_c2++;
-                WeHaveBlockedAhit = true;
-            }
-            Counter_c1 = Const_COUNT_Cx_INIT_EPEE;
+        break;
+      case 1:
+        SubsampleCounter = 2;
+        if (Debounce_b2.update(WeaponLeak_r())) {
+          OrangeR = true;
+        } else {
+          OrangeR = false;
         }
+        break;
+      case 2:
+        SubsampleCounter = 3;
+        DebounceLong_c1.update(HitOnLame_l());
+        break;
+      case 3:
+        SubsampleCounter = 0;
+        DebounceLong_c2.update(HitOnLame_r());
+        break;
+      }
+    }
+    break;
+
+  case DEBOUNCING:
+
+    if (!cl && !cr) {
+      // no longer conditions to debounce-> go back to IDLE
+      state = IDLE;
+      break;
+    }
+    // Trick to satisfy Dos Santos. Not Sure if still needed
+    if (Debounce_c1.isOK()) {
+      Debounce_c2.setRequiredUs(EpeeContactTime_us -
+                                Epee_DosSantosCorrection_us);
+    }
+    if (Debounce_c2.isOK()) {
+      Debounce_c1.setRequiredUs(EpeeContactTime_us -
+                                Epee_DosSantosCorrection_us);
     }
 
-//*************************************************************************
-//    Phas_E1: Test if point makes contact with ground: gnd =?= high       *
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalLeft)
-    {
-        if (AdAboveThreshold)
-        {
-            Counter_c1 = Const_COUNT_Cx_INIT_EPEE;
-            TempOrangeL = true;
+    if (Debounce_c1.isOK()) {
+
+      // check validity
+      if (HitOnGuard_l()) {
+        Debounce_c1.reset();
+        // Serial.println("Guard");
+      } else {
+        if (HitOnPiste_l()) {
+          Debounce_c1.reset();
+          // Serial.println("Piste");
+        } else {
+          // Serial.println("WhiteL");
+          Red = true;
+          Buzz = true;
+          SignalLeft = true;
+          StartLock(EPEE_LOCK_TIME);
         }
+      }
     }
-//*************************************************************************
-//    Phas_E2: Test if point makes contact with bell: b1 =?= high       *
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalLeft)
-    {
-        if (AdAboveThreshold)
-        {
-            Counter_c1 = Const_COUNT_Cx_INIT_EPEE;
-            TempOrangeL = true;
+    if (Debounce_c2.isOK()) {
 
+      // check validity
+      if (HitOnGuard_r()) {
+        Debounce_c2.reset();
+        // Serial.println("Guard");
+      } else {
+        if (HitOnPiste_r()) {
+          Debounce_c2.reset();
+          // Serial.println("Piste");
+        } else {
+          // Serial.println("WhiteL");
+          Green = true;
+          Buzz = true;
+          SignalRight = true;
+          StartLock(EPEE_LOCK_TIME);
         }
-    }
-
-//*************************************************************************
-//    Phas_E3: Test if point makes contact with weapon: b2 =?= high     *
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalLeft)
-    {
-        if (AdAboveThreshold)
-        {
-            Counter_c1 = Const_COUNT_Cx_INIT_EPEE;
-            TempOrangeL = true;
-        }
-        else
-        {
-            if (!Counter_c1)
-            {
-                Red=true;
-                Buzz = true;
-                SignalLeft = true;
-                StartLock(EPEE_LOCK_TIME);
-                Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE-1;
-                Counter_c2--;	//here I assume Counter_c2 is not yet 0, or if it is, it will not make a difference anymore
-                c1_reached1 = false;
-            }
-        }
-    }
-//*************************************************************************
-//    Phas_E4: Test if point is pressed down: c1 =?= high                 *
-//*************************************************************************
-
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalRight)
-    {
-        if (AdAboveThreshold)
-        {
-            if(Counter_c2)
-            {
-                Counter_c2--;
-                if(Counter_c2 == 1)
-                {
-                    c2_reached1 = true;
-                }
-            }
-            else
-            {
-                c2_reached1 = false;
-            }
-        }
-
-        else
-        {
-            if(c2_reached1 == true)
-            {
-                // this means we have blocked a hit, so we should block the otherone too
-                c2_reached1 = false;
-                Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE +1;
-                Counter_c1++;
-                WeHaveBlockedAhit = true;
-            }
-            Counter_c2 = Const_COUNT_Cx_INIT_EPEE;
-        }
+      }
     }
 
-//*************************************************************************
-//    Phas_E5: Test if point makes contact with ground: gnd =?= high       *
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalRight)
-    {
-        if (AdAboveThreshold)
-        {
-            Counter_c2 = Const_COUNT_Cx_INIT_EPEE;
-            TempOrangeR = true;
-        }
-    }
-//*************************************************************************
-//    Phas_E6: Test if point makes contact with bell: b2 =?= high       *
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalRight)
-    {
-        if (AdAboveThreshold)
-        {
-            Counter_c2 = Const_COUNT_Cx_INIT_EPEE;
-            TempOrangeR = true;
-        }
-    }
-
-//*************************************************************************
-//    Phas_E7: Test if point makes contact with weapon: b2 =?= high     *
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!SignalRight)
-    {
-        if (AdAboveThreshold)
-        {
-            Counter_c2 = Const_COUNT_Cx_INIT_EPEE;
-            TempOrangeR = true;
-        }
-        else
-        {
-            if (!Counter_c2)
-            {
-                Green=true;
-                Buzz = true;
-                SignalRight = true;
-                StartLock(EPEE_LOCK_TIME);
-                Const_COUNT_Cx_INIT_EPEE = COUNT_C1_INIT_EPEE-1;
-                Counter_c1--;	//here I assume Counter_c2 is not yet 0, or if it is, it will not make a difference anymore
-                c2_reached1 = false;
-            }
-        }
-    }
-
-//*************************************************************************
-//    Phas_E8: The next 2 phases are used only in club-version with
-//    automatic weapon selection
-//    Test if foil point pressed down on valid surface for at least 5 seconds =>
-//    contact between a1-c2; in order to switch to foil, a1-b1 should not be ok
-//    to switch to sabre a1-b1 should be OK
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!AdAboveThreshold)
-    {
-        LongCounter_c2 = LONG_COUNT_C_INIT_EPEE;
-    }
-    else
-    {
-        if(LongCounter_c2)
-            LongCounter_c2--;
-    }
-
-//*************************************************************************
-//    Phas_E9:
-//    Test if foil point pressed down on valid surface for at least 5 seconds =>
-//    contact between a2-c1; in order to switch to foil, a1-b1 should not be ok
-//    to switch to sabre a1-b1 should be OK
-//*************************************************************************
-    AdAboveThreshold = Do_Common_Start();
-    if (!AdAboveThreshold)
-    {
-        LongCounter_c1 = LONG_COUNT_C_INIT_EPEE;
-    }
-    else
-    {
-        if(LongCounter_c1)
-            LongCounter_c1--;
-    }
-
-    OrangeR = TempOrangeR;
-    OrangeL = TempOrangeL;
-    return;
+    break;
+  }
 }

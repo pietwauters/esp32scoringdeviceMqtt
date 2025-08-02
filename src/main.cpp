@@ -20,6 +20,7 @@
 #include "3WeaponSensor.h"
 #include "CyranoHandler.h"
 #include "FPA422Handler.h"
+#include "FastADC1.h"
 #include "FencingStateMachine.h"
 #include "RepeaterReceiver.h"
 #include "RepeaterSender.h"
@@ -85,6 +86,7 @@ void setup() {
 
   MyTimeScoreDisplay = new TimeScoreDisplay();
   MyTimeScoreDisplay->begin(); // this also powers up the led panels
+  MyTimeScoreDisplay->DisplayPisteId();
 
   MyLedStrip = &WS2812B_LedStrip::getInstance();
   MyLedStrip->begin();
@@ -98,7 +100,7 @@ void setup() {
   MyLedStrip->ClearAll();
 
   MyLedStrip->ClearAll();
-  MyTimeScoreDisplay->DisplayPisteId();
+
   MyFPA422Handler = new FPA422Handler();
   Preferences mypreferences;
   mypreferences.begin("scoringdevice", RO_MODE);
@@ -127,7 +129,6 @@ void setup() {
     MyStatemachine->ResetAll();
     MyFPA422Handler->StartWiFi();
     MyStatemachine->attach(*MyFPA422Handler);
-    MyStatemachine->attach(*MyTimeScoreDisplay);
     MyUDPIOHandler->attach(*MyStatemachine);
     MyStatemachine->attach(*MyUDPIOHandler);
     MyStatemachine->attach(*MyCyranoHandler);
@@ -138,6 +139,11 @@ void setup() {
     MyStatemachine->RegisterMultiWeaponSensor(MySensor);
     MyStatemachine->begin();
     MySensor->begin();
+
+    /*MyTimeScoreDisplay = new TimeScoreDisplay();
+    MyTimeScoreDisplay->begin(); // this also powers up the led panels
+    MyTimeScoreDisplay->DisplayPisteId();*/
+    MyStatemachine->attach(*MyTimeScoreDisplay);
     MyCyranoHandler->Begin();
     MyRepeaterSender = &RepeaterSender::getInstance();
     MyRepeaterSender->begin();
@@ -161,6 +167,9 @@ void setup() {
     ESP_LOGI(SET_UP_TAG, "%s", "Ouch! I am a repeater!");
     MyRepeaterReiver->begin();
     MyRepeaterReiver->attach(*MyLedStrip);
+    /*MyTimeScoreDisplay = new TimeScoreDisplay();
+    MyTimeScoreDisplay->begin(); // this also powers up the led panels
+    MyTimeScoreDisplay->DisplayPisteId();*/
     MyRepeaterReiver->attach(*MyTimeScoreDisplay);
     MyRepeaterReiver->StartWatchDog();
     MyLedStrip->SetMirroring(MyRepeaterReiver->Mirror());
@@ -246,7 +255,7 @@ void loop() {
     // MyRepeaterSender->BroadcastHeartBeat();
 
     if (bEnableDeepSleep && MyStatemachine->GoToSleep()) {
-      prepareforDeepSleep();
+      // prepareforDeepSleep();
     }
   } else { // when in repeater mode
     MyTimeScoreDisplay->ProcessEvents();
@@ -266,6 +275,7 @@ void loop() {
   if (!digitalRead(0)) {
     if (!FactoryResetCounter) {
       ESP_LOGI(LOOP_TAG, "%s", "Bootpin pressed");
+      Serial.println("Bootpin pressed");
       MyNetWork->DoFactoryReset();
       ESP.restart();
       FactoryResetCounter = 200;
@@ -279,7 +289,8 @@ void loop() {
 extern "C" void app_main() {
   // Call Arduino setup and loop
   initArduino(); // Initialize Arduino if needed
-  setup();       // Call the Arduino setup function
+
+  setup(); // Call the Arduino setup function
   while (true) {
     loop(); // Call the Arduino loop function
   }
