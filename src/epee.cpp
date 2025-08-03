@@ -119,11 +119,11 @@ void MultiWeaponSensor::DoEpee(void) {
         break;
       case 2:
         SubsampleCounter = 3;
-        DebounceLong_c1.update(HitOnLame_l());
+        DebounceLong_al_cr.update(HitOnLame_l());
         break;
       case 3:
         SubsampleCounter = 0;
-        DebounceLong_c2.update(HitOnLame_r());
+        DebounceLong_ar_cl.update(HitOnLame_r());
         break;
       }
     }
@@ -140,10 +140,12 @@ void MultiWeaponSensor::DoEpee(void) {
     if (Debounce_c1.isOK()) {
       Debounce_c2.setRequiredUs(EpeeContactTime_us -
                                 Epee_DosSantosCorrection_us);
+      Debounce_c2.update(cr);
     }
     if (Debounce_c2.isOK()) {
       Debounce_c1.setRequiredUs(EpeeContactTime_us -
                                 Epee_DosSantosCorrection_us);
+      Debounce_c1.update(cl);
     }
 
     if (Debounce_c1.isOK()) {

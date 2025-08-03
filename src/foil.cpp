@@ -168,10 +168,12 @@ void MultiWeaponSensor::DoFoil(void) {
     if (Debounce_b1.isOK()) {
       Debounce_b2.setRequiredUs(FoilContactTime_us -
                                 Foil_DosSantosCorrection_us);
+      Debounce_b2.update(br);
     }
     if (Debounce_b2.isOK()) {
       Debounce_b1.setRequiredUs(FoilContactTime_us -
                                 Foil_DosSantosCorrection_us);
+      Debounce_b1.update(bl);
     }
 
     if (Debounce_b1.isOK()) {

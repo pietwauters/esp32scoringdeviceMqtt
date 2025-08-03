@@ -8,6 +8,7 @@
 #include "FastADC1.h"
 #include "TimeScoreDisplay.h"
 #include "WS2812BLedStrip.h"
+#include "adc_calibrator.h"
 #include "driver/gpio.h" // Required for gpio_pad_select_gpio()
 #include "driver/rtc_io.h"
 #include "esp_log.h"
@@ -17,12 +18,14 @@
 #include <Preferences.h>
 #include <driver/rtc_io.h>
 #include <iostream>
+// ResistorDividerCalibrator calibrator;
+
 // #define adc1_get_raw FastADC1::read
 
 static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
 
-constexpr int scanloop_us = 130;
-#define MEASURE_TIMING
+constexpr int scanloop_us = 140;
+// #define MEASURE_TIMING
 
 #ifndef MEASURE_TIMING
 // Timer callback (runs in timer task context, not ISR)
@@ -148,8 +151,9 @@ void MultiWeaponSensor::begin() {
           ESP_TIMER_TASK, // Use ESP_TIMER_TASK for longer callbacks
       .name = "scan_timer"};
   esp_timer_create(&scan_timer_args, &scan_timer);
-
-  // Start timer: period in microseconds (e.g., 250 us = 0.25 ms)
+  // calibrator.begin(ADC1_CHANNEL_6);
+  // calibrator.calibrate_interactively(ADC1_CHANNEL_6);
+  //  Start timer: period in microseconds (e.g., 250 us = 0.25 ms)
   esp_timer_start_periodic(scan_timer, scanloop_us); // 250 us interval
 }
 
@@ -261,38 +265,29 @@ void MultiWeaponSensor::DoReset() {
   switch (m_ActualWeapon) {
   case FOIL:
 
-    Debounce_b1.setRequiredUs(FoilContactTime_us); // 14ms for foil
-    Debounce_b1.reset();
-    Debounce_b2.setRequiredUs(FoilContactTime_us);
-    Debounce_b2.reset();
-    Debounce_c1.setRequiredUs(Foil_LameLeak_us);
-    Debounce_c1.reset();
-    Debounce_c2.setRequiredUs(Foil_LameLeak_us);
-    Debounce_c2.reset();
+    Debounce_b1.reset(FoilContactTime_us); // 14ms for foil
+    Debounce_b2.reset(FoilContactTime_us);
+    Debounce_c1.reset(Foil_LameLeak_us);
+    Debounce_c2.reset(Foil_LameLeak_us);
 
     break;
 
   case EPEE:
 
-    Debounce_c1.setRequiredUs(6000); // 6 ms for epee
-    Debounce_c2.setRequiredUs(6000); // 6 ms for epee
+    Debounce_c1.reset(6000); // 6 ms for epee
+    Debounce_c2.reset(6000); // 6 ms for epee
 
     break;
 
   case SABRE:
-    Debounce_b1.setRequiredUs(1400);
-    Debounce_b2.setRequiredUs(1400);
-    Debounce_c1.setRequiredUs(110);
-    Debounce_c2.setRequiredUs(110);
+    Debounce_b1.reset(1400);
+    Debounce_b2.reset(1400);
+    Debounce_c1.reset(110);
+    Debounce_c2.reset(110);
 
     break;
   }
-  /*  This never changes, so no need to set here.
-  DebounceLong_b1.setRequiredUs(2000000); // 3 s
-  DebounceLong_b2.setRequiredUs(2000000); // 3 s
-  DebounceLong_c1.setRequiredUs(2000000); // 3 s
-  DebounceLong_c2.setRequiredUs(2000000); // 3 s
-*/
+
   SignalLeft = 0;
   SignalRight = 0;
   LockStarted = false;
@@ -305,7 +300,7 @@ void MultiWeaponSensor::DoReset() {
 
 void MultiWeaponSensor::StartLock(int TimeToLock) {
   if (!LockStarted) {
-    LockStarted = 1;
+    LockStarted = true;
     TimeOfLock = millis() + TimeToLock;
   }
 }
@@ -353,6 +348,12 @@ void MultiWeaponSensor::DoFullScan() {
     DoSabre();
     break;
   }
+}
+void MultiWeaponSensor::resetLongDebouncers() {
+  DebounceLong_al_cl.reset();
+  DebounceLong_al_cr.reset();
+  DebounceLong_ar_cl.reset();
+  DebounceLong_ar_cr.reset();
 }
 
 weapon_t MultiWeaponSensor::GetWeapon() {
@@ -404,6 +405,7 @@ weapon_t MultiWeaponSensor::GetWeapon() {
       if ((Debounce_b1.isOK()) && (Debounce_b2.isOK())) {
         m_DetectedWeapon = EPEE;
         bPreventBuzzer = false;
+        resetLongDebouncers();
       }
     }
     // if (bx-cy) && (ax-bx) -> switch to sabre
@@ -411,6 +413,7 @@ weapon_t MultiWeaponSensor::GetWeapon() {
       if ((DebounceLong_al_cr.isOK()) && (DebounceLong_ar_cl.isOK())) {
         if ((!Debounce_b1.isOK()) && (!Debounce_b2.isOK())) {
           m_DetectedWeapon = SABRE;
+          resetLongDebouncers();
           bPreventBuzzer = false;
         }
       }
@@ -424,25 +427,19 @@ weapon_t MultiWeaponSensor::GetWeapon() {
     // if (ax-cy) & !(ax-bx) -> switch to foil
     // if (ax-cy) & (ax-by) -> switch to sabre
     // keep epee
-    if ((DebounceLong_c1.isOK()) &&
-        (DebounceLong_c2.isOK())) { // certainly not epee anymore)
+    if ((DebounceLong_al_cr.isOK()) &&
+        (DebounceLong_ar_cl.isOK())) { // certainly not epee anymore)
       if ((OrangeR) && (OrangeL)) {
         m_DetectedWeapon = SABRE;
         bPreventBuzzer = false;
-        DebounceLong_b1.reset();
-        DebounceLong_b2.reset();
-        DebounceLong_c1.reset();
-        DebounceLong_c2.reset();
         Debounce_NotConnected.reset();
+        resetLongDebouncers();
 
       } else {
         m_DetectedWeapon = FOIL;
         bPreventBuzzer = false;
-        DebounceLong_b1.reset();
-        DebounceLong_b2.reset();
-        DebounceLong_c1.reset();
-        DebounceLong_c2.reset();
         Debounce_NotConnected.reset();
+        resetLongDebouncers();
       }
 
       return m_DetectedWeapon;
@@ -454,24 +451,21 @@ weapon_t MultiWeaponSensor::GetWeapon() {
     // if (ax-cy) & !(ax-bx) -> switch to foil
     // if (ax-cx) & !(ax-bx) -> switch to epee
     // keep sabre
-    if ((!WhiteR) ||
-        (!WhiteL)) // both points must be pressed down to trigger the switch
     {
-      return SABRE;
-    } else {
-      if ((DebounceLong_b1.isOK()) && (DebounceLong_b2.isOK())) {
-        m_DetectedWeapon = FOIL;
-        bPreventBuzzer = false;
-        DebounceLong_b1.reset();
-        DebounceLong_b2.reset();
-        DebounceLong_c1.reset();
-        DebounceLong_c2.reset();
+
+      if ((DebounceLong_ar_cl.isOK()) && (DebounceLong_al_cr.isOK())) {
+        if (WhiteR && WhiteL) {
+          m_DetectedWeapon = FOIL;
+          bPreventBuzzer = false;
+          resetLongDebouncers();
+        }
       }
-      if ((DebounceLong_c1.isOK()) && (DebounceLong_c2.isOK())) {
-        m_DetectedWeapon = EPEE;
-        bPreventBuzzer = false;
-        DebounceLong_c1.reset();
-        DebounceLong_c2.reset();
+      if ((DebounceLong_ar_cr.isOK()) && (DebounceLong_al_cl.isOK())) {
+        if ((Debounce_b1.isOK()) && (Debounce_b2.isOK())) {
+          m_DetectedWeapon = EPEE;
+          bPreventBuzzer = false;
+          resetLongDebouncers();
+        }
       }
       return m_DetectedWeapon;
     }

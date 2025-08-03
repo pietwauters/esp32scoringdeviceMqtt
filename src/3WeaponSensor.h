@@ -86,6 +86,7 @@ private:
   // void DoEpee(void);
   // void DoFoil(void);
   // void DoSabre();
+  void resetLongDebouncers();
   void DoReset(void);
   void StartLock(int TimeToLock);
   bool IsLocked();

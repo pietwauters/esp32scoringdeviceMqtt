@@ -54,22 +54,18 @@ void MultiWeaponSensor::DoSabre(void) {
   bool tempRed = false;
   bool tempGreen = false;
 
-  if (!SignalLeft) { // No need to check again if we already have a signal on
-                     // this side
-    Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
-    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-    cl = (tempADValue > AxMaxValue);
-  }
+  Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
+  tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  cl = (tempADValue > AxMaxValue);
 
-  if (!SignalRight) { // No need to check again if we already have a signal on
-                      // this side
-    Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
-    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-    cr = (tempADValue > AxMaxValue);
-  }
+  Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
+  tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  cr = (tempADValue > AxMaxValue);
 
   Debounce_c1.update(cl);
   Debounce_c2.update(cr);
+  DebounceLong_al_cr.update(cr);
+  DebounceLong_ar_cl.update(cl);
 
   switch (state) {
   case IDLE:
@@ -98,12 +94,15 @@ void MultiWeaponSensor::DoSabre(void) {
         }
         break;
       case 2:
+        // You can also show Yellow here
         SubsampleCounter = 3;
-        DebounceLong_c1.update(EpeeHit_l());
+        DebounceLong_al_cl.update(EpeeHit_l());
+
         break;
       case 3:
+        // You can also show Yellow here
         SubsampleCounter = 4;
-        // DebounceLong_c2.update(EpeeHit_r());
+        DebounceLong_ar_cr.update(EpeeHit_r());
         break;
       case 4:
         SubsampleCounter = 0;
@@ -124,33 +123,33 @@ void MultiWeaponSensor::DoSabre(void) {
     if (Debounce_c1.isOK()) {
       Debounce_c2.setRequiredUs(SabreContactTime_us -
                                 Sabre_DosSantosCorrection_us);
+      Debounce_c2.update(cr);
     }
     if (Debounce_c2.isOK()) {
       Debounce_c1.setRequiredUs(SabreContactTime_us -
                                 Sabre_DosSantosCorrection_us);
+      Debounce_c1.update(cl);
     }
 
-    if (Debounce_c1.isOK()) {
+    if (Debounce_c1.isOK() && !SignalLeft) {
       // reduce required time for b2
       // check validity
-      if (HitOnLame_l()) {
-        // Serial.println("Red");
-        Red = true;
-        Buzz = true;
-        SignalLeft = true;
-        StartLock(SABRE_LOCK_TIME);
-      }
+
+      // Serial.println("Red");
+      Red = true;
+      Buzz = true;
+      SignalLeft = true;
+      StartLock(SABRE_LOCK_TIME);
     }
-    if (Debounce_c2.isOK()) {
+    if (Debounce_c2.isOK() && !SignalRight) {
       // reduce required time for b2
       // check validity
-      if (HitOnLame_r()) {
-        // Serial.println("Green");
-        Green = true;
-        Buzz = true;
-        SignalRight = true;
-        StartLock(SABRE_LOCK_TIME);
-      }
+
+      // Serial.println("Green");
+      Green = true;
+      Buzz = true;
+      SignalRight = true;
+      StartLock(SABRE_LOCK_TIME);
     }
 
     break;
