@@ -26,8 +26,11 @@ inline bool HitOnPiste_l() {
   return (tempADValue > AxMaxValue);
 };
 
+// For the leak I test both al-cl and bl-cl. This allows me to re-use this test
+// to check if I should switch to epee
 inline bool LameLeak_l() {
-  Set_IODirectionAndValue(IODirection_bl_cl, IOValues_bl_cl);
+  Set_IODirectionAndValue(IODirection_bl_cl & IODirection_al_cl,
+                          IOValues_bl_cl | IOValues_al_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
   return (tempADValue > BCMaxValue);
 };
@@ -55,7 +58,8 @@ inline bool HitOnPiste_r() {
 };
 
 inline bool LameLeak_r() {
-  Set_IODirectionAndValue(IODirection_br_cr, IOValues_br_cr);
+  Set_IODirectionAndValue(IODirection_br_cr & IODirection_ar_cr,
+                          IOValues_br_cr | IOValues_ar_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
   return (tempADValue > BCMaxValue);
 };
@@ -76,6 +80,8 @@ enum FoilState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
 
 void MultiWeaponSensor::DoFoil(void) {
   bool bl, br;
+  bool leak;
+  bool Valid_l, Valid_r;
   static FoilState state = IDLE;
   static int SubsampleCounter = 0;
 
@@ -85,6 +91,8 @@ void MultiWeaponSensor::DoFoil(void) {
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
     bl = (tempADValue < AxMaxValue);
     NotConnectedLeft = bl;
+    Valid_l = HitOnLame_l();
+    DebounceLong_al_cr.update(Valid_l);
   }
 
   if (!SignalRight) { // No need to check again if we already have a signal on
@@ -93,6 +101,8 @@ void MultiWeaponSensor::DoFoil(void) {
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
     br = (tempADValue < AxMaxValue);
     NotConnectedRight = br;
+    Valid_r = HitOnLame_r();
+    DebounceLong_ar_cl.update(Valid_r);
   }
 
   Debounce_b1.update(bl);
@@ -110,27 +120,34 @@ void MultiWeaponSensor::DoFoil(void) {
       switch (SubsampleCounter) {
       case 0:
         SubsampleCounter = 1;
-        if (Debounce_c1.update(LameLeak_l())) {
+        leak = LameLeak_l();
+        DebounceLong_al_cl.update(leak);
+        if (Debounce_c1.update(leak)) {
           OrangeL = true;
         } else {
           OrangeL = false;
         }
         break;
       case 1:
-        SubsampleCounter = 2;
-        if (Debounce_c2.update(LameLeak_r())) {
+        SubsampleCounter =
+            0; //  <-------------------- Skipping next 2 checks!!!!!
+        leak = LameLeak_r();
+        DebounceLong_ar_cr.update(leak);
+        if (Debounce_c2.update(leak)) {
           OrangeR = true;
         } else {
           OrangeR = false;
         }
         break;
       case 2:
+        // this is not needed if I combine ax-bx and ax-cx for leak detection
         SubsampleCounter = 3;
-        DebounceLong_c1.update(EpeeHit_l());
+        // DebounceLong_c1.update(EpeeHit_l());
         break;
       case 3:
+        // this is not needed if I combine ax-bx and ax-cx for leak detection
         SubsampleCounter = 4;
-        DebounceLong_c2.update(EpeeHit_r());
+        // DebounceLong_c2.update(EpeeHit_r());
         break;
       case 4:
         SubsampleCounter = 0;
@@ -160,7 +177,7 @@ void MultiWeaponSensor::DoFoil(void) {
     if (Debounce_b1.isOK()) {
       // reduce required time for b2
       // check validity
-      if (HitOnLame_l()) {
+      if (Valid_l) {
         // Serial.println("Red");
         Red = true;
         Buzz = true;
@@ -187,7 +204,7 @@ void MultiWeaponSensor::DoFoil(void) {
     if (Debounce_b2.isOK()) {
       // reduce required time for b2
       // check validity
-      if (HitOnLame_r()) {
+      if (Valid_r) {
         // Serial.println("Green");
         Green = true;
         Buzz = true;

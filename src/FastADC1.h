@@ -42,7 +42,6 @@ void adc1_fast_begin(void);
 int fast_adc1_get_raw(adc1_channel_t channel);
 void adc1_fast_register_channel(adc1_channel_t channel);
 void adc1_fast_begin_unsafe(void);
-uint16_t fast_adc1_get_raw_unsafe(adc1_channel_t channel);
 
 static inline int fast_adc1_get_raw_inline(adc1_channel_t channel) {
   SENS.sar_meas_start1.sar1_en_pad = 1 << channel;

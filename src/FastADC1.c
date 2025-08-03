@@ -176,7 +176,7 @@ int fast_adc1_get_raw(adc1_channel_t channel)
 {
     SENS.sar_meas_start1.sar1_en_pad = 1 << channel;
     SENS.sar_meas_start1.meas1_start_sar = 1;
-
+    taskYIELD();
     while (SENS.sar_meas_start1.meas1_done_sar == 0) {
         // Tight loop, fast polling
     }
@@ -184,7 +184,7 @@ int fast_adc1_get_raw(adc1_channel_t channel)
     SENS.sar_meas_start1.meas1_start_sar = 0;
     return SENS.sar_meas_start1.meas1_data_sar;
 }
-
+/*
 static inline uint16_t IRAM_ATTR fast_adc1_get_raw_unsafe(adc1_channel_t channel) {
     SENS.sar_meas_start1.sar1_en_pad = 1 << channel;
     SENS.sar_meas_start1.meas1_start_sar = 1;
@@ -202,3 +202,4 @@ static inline uint16_t IRAM_ATTR fast_adc1_get_raw_unsafe(adc1_channel_t channel
     SENS.sar_meas_start1.meas1_done_sar = 0;
     return result;
 }
+*/

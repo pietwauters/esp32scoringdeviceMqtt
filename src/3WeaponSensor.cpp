@@ -22,7 +22,7 @@
 static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
 
 constexpr int scanloop_us = 130;
-// #define MEASURE_TIMING
+#define MEASURE_TIMING
 
 #ifndef MEASURE_TIMING
 // Timer callback (runs in timer task context, not ISR)
@@ -38,7 +38,7 @@ void scan_timer_callback(void *arg) {
   int64_t now = esp_timer_get_time();
   if (last_time != 0) {
     int64_t dt = now - last_time;
-    if (dt > 220) {
+    if (dt > scanloop_us + 50) {
       errorcounter++;
       if (errorcounter > 1) {
         Serial.printf("Interval: %lld us\n", dt);
@@ -399,24 +399,19 @@ weapon_t MultiWeaponSensor::GetWeapon() {
   case FOIL:
     // if (ax-cx) & !(ax-bx) -> switch to epee
 
-    if ((DebounceLong_c1.isOK()) &&
-        (DebounceLong_c2.isOK())) { // certainly not foil anymore)
-
-      if ((!Debounce_b1.isOK()) && (!Debounce_b2.isOK())) {
+    if ((DebounceLong_al_cl.isOK()) &&
+        (DebounceLong_ar_cr.isOK())) { // certainly not foil anymore)
+      if ((Debounce_b1.isOK()) && (Debounce_b2.isOK())) {
         m_DetectedWeapon = EPEE;
         bPreventBuzzer = false;
       }
     }
     // if (bx-cy) && (ax-bx) -> switch to sabre
     else {
-      if ((DebounceLong_c1.isOK()) && (DebounceLong_c2.isOK())) {
+      if ((DebounceLong_al_cr.isOK()) && (DebounceLong_ar_cl.isOK())) {
         if ((!Debounce_b1.isOK()) && (!Debounce_b2.isOK())) {
           m_DetectedWeapon = SABRE;
           bPreventBuzzer = false;
-          DebounceLong_b1.reset();
-          DebounceLong_b2.reset();
-          DebounceLong_c1.reset();
-          DebounceLong_c2.reset();
         }
       }
     }
