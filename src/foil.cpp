@@ -84,6 +84,9 @@ void MultiWeaponSensor::DoFoil(void) {
   bool Valid_l, Valid_r;
   static FoilState state = IDLE;
   static int SubsampleCounter = 0;
+  // This is needed in case we need to apply the Dos Santos trick
+  static bool lastValid_l = false;
+  static bool lastValid_r = false;
 
   if (!SignalLeft) { // No need to check again if we already have a signal on
                      // this side
@@ -168,18 +171,18 @@ void MultiWeaponSensor::DoFoil(void) {
     if (Debounce_b1.isOK()) {
       Debounce_b2.setRequiredUs(FoilContactTime_us -
                                 Foil_DosSantosCorrection_us);
-      Debounce_b2.update(br);
+      Debounce_b2.update(true);
     }
     if (Debounce_b2.isOK()) {
       Debounce_b1.setRequiredUs(FoilContactTime_us -
                                 Foil_DosSantosCorrection_us);
-      Debounce_b1.update(bl);
+      Debounce_b1.update(true);
     }
 
     if (Debounce_b1.isOK()) {
-      // reduce required time for b2
+
       // check validity
-      if (Valid_l) {
+      if (lastValid_l) {
         // Serial.println("Red");
         Red = true;
         Buzz = true;
@@ -204,9 +207,9 @@ void MultiWeaponSensor::DoFoil(void) {
       }
     }
     if (Debounce_b2.isOK()) {
-      // reduce required time for b2
+
       // check validity
-      if (Valid_r) {
+      if (lastValid_r) {
         // Serial.println("Green");
         Green = true;
         Buzz = true;
@@ -233,4 +236,6 @@ void MultiWeaponSensor::DoFoil(void) {
 
     break;
   }
+  lastValid_l = Valid_l;
+  lastValid_r = Valid_r;
 }

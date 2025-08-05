@@ -9,20 +9,35 @@
 
 class ResistorDividerCalibrator {
 public:
-  bool begin(adc1_channel_t adc_channel_r3);
-  bool calibrate_interactively(adc1_channel_t adc_channel_r3);
-  float get_adc_threshold_for_resistance(float R);
+  bool begin(adc1_channel_t adc_channel_top, adc1_channel_t adc_channel_bottom);
+  bool calibrate_interactively(float known_resistor);
+  int get_adc_threshold_for_resistance_NonTip(float R);
+  int get_adc_threshold_for_resistance_Tip(float R);
+  void set_gpio_voltage(float v) { v_gpio = v; }
+  bool calibrate_r1_only(float R_known, float r3_eff_override = -1.0f);
 
-  void set_gpio_voltage(float v) { v_gpio = v; } // Optional override
+  // NVS support
+  bool load_calibration_from_nvs(const char *nvs_namespace = "calib");
+  bool save_calibration_to_nvs(const char *nvs_namespace = "calib");
 
 private:
   float v_gpio = 3.3f;
   float r1_eff = -1;
+  float r1_Ax_eff = -1;
   float r3_eff = -1;
   esp_adc_cal_characteristics_t adc_chars;
-  adc1_channel_t channel_r3;
+  adc1_channel_t channel_top;
+  adc1_channel_t channel_bottom;
 
-  bool load_from_nvs();
-  void save_to_nvs();
+  int voltage_to_adc_raw(float voltage);
   float read_voltage(adc1_channel_t channel);
+  float read_voltage_average(adc1_channel_t channel, int samples);
+  void wait_for_enter();
+  char wait_for_key();
+
+  float sdev_v_top_open = 0;
+  float sdev_v_bottom_open = 0;
+  float sdev_v_top = 0;
+  float sdev_v_bottom = 0;
+  float sdev_adc_threshold = 0;
 };

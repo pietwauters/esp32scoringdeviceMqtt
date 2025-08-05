@@ -8,17 +8,17 @@ constexpr int BCMaxValue = 1200;
 inline bool HitOnLame_l() {
   Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 inline bool HitOnGuard_l() {
   Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 inline bool HitOnPiste_l() {
   Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 
 inline bool WeaponLeak_l() {
@@ -36,17 +36,17 @@ inline bool EpeeHit_l() {
 inline bool HitOnLame_r() {
   Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 inline bool HitOnGuard_r() {
   Set_IODirectionAndValue(IODirection_ar_bl, IOValues_ar_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 inline bool HitOnPiste_r() {
   Set_IODirectionAndValue(IODirection_ar_piste, IOValues_ar_piste);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 
 inline bool WeaponLeak_r() {
@@ -58,13 +58,13 @@ inline bool WeaponLeak_r() {
 inline bool EpeeHit_r() {
   Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 
 inline bool Parry() {
   Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_100_Ohm);
 };
 
 enum EpeeState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
@@ -73,19 +73,22 @@ void MultiWeaponSensor::DoEpee(void) {
   bool cl, cr;
   static EpeeState state = IDLE;
   static int SubsampleCounter = 0;
-
+  static int ADCL_0;
+  static int ADCR_0;
   if (!SignalLeft) { // No need to check again if we already have a signal on
                      // this side
     Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-    cl = (tempADValue > AxMaxValue);
+    cl = ((tempADValue + ADCL_0) >> 1 > AxXy_100_Ohm);
+    ADCL_0 = tempADValue;
   }
 
   if (!SignalRight) { // No need to check again if we already have a signal on
                       // this side
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-    cr = (tempADValue > AxMaxValue);
+    cr = ((tempADValue + ADCR_0) >> 1 > AxXy_100_Ohm);
+    ADCR_0 = tempADValue;
   }
 
   Debounce_c1.update(cl);
@@ -140,12 +143,12 @@ void MultiWeaponSensor::DoEpee(void) {
     if (Debounce_c1.isOK()) {
       Debounce_c2.setRequiredUs(EpeeContactTime_us -
                                 Epee_DosSantosCorrection_us);
-      Debounce_c2.update(cr);
+      Debounce_c2.update(true);
     }
     if (Debounce_c2.isOK()) {
       Debounce_c1.setRequiredUs(EpeeContactTime_us -
                                 Epee_DosSantosCorrection_us);
-      Debounce_c1.update(cl);
+      Debounce_c1.update(true);
     }
 
     if (Debounce_c1.isOK()) {

@@ -19,6 +19,8 @@
 #include <driver/rtc_io.h>
 #include <iostream>
 // ResistorDividerCalibrator calibrator;
+#include "FastGPIOSettings.h"
+#include "adc_calibrator.h"
 
 // #define adc1_get_raw FastADC1::read
 
@@ -79,6 +81,8 @@ MultiWeaponSensor::MultiWeaponSensor() {
   gpio_set_direction(GPIO_NUM_33, GPIO_MODE_INPUT_OUTPUT);
 }
 
+int AxXy_100_Ohm;
+ResistorDividerCalibrator MyCalibrator;
 void MultiWeaponSensor::begin() {
   Preferences mypreferences;
   mypreferences.begin("scoringdevice", false);
@@ -121,6 +125,28 @@ void MultiWeaponSensor::begin() {
   gpio_set_level(GPIO_NUM_33, 0); // or 1, as needed
   gpio_reset_pin(GPIO_NUM_2);     // Reset function to digital
   gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
+
+  Set_IODirectionAndValue(IODirection_br_cr, IOValues_br_cr);
+
+  MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
+  if (false) {
+    printf("\nCalibration will be done on the connector of the right fencer\n");
+    printf("First test: between the outer pins\n");
+    printf("    O          0     0     \n");
+    printf("    |                |     \n");
+    printf("    ______  100 Ω ____     \n");
+    MyCalibrator.calibrate_interactively(100.0);
+    Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
+    printf("Second test: between the central and close pin\n");
+    printf("    O          0     0     \n");
+    printf("               |     |    \n");
+    printf("                100 Ω      \n");
+    MyCalibrator.calibrate_r1_only(100.0);
+    MyCalibrator.save_calibration_to_nvs();
+  }
+
+  AxXy_100_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(100) - 25;
+  Serial.printf("int AxXy_100_Ohm = %d\n", AxXy_100_Ohm);
 
   // int fast_raw = fast_adc1_get_raw(ADC1_CHANNEL_3);
   /*int64_t t0 = esp_timer_get_time();
@@ -274,8 +300,10 @@ void MultiWeaponSensor::DoReset() {
 
   case EPEE:
 
-    Debounce_c1.reset(6000); // 6 ms for epee
-    Debounce_c2.reset(6000); // 6 ms for epee
+    Debounce_c1.reset(EpeeContactTime_us); // 6 ms for epee
+    Debounce_c2.reset(EpeeContactTime_us); // 6 ms for epee
+    Debounce_c1.setDosSantosMarginUs(scanloop_us + 10);
+    Debounce_c2.setDosSantosMarginUs(scanloop_us + 10);
 
     break;
 
@@ -328,7 +356,9 @@ void MultiWeaponSensor::DoFullScan() {
   if (IsLocked()) {
     SignalLeft = 1;  // Now no changes will be registered for left
     SignalRight = 1; // Same for right
+
     if (OKtoReset()) {
+
       DoReset();
     }
     vTaskDelay(0);

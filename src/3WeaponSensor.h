@@ -113,6 +113,7 @@ private:
   DebounceTimer Debounce_b2;
   DebounceTimer Debounce_c1;
   DebounceTimer Debounce_c2;
+
   // below const values are used to make timing calibration possible without
   // having constants in the code
 
@@ -172,6 +173,6 @@ private:
   uint32_t ShortIndicatorsDebouncer = 0;
 };
 
-extern void prepareforDeepSleep();
+extern int AxXy_100_Ohm;
 
 #endif // WEAPONSENSOR_H

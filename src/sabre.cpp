@@ -123,12 +123,12 @@ void MultiWeaponSensor::DoSabre(void) {
     if (Debounce_c1.isOK()) {
       Debounce_c2.setRequiredUs(SabreContactTime_us -
                                 Sabre_DosSantosCorrection_us);
-      Debounce_c2.update(cr);
+      Debounce_c2.update(true);
     }
     if (Debounce_c2.isOK()) {
       Debounce_c1.setRequiredUs(SabreContactTime_us -
                                 Sabre_DosSantosCorrection_us);
-      Debounce_c1.update(cl);
+      Debounce_c1.update(true);
     }
 
     if (Debounce_c1.isOK() && !SignalLeft) {
