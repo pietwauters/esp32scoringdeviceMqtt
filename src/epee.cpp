@@ -2,9 +2,8 @@
 #include "3WeaponSensor.h"
 #include "FastADC1.h"
 #include "FastGPIOSettings.h"
+#include "ResistorSetting.h"
 
-constexpr int AxMaxValue = 1800;
-constexpr int BCMaxValue = 1200;
 inline bool HitOnLame_l() {
   Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
@@ -13,24 +12,18 @@ inline bool HitOnLame_l() {
 inline bool HitOnGuard_l() {
   Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_250_Ohm);
 };
 inline bool HitOnPiste_l() {
   Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_250_Ohm);
 };
 
 inline bool WeaponLeak_l() {
   Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > BCMaxValue);
-};
-
-inline bool EpeeHit_l() {
-  Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
-  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > BCMaxValue);
+  return (tempADValue > AxXy_250_Ohm);
 };
 
 inline bool HitOnLame_r() {
@@ -41,30 +34,18 @@ inline bool HitOnLame_r() {
 inline bool HitOnGuard_r() {
   Set_IODirectionAndValue(IODirection_ar_bl, IOValues_ar_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_250_Ohm);
 };
 inline bool HitOnPiste_r() {
   Set_IODirectionAndValue(IODirection_ar_piste, IOValues_ar_piste);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_250_Ohm);
 };
 
 inline bool WeaponLeak_r() {
   Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue > BCMaxValue);
-};
-
-inline bool EpeeHit_r() {
-  Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
-  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxXy_100_Ohm);
-};
-
-inline bool Parry() {
-  Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
-  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_250_Ohm);
 };
 
 enum EpeeState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };

@@ -165,7 +165,7 @@ bool ResistorDividerCalibrator::calibrate_r1_only(float R_known,
 
   printf("Estimated Vcc = %.3f V from open-bottom\n", v_gpio);
 
-  printf("\n[Step 2 - R1-only] Connect known resistor (%.1f Ohm), then press "
+  printf("\n[Step 1 - R1-only] Connect known resistor (%.1f Ohm), then press "
          "ENTER...\n",
          R_known);
   wait_for_enter();
@@ -184,7 +184,11 @@ bool ResistorDividerCalibrator::calibrate_r1_only(float R_known,
   printf("Measured V_BOTTOM = %.3f V\n", v_bottom);
   printf("Estimated R1_eff = %.2f Ω    Using R3 = = %.2f Ω\n", r1_Ax_eff,
          r3_eff);
-
+  if (r1_calc > 150) {
+    printf("The value for Estimated R1_eff is too high, Check connections and "
+           "start again.\n");
+    return false;
+  }
   // Verification loop
   printf("\n[Step 3] Connect another known resistor to verify calibration.\n");
   float mean_adc, sdev_adc;

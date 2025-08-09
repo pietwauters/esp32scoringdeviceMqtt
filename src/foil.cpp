@@ -7,23 +7,22 @@
 
 #include "FastADC1.h"
 #include "FastGPIOSettings.h"
+#include "ResistorSetting.h"
 
-constexpr int AxMaxValue = 1800;
-constexpr int BCMaxValue = 1200;
 inline bool HitOnLame_l() {
   Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_430_Ohm);
 };
 inline bool HitOnGuard_l() {
   Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_125_Ohm);
 };
 inline bool HitOnPiste_l() {
   Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_450_Ohm);
 };
 
 // For the leak I test both al-cl and bl-cl. This allows me to re-use this test
@@ -32,48 +31,48 @@ inline bool LameLeak_l() {
   Set_IODirectionAndValue(IODirection_bl_cl & IODirection_al_cl,
                           IOValues_bl_cl | IOValues_al_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > BCMaxValue);
+  return (tempADValue > BxCy_450_Ohm);
 };
 
 inline bool EpeeHit_l() {
   Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > BCMaxValue);
+  return (tempADValue > AxXy_430_Ohm);
 };
 
 inline bool HitOnLame_r() {
   Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_430_Ohm);
 };
 inline bool HitOnGuard_r() {
   Set_IODirectionAndValue(IODirection_ar_bl, IOValues_ar_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_125_Ohm);
 };
 inline bool HitOnPiste_r() {
   Set_IODirectionAndValue(IODirection_ar_piste, IOValues_ar_piste);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_450_Ohm);
 };
 
 inline bool LameLeak_r() {
   Set_IODirectionAndValue(IODirection_br_cr & IODirection_ar_cr,
                           IOValues_br_cr | IOValues_ar_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > BCMaxValue);
+  return (tempADValue > BxCy_450_Ohm);
 };
 
 inline bool EpeeHit_r() {
   Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_430_Ohm);
 };
 
 inline bool Parry() {
   Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > BxCy_450_Ohm);
 };
 
 enum FoilState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
@@ -92,7 +91,7 @@ void MultiWeaponSensor::DoFoil(void) {
                      // this side
     Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-    bl = (tempADValue < AxMaxValue);
+    bl = (tempADValue < AxXy_300_Ohm);
     NotConnectedLeft = bl;
     Valid_l = HitOnLame_l();
     DebounceLong_al_cr.update(Valid_l);
@@ -102,7 +101,7 @@ void MultiWeaponSensor::DoFoil(void) {
                       // this side
     Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-    br = (tempADValue < AxMaxValue);
+    br = (tempADValue < AxXy_300_Ohm);
     NotConnectedRight = br;
     Valid_r = HitOnLame_r();
     DebounceLong_ar_cl.update(Valid_r);

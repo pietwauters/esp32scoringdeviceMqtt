@@ -20,11 +20,59 @@
 #include <iostream>
 // ResistorDividerCalibrator calibrator;
 #include "FastGPIOSettings.h"
+#include "ResistorSetting.h"
 #include "adc_calibrator.h"
 
 // #define adc1_get_raw FastADC1::read
 
 static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
+
+ResistorDividerCalibrator MyCalibrator;
+void initializeResistorThresholds() {
+  // MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
+  bool success = true;
+  if (!MyCalibrator.begin((adc1_channel_t)br_analog,
+                          (adc1_channel_t)cr_analog)) {
+    printf("\nCalibration will be done on the connector of the right fencer\n");
+    printf("First test: between the outer pins\n");
+    printf("    O          0     0     \n");
+    printf("    |                |     \n");
+    printf("    ______  100 Ω ____     \n");
+    success &= MyCalibrator.calibrate_interactively(100.0);
+    Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
+    printf("Second test: between the central and close pin\n");
+    printf("    O          0     0     \n");
+    printf("               |     |    \n");
+    printf("                100 Ω      \n");
+    if (success) {
+      success &= MyCalibrator.calibrate_r1_only(100.0);
+    }
+    // Only save result is calibration was successful
+    if (success) {
+      MyCalibrator.save_calibration_to_nvs();
+    }
+  }
+
+  // Values for Epee
+  AxXy_100_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(100) - 25;
+  AxXy_250_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(250) - 25;
+
+  // Values for Sabre
+  AxXy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(280) - 25;
+  BxCy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(280) - 25;
+  // Values for Foil
+  AxXy_125_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(125) -
+                 25; // Hit on Guard
+  AxXy_200_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(200) - 25;
+  AxXy_300_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(300) -
+                 25; // Normally closed circuit up to 300 Ohm
+  AxXy_430_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(430) -
+                 25; // Colored lights
+  AxXy_450_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(450) -
+                 25; // Hit on Piste
+  BxCy_450_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(450) -
+                 25; // Yellow lights
+}
 
 constexpr int scanloop_us = 140;
 // #define MEASURE_TIMING
@@ -81,8 +129,6 @@ MultiWeaponSensor::MultiWeaponSensor() {
   gpio_set_direction(GPIO_NUM_33, GPIO_MODE_INPUT_OUTPUT);
 }
 
-int AxXy_100_Ohm;
-ResistorDividerCalibrator MyCalibrator;
 void MultiWeaponSensor::begin() {
   Preferences mypreferences;
   mypreferences.begin("scoringdevice", false);
@@ -128,25 +174,7 @@ void MultiWeaponSensor::begin() {
 
   Set_IODirectionAndValue(IODirection_br_cr, IOValues_br_cr);
 
-  MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
-  if (false) {
-    printf("\nCalibration will be done on the connector of the right fencer\n");
-    printf("First test: between the outer pins\n");
-    printf("    O          0     0     \n");
-    printf("    |                |     \n");
-    printf("    ______  100 Ω ____     \n");
-    MyCalibrator.calibrate_interactively(100.0);
-    Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
-    printf("Second test: between the central and close pin\n");
-    printf("    O          0     0     \n");
-    printf("               |     |    \n");
-    printf("                100 Ω      \n");
-    MyCalibrator.calibrate_r1_only(100.0);
-    MyCalibrator.save_calibration_to_nvs();
-  }
-
-  AxXy_100_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(100) - 25;
-  Serial.printf("int AxXy_100_Ohm = %d\n", AxXy_100_Ohm);
+  initializeResistorThresholds();
 
   // int fast_raw = fast_adc1_get_raw(ADC1_CHANNEL_3);
   /*int64_t t0 = esp_timer_get_time();

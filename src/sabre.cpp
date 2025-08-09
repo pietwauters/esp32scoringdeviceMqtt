@@ -2,47 +2,36 @@
 #include "3WeaponSensor.h"
 #include "FastADC1.h"
 #include "FastGPIOSettings.h"
+#include "ResistorSetting.h"
 
-constexpr int AxMaxValue = 1800;
-constexpr int BCMaxValue = 1200;
-inline bool HitOnLame_l() {
-  Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
-  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxMaxValue);
-};
 inline bool WireOK_l() {
   Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue < AxMaxValue);
+  return (tempADValue < AxXy_280_Ohm);
 };
 
 inline bool EpeeHit_l() {
   Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > BCMaxValue);
+  return (tempADValue > AxXy_280_Ohm);
 };
 
-inline bool HitOnLame_r() {
-  Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
-  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > AxMaxValue);
-};
 inline bool WireOK_r() {
   Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue < AxMaxValue);
+  return (tempADValue < AxXy_280_Ohm);
 };
 
 inline bool EpeeHit_r() {
   Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > AxXy_280_Ohm);
 };
 
 inline bool Parry() {
   Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxMaxValue);
+  return (tempADValue > BxCy_280_Ohm);
 };
 
 enum SabreState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
@@ -54,13 +43,13 @@ void MultiWeaponSensor::DoSabre(void) {
   bool tempRed = false;
   bool tempGreen = false;
 
-  Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
+  Set_IODirectionAndValue(IODirection_bl_cr, IOValues_al_cr);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  cl = (tempADValue > AxMaxValue);
+  cl = (tempADValue > BxCy_280_Ohm);
 
-  Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
+  Set_IODirectionAndValue(IODirection_br_cl, IOValues_ar_cl);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  cr = (tempADValue > AxMaxValue);
+  cr = (tempADValue > BxCy_280_Ohm);
 
   Debounce_c1.update(cl);
   Debounce_c2.update(cr);
