@@ -17,7 +17,7 @@ inline bool HitOnLame_l() {
 inline bool HitOnGuard_l() {
   Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue > AxXy_125_Ohm);
+  return (tempADValue > AxXy_430_Ohm);
 };
 inline bool HitOnPiste_l() {
   Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
@@ -48,7 +48,7 @@ inline bool HitOnLame_r() {
 inline bool HitOnGuard_r() {
   Set_IODirectionAndValue(IODirection_ar_bl, IOValues_ar_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > AxXy_125_Ohm);
+  return (tempADValue > AxXy_430_Ohm);
 };
 inline bool HitOnPiste_r() {
   Set_IODirectionAndValue(IODirection_ar_piste, IOValues_ar_piste);
@@ -132,7 +132,7 @@ void MultiWeaponSensor::DoFoil(void) {
         break;
       case 1:
         SubsampleCounter =
-            0; //  <-------------------- Skipping next 2 checks!!!!!
+            0; //  <-------------------- Skipping next 3 checks!!!!!
         leak = LameLeak_r();
         DebounceLong_ar_cr.update(leak);
         if (Debounce_c2.update(leak)) {
@@ -168,14 +168,10 @@ void MultiWeaponSensor::DoFoil(void) {
     }
     // Trick to satisfy Dos Santos. Not Sure if still needed
     if (Debounce_b1.isOK()) {
-      Debounce_b2.setRequiredUs(FoilContactTime_us -
-                                Foil_DosSantosCorrection_us);
-      Debounce_b2.update(true);
+      Debounce_b2.applyDosSantosMarginUs();
     }
     if (Debounce_b2.isOK()) {
-      Debounce_b1.setRequiredUs(FoilContactTime_us -
-                                Foil_DosSantosCorrection_us);
-      Debounce_b1.update(true);
+      Debounce_b1.applyDosSantosMarginUs();
     }
 
     if (Debounce_b1.isOK()) {

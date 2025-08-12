@@ -43,11 +43,11 @@ void MultiWeaponSensor::DoSabre(void) {
   bool tempRed = false;
   bool tempGreen = false;
 
-  Set_IODirectionAndValue(IODirection_bl_cr, IOValues_al_cr);
+  Set_IODirectionAndValue(IODirection_bl_cr, IOValues_bl_cr);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
   cl = (tempADValue > BxCy_280_Ohm);
 
-  Set_IODirectionAndValue(IODirection_br_cl, IOValues_ar_cl);
+  Set_IODirectionAndValue(IODirection_br_cl, IOValues_br_cl);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
   cr = (tempADValue > BxCy_280_Ohm);
 
@@ -110,14 +110,10 @@ void MultiWeaponSensor::DoSabre(void) {
     }
     // Trick to satisfy Dos Santos. Not Sure if still needed
     if (Debounce_c1.isOK()) {
-      Debounce_c2.setRequiredUs(SabreContactTime_us -
-                                Sabre_DosSantosCorrection_us);
-      Debounce_c2.update(true);
+      Debounce_c2.applyDosSantosMarginUs(false);
     }
     if (Debounce_c2.isOK()) {
-      Debounce_c1.setRequiredUs(SabreContactTime_us -
-                                Sabre_DosSantosCorrection_us);
-      Debounce_c1.update(true);
+      Debounce_c1.applyDosSantosMarginUs(false);
     }
 
     if (Debounce_c1.isOK() && !SignalLeft) {

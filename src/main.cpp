@@ -254,9 +254,9 @@ void loop() {
     vTaskDelay(1 / portTICK_PERIOD_MS);
     // MyRepeaterSender->BroadcastHeartBeat();
 
-    if (bEnableDeepSleep && MyStatemachine->GoToSleep()) {
+    /*if (bEnableDeepSleep && MyStatemachine->GoToSleep()) {
       // prepareforDeepSleep();
-    }
+    }*/
   } else { // when in repeater mode
     MyTimeScoreDisplay->ProcessEvents();
     MyTimeScoreDisplay->CycleScoreMatchAndTimeWhenNotFighting();

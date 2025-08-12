@@ -120,16 +120,13 @@ void MultiWeaponSensor::DoEpee(void) {
       state = IDLE;
       break;
     }
+
     // Trick to satisfy Dos Santos. Not Sure if still needed
     if (Debounce_c1.isOK()) {
-      Debounce_c2.setRequiredUs(EpeeContactTime_us -
-                                Epee_DosSantosCorrection_us);
-      Debounce_c2.update(true);
+      Debounce_c2.applyDosSantosMarginUs();
     }
     if (Debounce_c2.isOK()) {
-      Debounce_c1.setRequiredUs(EpeeContactTime_us -
-                                Epee_DosSantosCorrection_us);
-      Debounce_c1.update(true);
+      Debounce_c1.applyDosSantosMarginUs();
     }
 
     if (Debounce_c1.isOK()) {
@@ -143,11 +140,12 @@ void MultiWeaponSensor::DoEpee(void) {
           Debounce_c1.reset();
           // Serial.println("Piste");
         } else {
-          // Serial.println("WhiteL");
+          // Serial.println("Red");
           Red = true;
           Buzz = true;
           SignalLeft = true;
           StartLock(EPEE_LOCK_TIME);
+          Debounce_c1.reset();
         }
       }
     }
@@ -162,11 +160,12 @@ void MultiWeaponSensor::DoEpee(void) {
           Debounce_c2.reset();
           // Serial.println("Piste");
         } else {
-          // Serial.println("WhiteL");
+          // Serial.println("Green");
           Green = true;
           Buzz = true;
           SignalRight = true;
           StartLock(EPEE_LOCK_TIME);
+          Debounce_c2.reset();
         }
       }
     }

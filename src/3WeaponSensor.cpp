@@ -29,18 +29,22 @@ static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
 
 ResistorDividerCalibrator MyCalibrator;
 void initializeResistorThresholds() {
-  // MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
+  MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
   bool success = true;
   if (!MyCalibrator.begin((adc1_channel_t)br_analog,
                           (adc1_channel_t)cr_analog)) {
-    printf("\nCalibration will be done on the connector of the right fencer\n");
-    printf("First test: between the outer pins\n");
+    printf("\nCalibration will be done on the connector of the right fencer "
+           "(Left on view from the back, Green light\n");
+    printf("The calibration will be done in 2 phases.\n");
+    printf("If both are successful, the results will be stored in flash.\n");
+    printf("First phase: between the outer pins\n");
     printf("    O          0     0     \n");
     printf("    |                |     \n");
     printf("    ______  100 Ω ____     \n");
     success &= MyCalibrator.calibrate_interactively(100.0);
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
-    printf("Second test: between the central and close pin\n");
+    printf("Second phase: between the central and close pin\n");
+    printf("Connect the correct pins before continuing!\n");
     printf("    O          0     0     \n");
     printf("               |     |    \n");
     printf("                100 Ω      \n");
@@ -49,13 +53,13 @@ void initializeResistorThresholds() {
     }
     // Only save result is calibration was successful
     if (success) {
-      MyCalibrator.save_calibration_to_nvs();
+      MyCalibrator.save_calibration_to_nvs(CALIBRATION_VERSION);
     }
   }
 
   // Values for Epee
-  AxXy_100_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(100) - 25;
-  AxXy_250_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(250) - 25;
+  AxXy_100_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(100) - 10;
+  AxXy_250_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(250) - 10;
 
   // Values for Sabre
   AxXy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(280) - 25;
@@ -124,7 +128,7 @@ MultiWeaponSensor::MultiWeaponSensor() {
   DebounceLong_ar_cr.setRequiredUs(2500000);
 
   Debounce_NotConnected.setRequiredUs(120000000);
-  Debounce_AtLeastOneNotConnected.setRequiredUs(10000);
+  Debounce_AtLeastOneNotConnected.setRequiredUs(10000000);
   gpio_pad_select_gpio(GPIO_NUM_33); // Route pin to GPIO (not peripheral)
   gpio_set_direction(GPIO_NUM_33, GPIO_MODE_INPUT_OUTPUT);
 }
@@ -253,8 +257,8 @@ void MultiWeaponSensor::HandleLights() {
   if (Green)
     temp |= 0x04;
 
-  /*if(Buzz && !bPreventBuzzer)
-    temp |= 0x02;*/
+  if (Buzz && !bPreventBuzzer)
+    temp |= 0x02;
   if (Lights != temp) {
     Lights = temp;
     SensorStateChanged(EVENT_LIGHTS | temp);
@@ -330,16 +334,16 @@ void MultiWeaponSensor::DoReset() {
 
     Debounce_c1.reset(EpeeContactTime_us); // 6 ms for epee
     Debounce_c2.reset(EpeeContactTime_us); // 6 ms for epee
-    Debounce_c1.setDosSantosMarginUs(scanloop_us + 10);
-    Debounce_c2.setDosSantosMarginUs(scanloop_us + 10);
+    Debounce_c1.setDosSantosMarginUs(Epee_DosSantosCorrection_us);
+    Debounce_c2.setDosSantosMarginUs(Epee_DosSantosCorrection_us);
 
     break;
 
   case SABRE:
-    Debounce_b1.reset(1400);
-    Debounce_b2.reset(1400);
-    Debounce_c1.reset(110);
-    Debounce_c2.reset(110);
+    Debounce_b1.reset(SabreContactTime_us);
+    Debounce_b2.reset(SabreContactTime_us);
+    Debounce_c1.reset(Sabre_DosSantosCorrection_us);
+    Debounce_c2.reset(Sabre_DosSantosCorrection_us);
 
     break;
   }
@@ -426,7 +430,7 @@ weapon_t MultiWeaponSensor::GetWeapon() {
 
       } else {
         Debounce_NotConnected.reset();
-        // bPreventBuzzer = false;
+        bPreventBuzzer = false;
       }
       if (Debounce_NotConnected.isOK()) // We've reached zero, so we switch back
                                         // to default Epee
@@ -444,6 +448,7 @@ weapon_t MultiWeaponSensor::GetWeapon() {
       NotConnectedRight = false;
       NotConnectedLeft = false;
       bPreventBuzzer = false;
+      Debounce_AtLeastOneNotConnected.update(false);
     }
   }
   if (m_DectionMode == MANUAL) {

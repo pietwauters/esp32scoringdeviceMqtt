@@ -4,8 +4,24 @@
 #include "esp_adc_cal.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include <algorithm> // Add this for std::sort
 #include <cstring>
 #include <stdio.h>
+#include <vector> // Add this
+constexpr int CALIBRATION_VERSION = 3;
+
+// Add the ADCStatistics structure definition
+struct ADCStatistics {
+  float mean;
+  float median;
+  float stddev;
+  float skewness;
+  float kurtosis;
+  float min_val;
+  float max_val;
+  int outlier_count;
+  bool is_normal_distribution;
+};
 
 class ResistorDividerCalibrator {
 public:
@@ -18,7 +34,14 @@ public:
 
   // NVS support
   bool load_calibration_from_nvs(const char *nvs_namespace = "calib");
-  bool save_calibration_to_nvs(const char *nvs_namespace = "calib");
+  bool save_calibration_to_nvs(int version = CALIBRATION_VERSION,
+                               const char *nvs_namespace = "calib");
+  void
+  calc_enhanced_adc_stats(adc1_channel_t channel, int samples,
+                          ADCStatistics &stats); // Now ADCStatistics is defined
+  float
+  read_voltage_robust(adc1_channel_t channel, int samples,
+                      bool use_median); // Remove default argument from header
 
 private:
   float v_gpio = 3.3f;
@@ -40,4 +63,5 @@ private:
   float sdev_v_top = 0;
   float sdev_v_bottom = 0;
   float sdev_adc_threshold = 0;
+  int CalVersion = 0;
 };

@@ -14,38 +14,43 @@ public:
         start_time_ = now;
       last_ok_ = (now - start_time_) >= required_us_;
       return last_ok_;
-    } else { // We are now cancelling a possible OK -> Check if in Dos Santos
-             // margin
-      almost_ok_ = (now - start_time_) >= (required_us_ - DosSantosMargin_);
-      last_ok_ = false;
+    } else {
 
+      last_ok_ = false;
+      start_time_ = 0;
       return false;
     }
   }
   bool isOK() const { return last_ok_; }
-  bool isAlmostOK() { return almost_ok_; }
 
   // Reset the timer
   // This is useful if you want to stop the timer without waiting for the full
   void reset() {
     start_time_ = 0;
     last_ok_ = false;
-    almost_ok_ = false;
+    DosSantosApplied_ = false;
   }
   // Overloaded version
   void reset(int64_t us) {
-    start_time_ = 0;
-    last_ok_ = false;
+    reset();
     required_us_ = us;
-    almost_ok_ = false;
   }
   void setRequiredUs(int64_t us) { required_us_ = us; }
   void setDosSantosMarginUs(int64_t us) { DosSantosMargin_ = us; }
+  void applyDosSantosMarginUs(bool Update = true) {
+    if (!DosSantosApplied_) {
+      required_us_ -= DosSantosMargin_;
+      if (Update) {
+        update(true);
+      }
+      DosSantosApplied_ = true;
+    }
+  }
 
 private:
   int64_t required_us_;
   int64_t start_time_;
   int64_t DosSantosMargin_;
   bool last_ok_;
-  bool almost_ok_;
+  bool DosSantosApplied_ = false;
 };
