@@ -1,6 +1,6 @@
 
 // Values for Epee
-int AxXy_100_Ohm;
+int AxXy_160_Ohm;
 int AxXy_250_Ohm;
 
 // Values for Sabre

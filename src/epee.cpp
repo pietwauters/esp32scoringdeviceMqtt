@@ -7,7 +7,7 @@
 inline bool HitOnLame_l() {
   Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_160_Ohm);
 };
 inline bool HitOnGuard_l() {
   Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
@@ -29,7 +29,7 @@ inline bool WeaponLeak_l() {
 inline bool HitOnLame_r() {
   Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  return (tempADValue > AxXy_100_Ohm);
+  return (tempADValue > AxXy_160_Ohm);
 };
 inline bool HitOnGuard_r() {
   Set_IODirectionAndValue(IODirection_ar_bl, IOValues_ar_bl);
@@ -60,7 +60,7 @@ void MultiWeaponSensor::DoEpee(void) {
                      // this side
     Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-    cl = ((tempADValue + ADCL_0) >> 1 > AxXy_100_Ohm);
+    cl = ((tempADValue + ADCL_0) >> 1 > AxXy_160_Ohm);
     ADCL_0 = tempADValue;
   }
 
@@ -68,7 +68,7 @@ void MultiWeaponSensor::DoEpee(void) {
                       // this side
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-    cr = ((tempADValue + ADCR_0) >> 1 > AxXy_100_Ohm);
+    cr = ((tempADValue + ADCR_0) >> 1 > AxXy_160_Ohm);
     ADCR_0 = tempADValue;
   }
 

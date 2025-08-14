@@ -1,7 +1,7 @@
 #pragma once
 
 // Values for Epee
-extern int AxXy_100_Ohm;
+extern int AxXy_160_Ohm;
 extern int AxXy_250_Ohm;
 
 // Values for Sabre

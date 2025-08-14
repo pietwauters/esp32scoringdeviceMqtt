@@ -58,7 +58,7 @@ void initializeResistorThresholds() {
   }
 
   // Values for Epee
-  AxXy_100_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(100) - 10;
+  AxXy_160_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(160) - 10;
   AxXy_250_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(250) - 10;
 
   // Values for Sabre

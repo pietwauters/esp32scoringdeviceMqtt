@@ -12,12 +12,12 @@
 inline bool HitOnLame_l() {
   Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  return (tempADValue > AxXy_430_Ohm);
+  return (tempADValue > AxXy_300_Ohm);
 };
 inline bool HitOnGuard_l() {
   Set_IODirectionAndValue(IODirection_al_br, IOValues_al_br);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-  return (tempADValue > AxXy_430_Ohm);
+  return (tempADValue > AxXy_300_Ohm);
 };
 inline bool HitOnPiste_l() {
   Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
@@ -132,7 +132,8 @@ void MultiWeaponSensor::DoFoil(void) {
         break;
       case 1:
         SubsampleCounter =
-            0; //  <-------------------- Skipping next 3 checks!!!!!
+            0; //  <-------------------- Skipping next 3 checks!!!!! Next 2 not
+               //  needed and parry only for Carlos
         leak = LameLeak_r();
         DebounceLong_ar_cr.update(leak);
         if (Debounce_c2.update(leak)) {
