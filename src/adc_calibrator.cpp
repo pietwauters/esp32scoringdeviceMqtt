@@ -74,7 +74,42 @@ void ResistorDividerCalibrator::calc_enhanced_adc_stats(adc1_channel_t channel,
       (fabs(stats.skewness) < 0.5f) && (fabs(stats.kurtosis) < 0.5f) &&
       (stats.outlier_count < samples * 0.05f); // < 5% outliers
 }
+// Add this function after read_voltage_robust()
 
+float ResistorDividerCalibrator::read_voltage_trimmed_average(
+    adc1_channel_t channel, int samples, float trim_percent) {
+  // Collect all samples
+  std::vector<int> raw_values(samples);
+  for (int i = 0; i < samples; ++i) {
+    raw_values[i] = fast_adc1_get_raw_inline(channel);
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+
+  // Sort the values
+  std::sort(raw_values.begin(), raw_values.end());
+
+  // Calculate how many samples to trim from each end
+  int trim_count = (int)(samples * trim_percent / 100.0f);
+
+  // Ensure we don't trim more than we have
+  if (trim_count * 2 >= samples) {
+    trim_count = (samples - 1) / 2; // Leave at least 1 sample
+  }
+
+  // Calculate the sum of the middle samples
+  uint32_t sum = 0;
+  int used_samples = samples - (2 * trim_count);
+
+  for (int i = trim_count; i < samples - trim_count; ++i) {
+    sum += raw_values[i];
+  }
+
+  // Calculate average of trimmed samples
+  uint32_t avg_raw = sum / used_samples;
+
+  return esp_adc_cal_raw_to_voltage(avg_raw, &adc_chars) / 1000.0f;
+}
 // Enhanced voltage reading with statistical choice
 float ResistorDividerCalibrator::read_voltage_robust(
     adc1_channel_t channel, int samples,
@@ -96,7 +131,7 @@ float ResistorDividerCalibrator::read_voltage_robust(
     return esp_adc_cal_raw_to_voltage(median_raw, &adc_chars) / 1000.0f;
   } else {
     // Use existing mean-based approach
-    return read_voltage_average(channel, samples);
+    return read_voltage_trimmed_average(channel, samples);
   }
 }
 
@@ -271,7 +306,7 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
          "together) and press ENTER...\n");
   wait_for_enter();
 
-  float v_short = read_voltage_average(channel_bottom, 2000);
+  float v_short = read_voltage_trimmed_average(channel_bottom, 2000);
   printf("Short Circuit Measurements:\n");
   printf("  V_SHORT = %.3f V\n", v_short);
 
@@ -279,8 +314,8 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
          "ENTER...\n");
   wait_for_enter();
 
-  float v_top_open = read_voltage_average(channel_top, 100);
-  float v_bottom_open = read_voltage_average(channel_bottom, 100);
+  float v_top_open = read_voltage_trimmed_average(channel_top, 100);
+  float v_bottom_open = read_voltage_trimmed_average(channel_bottom, 100);
 
   printf("Open Circuit Measurements:\n");
   printf("  V_TOP = %.3f V\n", v_top_open);
@@ -290,8 +325,8 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
          reference_resistor);
   wait_for_enter();
 
-  float v_top = read_voltage_average(channel_top, 2000);
-  float v_bottom = read_voltage_average(channel_bottom, 2000);
+  float v_top = read_voltage_trimmed_average(channel_top, 2000);
+  float v_bottom = read_voltage_trimmed_average(channel_bottom, 2000);
 
   printf("Known Resistor Measurements:\n");
   printf("  V_TOP = %.3f V\n", v_top);
@@ -356,8 +391,8 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
       break;
 
     float v_top_test = read_voltage(channel_top);
-    float v_bottom_test =
-        read_voltage_average(channel_bottom, 1000); // Use consistent sampling
+    float v_bottom_test = read_voltage_trimmed_average(
+        channel_bottom, 1000); // Use consistent sampling
 
     float v_diff = v_top_test - v_bottom_test;
     if (v_top_test <= v_bottom_test || v_bottom_test <= 0.0f) {
@@ -430,11 +465,11 @@ bool ResistorDividerCalibrator::calibrate_r1_only(float R_known,
   wait_for_enter();
 
   float v_bottom =
-      read_voltage_average(channel_bottom, 2000); // Consistent sampling
+      read_voltage_trimmed_average(channel_bottom, 2000); // Consistent sampling
   if (v_bottom <= 0.0f || v_bottom >= v_gpio) {
     printf("Invalid voltage reading. Calibration failed. Did you forget to "
            "re-plug the cables?\n");
-    v_bottom = read_voltage_average(channel_bottom, 2000);
+    v_bottom = read_voltage_trimmed_average(channel_bottom, 2000);
     if (v_bottom <= 0.0f || v_bottom >= v_gpio) {
       printf("Invalid voltage reading. Calibration failed.\n");
       return false;
@@ -465,8 +500,8 @@ bool ResistorDividerCalibrator::calibrate_r1_only(float R_known,
     if (key == 'q')
       break;
 
-    float v_bottom_test =
-        read_voltage_average(channel_bottom, 1000); // Consistent sampling
+    float v_bottom_test = read_voltage_trimmed_average(
+        channel_bottom, 1000); // Consistent sampling
 
     if (v_bottom_test <= 0.0f) {
       printf("Invalid reading. Skipping...\n");

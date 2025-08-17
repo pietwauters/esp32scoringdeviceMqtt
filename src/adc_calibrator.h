@@ -8,7 +8,7 @@
 #include <cstring>
 #include <stdio.h>
 #include <vector> // Add this
-constexpr int CALIBRATION_VERSION = 5;
+constexpr int CALIBRATION_VERSION = 6;
 
 // Add the ADCStatistics structure definition
 struct ADCStatistics {
@@ -44,6 +44,9 @@ public:
   float
   read_voltage_robust(adc1_channel_t channel, int samples,
                       bool use_median); // Remove default argument from header
+
+  float read_voltage_trimmed_average(adc1_channel_t channel, int samples,
+                                     float trim_percent = 10.0f);
 
 private:
   float v_gpio = 3.3f;
