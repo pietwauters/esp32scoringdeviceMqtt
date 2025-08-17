@@ -41,7 +41,7 @@ void initializeResistorThresholds() {
     printf("    O          0     0     \n");
     printf("    |                |     \n");
     printf("    ______  100 Ω ____     \n");
-    success &= MyCalibrator.calibrate_interactively(100.0);
+    success &= MyCalibrator.calibrate_interactively(98.0);
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
     printf("Second phase: between the central and close pin\n");
     printf("Connect the correct pins before continuing!\n");
@@ -49,33 +49,42 @@ void initializeResistorThresholds() {
     printf("               |     |    \n");
     printf("                100 Ω      \n");
     if (success) {
-      success &= MyCalibrator.calibrate_r1_only(100.0);
+      success &= MyCalibrator.calibrate_r1_only(98.0);
     }
     // Only save result is calibration was successful
     if (success) {
       MyCalibrator.save_calibration_to_nvs(CALIBRATION_VERSION);
     }
   }
+  constexpr int sdev = 7;
+  // During calibration we have measured a sdev of 6-7 ADC raw units (constant
+  // over the entire range) I'm not adding extra correction factors here. These
+  // are just the calculated thresholds for a given R If you need margin, add it
+  // either by using a different resistor value, or by adding margin in the
+  // comparison code itself, such that it is done in the right direction Values
+  // for Epee It is important to verify the real values, and compare to the
+  // programmed ones.
 
-  // Values for Epee
-  AxXy_160_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(160) - 10;
-  AxXy_250_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(250) - 10;
+  AxXy_160_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(160);
+  AxXy_250_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(250);
 
   // Values for Sabre
-  AxXy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(280) - 25;
-  BxCy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(280) - 25;
+  AxXy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(280);
+  BxCy_220_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(220);
+
+  BxCy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(280);
   // Values for Foil
-  AxXy_125_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(125) -
-                 25; // Hit on Guard
-  AxXy_200_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(200) - 25;
-  AxXy_300_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(300) -
-                 25; // Normally closed circuit up to 300 Ohm
-  AxXy_430_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(430) -
-                 25; // Colored lights
-  AxXy_450_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(450) -
-                 25; // Hit on Piste
-  BxCy_450_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(450) -
-                 25; // Yellow lights
+  AxXy_125_Ohm =
+      MyCalibrator.get_adc_threshold_for_resistance_Tip(125); // Hit on Guard
+  AxXy_200_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(200);
+  AxXy_300_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(
+      300); // Normally closed circuit up to 300 Ohm
+  AxXy_430_Ohm =
+      MyCalibrator.get_adc_threshold_for_resistance_Tip(430); // Colored lights
+  AxXy_450_Ohm =
+      MyCalibrator.get_adc_threshold_for_resistance_Tip(450); // Hit on Piste
+  BxCy_450_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(
+      450); // Yellow lights
 }
 
 constexpr int scanloop_us = 140;
@@ -177,9 +186,9 @@ void MultiWeaponSensor::begin() {
   gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
 
   Set_IODirectionAndValue(IODirection_br_cr, IOValues_br_cr);
-
+  printf("\nI'm going to initialize the resistorThresholds\n");
   initializeResistorThresholds();
-
+  printf("\nresistorThresholds initialized\n");
   // int fast_raw = fast_adc1_get_raw(ADC1_CHANNEL_3);
   /*int64_t t0 = esp_timer_get_time();
   volatile int sum1 = 0;
@@ -340,10 +349,10 @@ void MultiWeaponSensor::DoReset() {
     break;
 
   case SABRE:
-    Debounce_b1.reset(SabreContactTime_us);
-    Debounce_b2.reset(SabreContactTime_us);
-    Debounce_c1.reset(Sabre_DosSantosCorrection_us);
-    Debounce_c2.reset(Sabre_DosSantosCorrection_us);
+    Debounce_b1.reset(SabreWhiteTime_us);
+    Debounce_b2.reset(SabreWhiteTime_us);
+    Debounce_c1.reset(SabreContactTime_us);
+    Debounce_c2.reset(SabreContactTime_us);
 
     break;
   }

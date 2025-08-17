@@ -45,11 +45,11 @@ void MultiWeaponSensor::DoSabre(void) {
 
   Set_IODirectionAndValue(IODirection_bl_cr, IOValues_bl_cr);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-  cl = (tempADValue > BxCy_280_Ohm);
+  cl = (tempADValue > BxCy_220_Ohm);
 
   Set_IODirectionAndValue(IODirection_br_cl, IOValues_br_cl);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-  cr = (tempADValue > BxCy_280_Ohm);
+  cr = (tempADValue > BxCy_220_Ohm);
 
   Debounce_c1.update(cl);
   Debounce_c2.update(cr);

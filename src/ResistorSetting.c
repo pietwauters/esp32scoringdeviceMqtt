@@ -5,6 +5,7 @@ int AxXy_250_Ohm;
 
 // Values for Sabre
 int AxXy_280_Ohm;
+int BxCy_220_Ohm;
 int BxCy_280_Ohm;
 // Values for Foil
 int AxXy_125_Ohm; // Hit on Guard

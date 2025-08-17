@@ -8,7 +8,7 @@
 #include <cstring>
 #include <stdio.h>
 #include <vector> // Add this
-constexpr int CALIBRATION_VERSION = 3;
+constexpr int CALIBRATION_VERSION = 5;
 
 // Add the ADCStatistics structure definition
 struct ADCStatistics {
@@ -31,6 +31,8 @@ public:
   int get_adc_threshold_for_resistance_Tip(float R);
   void set_gpio_voltage(float v) { v_gpio = v; }
   bool calibrate_r1_only(float R_known, float r3_eff_override = -1.0f);
+  float get_reference_resistor_from_user(
+      const char *prompt = "Enter reference resistor value (100-500 Ohms): ");
 
   // NVS support
   bool load_calibration_from_nvs(const char *nvs_namespace = "calib");

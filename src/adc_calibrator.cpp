@@ -174,12 +174,104 @@ float ResistorDividerCalibrator::read_voltage(adc1_channel_t channel) {
   return esp_adc_cal_raw_to_voltage(raw, &adc_chars) / 1000.0f;
 }
 
+// Add this new function after the existing helper functions, before
+// calibrate_interactively()
+float ResistorDividerCalibrator::get_reference_resistor_from_user(
+    const char *prompt) {
+  const float MIN_RESISTANCE = 100.0f;
+  const float MAX_RESISTANCE = 500.0f;
+  const float DEFAULT_RESISTANCE = 220.0f;
+  const int MAX_ATTEMPTS = 3;
+
+  printf("%s", prompt);
+  fflush(stdout); // Add this to make the prompt visible
+
+  for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    esp_task_wdt_reset();
+
+    printf("Attempt %d/%d: ", attempt, MAX_ATTEMPTS);
+    fflush(stdout); // Add this to make the attempt prompt visible
+
+    uart_flush_input(UART_NUM_0);
+    char input_buffer[32];
+    int char_count = 0;
+
+    // Read characters with timeout
+    while (char_count < sizeof(input_buffer) - 1) {
+      uint8_t c;
+      int len = uart_read_bytes(UART_NUM_0, &c, 1, pdMS_TO_TICKS(10000));
+
+      esp_task_wdt_reset();
+
+      if (len == 0) {
+        printf("\nTimeout! ");
+        fflush(stdout); // Add this
+        break;
+      }
+
+      if (c == '\n' || c == '\r') {
+        input_buffer[char_count] = '\0';
+        printf("\n"); // Add newline for better formatting
+        break;
+      } else if (c == 8 || c == 127) { // Backspace
+        if (char_count > 0) {
+          char_count--;
+          printf("\b \b");
+          fflush(stdout); // Add this for immediate backspace
+        }
+      } else if ((c >= '0' && c <= '9') || c == '.') {
+        input_buffer[char_count++] = c;
+        printf("%c", c); // Echo the character
+        fflush(stdout);  // Add this to make the character immediately visible
+      }
+      // Ignore other characters (don't echo them)
+    }
+
+    esp_task_wdt_reset();
+
+    if (char_count == 0) {
+      printf("No input received.\n");
+      continue;
+    }
+
+    input_buffer[char_count] = '\0';
+
+    // Parse the input
+    char *endptr;
+    float resistance = strtof(input_buffer, &endptr);
+
+    // Validate input
+    if (endptr == input_buffer || *endptr != '\0') {
+      printf("\nInvalid format. Please enter a number.\n");
+      continue;
+    }
+
+    if (resistance < MIN_RESISTANCE || resistance > MAX_RESISTANCE) {
+      printf("\nValue %.1f is out of range. Must be between %.0f-%.0f Ohms.\n",
+             resistance, MIN_RESISTANCE, MAX_RESISTANCE);
+      continue;
+    }
+
+    printf("\nUsing reference resistor: %.1f Ohms\n", resistance);
+    return resistance;
+  }
+
+  esp_task_wdt_reset();
+  printf("Max attempts exceeded. Using default value: %.1f Ohms\n",
+         DEFAULT_RESISTANCE);
+  return DEFAULT_RESISTANCE;
+}
+
 bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
+  // Get reference resistor value from user
+  float reference_resistor = get_reference_resistor_from_user(
+      "Enter reference resistor value (100-500 Ohms): ");
+
   printf("\n[Step 0] Short circuit the input (connect measurement points "
          "together) and press ENTER...\n");
   wait_for_enter();
 
-  float v_short = read_voltage_average(channel_bottom, 1000);
+  float v_short = read_voltage_average(channel_bottom, 2000);
   printf("Short Circuit Measurements:\n");
   printf("  V_SHORT = %.3f V\n", v_short);
 
@@ -195,11 +287,11 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
   printf("  V_BOTTOM = %.3f V\n", v_bottom_open);
 
   printf("\n[Step 2] Connect known resistor (%.1f Ohm), then press ENTER...\n",
-         R_known);
+         reference_resistor);
   wait_for_enter();
 
-  float v_top = read_voltage_average(channel_top, 1000);
-  float v_bottom = read_voltage_average(channel_bottom, 1000);
+  float v_top = read_voltage_average(channel_top, 2000);
+  float v_bottom = read_voltage_average(channel_bottom, 2000);
 
   printf("Known Resistor Measurements:\n");
   printf("  V_TOP = %.3f V\n", v_top);
@@ -212,18 +304,19 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
   }
 
   // Step 1: Calculate R3 (VCC independent)
-  float current = diff / R_known;
+  float current = diff / reference_resistor;
   r3_eff = v_bottom / current;
 
   // Step 2: Solve the two-equation system for Vgpio and R1
-  // Equation 1: v_bottom = Vgpio * r3_eff / (r1_eff + R_known + r3_eff)
-  // Equation 2: v_short = Vgpio * r3_eff / (r1_eff + r3_eff)
+  // Equation 1: v_bottom = Vgpio * r3_eff / (r1_eff + reference_resistor +
+  // r3_eff) Equation 2: v_short = Vgpio * r3_eff / (r1_eff + r3_eff)
 
-  // From equation 1: (r1_eff + R_known + r3_eff) = Vgpio * r3_eff / v_bottom
-  // From equation 2: (r1_eff + r3_eff) = Vgpio * r3_eff / v_short
-  // Subtracting: R_known = Vgpio * r3_eff * (1/v_bottom - 1/v_short)
+  // From equation 1: (r1_eff + reference_resistor + r3_eff) = Vgpio * r3_eff /
+  // v_bottom From equation 2: (r1_eff + r3_eff) = Vgpio * r3_eff / v_short
+  // Subtracting: reference_resistor = Vgpio * r3_eff * (1/v_bottom - 1/v_short)
 
-  float vgpio_solved = R_known / (r3_eff * (1.0f / v_bottom - 1.0f / v_short));
+  float vgpio_solved =
+      reference_resistor / (r3_eff * (1.0f / v_bottom - 1.0f / v_short));
   float r1_solved = (vgpio_solved * r3_eff / v_short) - r3_eff;
 
   // Update the calibration values
@@ -236,10 +329,12 @@ bool ResistorDividerCalibrator::calibrate_interactively(float R_known) {
 
   // Rest of your existing ADC threshold code...
   float mean_adc, sdev_adc;
-  int threshold = get_adc_threshold_for_resistance_NonTip(R_known);
-  printf("Modelled ADC threshold for %.1f Ohm: %d\n", R_known, threshold);
+  int threshold = get_adc_threshold_for_resistance_NonTip(reference_resistor);
+  printf("Modelled ADC threshold for %.1f Ohm: %d\n", reference_resistor,
+         threshold);
   calc_mean_stddev_adc(channel_bottom, 1000, mean_adc, sdev_adc);
-  printf("Measured ADC threshold for %.1f Ohm: %.1f\n", R_known, mean_adc);
+  printf("Measured ADC threshold for %.1f Ohm: %.1f\n", reference_resistor,
+         mean_adc);
   printf("Measured Stddev at threshold: %.2f ADC units\n", sdev_adc);
 
   // Enhanced version with statistical analysis
@@ -314,6 +409,10 @@ int ResistorDividerCalibrator::get_adc_threshold_for_resistance_Tip(float R) {
 
 bool ResistorDividerCalibrator::calibrate_r1_only(float R_known,
                                                   float r3_eff_override) {
+  // Get reference resistor value from user
+  float reference_resistor = get_reference_resistor_from_user(
+      "Enter reference resistor value (100-500 Ohms): ");
+
   // Determine which R3 to use
   float r3_to_use = (r3_eff_override > 0.0f) ? r3_eff_override : r3_eff;
 
@@ -327,18 +426,24 @@ bool ResistorDividerCalibrator::calibrate_r1_only(float R_known,
 
   printf("\n[Step 1 - R1-only] Connect known resistor (%.1f Ohm), then press "
          "ENTER...\n",
-         R_known);
+         reference_resistor);
   wait_for_enter();
 
   float v_bottom =
-      read_voltage_average(channel_bottom, 1000); // Consistent sampling
+      read_voltage_average(channel_bottom, 2000); // Consistent sampling
   if (v_bottom <= 0.0f || v_bottom >= v_gpio) {
-    printf("Invalid voltage reading. Calibration failed.\n");
-    return false;
+    printf("Invalid voltage reading. Calibration failed. Did you forget to "
+           "re-plug the cables?\n");
+    v_bottom = read_voltage_average(channel_bottom, 2000);
+    if (v_bottom <= 0.0f || v_bottom >= v_gpio) {
+      printf("Invalid voltage reading. Calibration failed.\n");
+      return false;
+    }
   }
 
   // Correct formula for R1 calibration (not unknown resistance calculation)
-  float r1_calc = (v_gpio * r3_to_use / v_bottom) - R_known - r3_to_use;
+  float r1_calc =
+      (v_gpio * r3_to_use / v_bottom) - reference_resistor - r3_to_use;
 
   r1_Ax_eff = r1_calc;
   r3_eff = r3_to_use; // Store the one used

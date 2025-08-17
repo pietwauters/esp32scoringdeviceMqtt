@@ -6,6 +6,7 @@ extern int AxXy_250_Ohm;
 
 // Values for Sabre
 extern int AxXy_280_Ohm;
+extern int BxCy_220_Ohm;
 extern int BxCy_280_Ohm;
 // Values for Foil
 extern int AxXy_125_Ohm; // Hit on Guard
