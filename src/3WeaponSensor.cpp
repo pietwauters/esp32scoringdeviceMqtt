@@ -70,7 +70,7 @@ void initializeResistorThresholds() {
 
   // Values for Sabre
   AxXy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_Tip(280);
-  BxCy_220_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(220);
+  BxCy_200_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(220);
 
   BxCy_280_Ohm = MyCalibrator.get_adc_threshold_for_resistance_NonTip(280);
   // Values for Foil
