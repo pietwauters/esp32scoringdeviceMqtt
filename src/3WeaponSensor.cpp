@@ -123,9 +123,6 @@ void scan_timer_callback(void *arg) {
 MultiWeaponSensor::MultiWeaponSensor() {
   // ctor
 
-  Const_FOIL_PARRY_ON_TIME = 5;
-  Const_FOIL_PARRY_OFF_TIME = 43;
-
   // Init long debouncers
   DebounceLong_b1.setRequiredUs(2500000);
   DebounceLong_b2.setRequiredUs(2500000);
@@ -353,6 +350,12 @@ void MultiWeaponSensor::DoReset() {
     Debounce_b2.reset(SabreWhiteTime_us);
     Debounce_c1.reset(SabreContactTime_us);
     Debounce_c2.reset(SabreContactTime_us);
+    Debounce_SabreWhite_l.setRequiredOnUs(2000);     // 2ms
+    Debounce_SabreWhite_l.setRequiredOffUs(1000000); // 1s
+    Debounce_SabreWhite_l.reset();
+    Debounce_SabreWhite_r.setRequiredOnUs(2000);     // 2ms
+    Debounce_SabreWhite_r.setRequiredOffUs(1000000); // 1s
+    Debounce_SabreWhite_r.reset();
 
     break;
   }
@@ -361,8 +364,9 @@ void MultiWeaponSensor::DoReset() {
   SignalRight = 0;
   LockStarted = false;
 
-  bParrySignal = false;
-  Debounce_Parry.setRequiredUs(1500);
+  Debounce_Parry.setRequiredOnUs(500);
+  Debounce_Parry.setRequiredOffUs(5000);
+  Debounce_Parry.reset();
 
   return;
 }
@@ -403,6 +407,23 @@ void MultiWeaponSensor::DoFullScan() {
       DoReset();
     }
     vTaskDelay(0);
+  } else {
+    // Check blad contact state and only act on changes
+    if (Debounce_Parry.isOK()) {
+      if (!previousParryState) {
+        // Do Something
+        OrangeL = true;
+        OrangeR = true;
+        previousParryState = true;
+      }
+    } else {
+      if (previousParryState) {
+        // Do Something
+        OrangeL = false;
+        OrangeR = false;
+        previousParryState = false;
+      }
+    }
   }
   HandleLights();
 
@@ -425,6 +446,7 @@ void MultiWeaponSensor::resetLongDebouncers() {
   DebounceLong_al_cr.reset();
   DebounceLong_ar_cl.reset();
   DebounceLong_ar_cr.reset();
+  printf("Long counters reset\n");
 }
 
 weapon_t MultiWeaponSensor::GetWeapon() {
@@ -533,7 +555,7 @@ weapon_t MultiWeaponSensor::GetWeapon() {
         }
       }
       if ((DebounceLong_ar_cr.isOK()) && (DebounceLong_al_cl.isOK())) {
-        if ((Debounce_b1.isOK()) && (Debounce_b2.isOK())) {
+        if (WhiteR && WhiteL) {
           m_DetectedWeapon = EPEE;
           bPreventBuzzer = false;
           resetLongDebouncers();

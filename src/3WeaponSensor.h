@@ -114,6 +114,9 @@ private:
   DebounceTimer Debounce_c1;
   DebounceTimer Debounce_c2;
 
+  DoubleDebouncer Debounce_SabreWhite_l;
+  DoubleDebouncer Debounce_SabreWhite_r;
+
   // below const values are used to make timing calibration possible without
   // having constants in the code
 
@@ -160,10 +163,11 @@ private:
   bool PossiblyRed;
   bool PossiblyGreen;
   bool WeHaveBlockedAhit;
-  bool bParrySignal;
+
   int BlockedAHitCounter;
-  int Counter_parry;
-  DebounceTimer Debounce_Parry;
+
+  DoubleDebouncer Debounce_Parry;
+  bool previousParryState = false;
 
   int TimeOfLock;
   bool LockStarted;

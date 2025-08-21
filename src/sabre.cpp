@@ -34,6 +34,18 @@ inline bool Parry() {
   return (tempADValue > BxCy_280_Ohm);
 };
 
+inline bool FoilHit_l() {
+  Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  return (tempADValue > AxXy_280_Ohm);
+};
+
+inline bool FoilHit_r() {
+  Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  return (tempADValue > AxXy_280_Ohm);
+};
+
 enum SabreState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
 
 void MultiWeaponSensor::DoSabre(void) {
@@ -53,8 +65,6 @@ void MultiWeaponSensor::DoSabre(void) {
 
   Debounce_c1.update(cl);
   Debounce_c2.update(cr);
-  DebounceLong_al_cr.update(cr);
-  DebounceLong_ar_cl.update(cl);
 
   switch (state) {
   case IDLE:
@@ -68,7 +78,7 @@ void MultiWeaponSensor::DoSabre(void) {
       switch (SubsampleCounter) {
       case 0:
         SubsampleCounter = 1;
-        if (Debounce_b1.update(WireOK_l())) {
+        if (Debounce_SabreWhite_l.update(WireOK_l())) {
           WhiteL = true;
         } else {
           WhiteL = false;
@@ -76,7 +86,7 @@ void MultiWeaponSensor::DoSabre(void) {
         break;
       case 1:
         SubsampleCounter = 2;
-        if (Debounce_b2.update(WireOK_r())) {
+        if (Debounce_SabreWhite_r.update(WireOK_r())) {
           WhiteR = true;
         } else {
           WhiteR = false;
@@ -94,8 +104,23 @@ void MultiWeaponSensor::DoSabre(void) {
         DebounceLong_ar_cr.update(EpeeHit_r());
         break;
       case 4:
+        SubsampleCounter = 5;
+        if (bAutoDetect) {
+          Debounce_Parry.update(Parry());
+        }
+        break;
+      case 5:
+        SubsampleCounter = 6;
+        if (bAutoDetect) {
+          DebounceLong_al_cr.update(FoilHit_r());
+        }
+        break;
+
+      case 6:
         SubsampleCounter = 0;
-        // Debounce_Parry.update(Parry());
+        if (bAutoDetect) {
+          DebounceLong_ar_cl.update(FoilHit_l());
+        }
         break;
       }
     }

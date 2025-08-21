@@ -94,7 +94,7 @@ void MultiWeaponSensor::DoFoil(void) {
     bl = (tempADValue < AxXy_300_Ohm);
     NotConnectedLeft = bl;
     Valid_l = HitOnLame_l();
-    DebounceLong_al_cr.update(Valid_l);
+    DebounceLong_al_cr.update(Valid_l && !bl);
   }
 
   if (!SignalRight) { // No need to check again if we already have a signal on
@@ -104,7 +104,7 @@ void MultiWeaponSensor::DoFoil(void) {
     br = (tempADValue < AxXy_300_Ohm);
     NotConnectedRight = br;
     Valid_r = HitOnLame_r();
-    DebounceLong_ar_cl.update(Valid_r);
+    DebounceLong_ar_cl.update(Valid_r && !br);
   }
 
   Debounce_b1.update(bl);
@@ -131,9 +131,13 @@ void MultiWeaponSensor::DoFoil(void) {
         }
         break;
       case 1:
-        SubsampleCounter =
-            0; //  <-------------------- Skipping next 3 checks!!!!! Next 2 not
-               //  needed and parry only for Carlos
+        if (bAutoDetect) {
+          SubsampleCounter =
+              4; //  <-------------------- Skipping next 3 checks!!!!! Next 2
+                 //  not needed and parry only for Carlos
+        } else {
+          SubsampleCounter = 0;
+        }
         leak = LameLeak_r();
         DebounceLong_ar_cr.update(leak);
         if (Debounce_c2.update(leak)) {
