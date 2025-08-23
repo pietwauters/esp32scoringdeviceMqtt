@@ -230,7 +230,7 @@ MultiWeaponSensor::~MultiWeaponSensor() {
 }
 
 void MultiWeaponSensor::HandleLights() {
-  uint8_t temp = 0;
+  uint32_t temp = 0;
   if (millis() >
       ShortIndicatorsDebouncer) // this is needed to avoid too many events for
                                 // broken wires or bad mass contacts
@@ -265,7 +265,12 @@ void MultiWeaponSensor::HandleLights() {
 
   if (Buzz && !bPreventBuzzer)
     temp |= 0x02;
-  if (Lights != temp) {
+
+  if (CurrentParryState) {
+    temp |= MASK_PARRY;
+  }
+
+  if (Lights != temp) { // only send on change
     Lights = temp;
     SensorStateChanged(EVENT_LIGHTS | temp);
   }
@@ -364,7 +369,7 @@ void MultiWeaponSensor::DoReset() {
   SignalRight = 0;
   LockStarted = false;
 
-  Debounce_Parry.setRequiredOnUs(500);
+  Debounce_Parry.setRequiredOnUs(200);
   Debounce_Parry.setRequiredOffUs(5000);
   Debounce_Parry.reset();
 
@@ -408,22 +413,7 @@ void MultiWeaponSensor::DoFullScan() {
     }
     vTaskDelay(0);
   } else {
-    // Check blad contact state and only act on changes
-    if (Debounce_Parry.isOK()) {
-      if (!previousParryState) {
-        // Do Something
-        OrangeL = true;
-        OrangeR = true;
-        previousParryState = true;
-      }
-    } else {
-      if (previousParryState) {
-        // Do Something
-        OrangeL = false;
-        OrangeR = false;
-        previousParryState = false;
-      }
-    }
+    CurrentParryState = Debounce_Parry.isOK();
   }
   HandleLights();
 
@@ -441,6 +431,7 @@ void MultiWeaponSensor::DoFullScan() {
     break;
   }
 }
+
 void MultiWeaponSensor::resetLongDebouncers() {
   DebounceLong_al_cl.reset();
   DebounceLong_al_cr.reset();

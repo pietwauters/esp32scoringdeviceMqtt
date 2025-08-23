@@ -12,13 +12,6 @@
 #include <cstddef>
 #include <cstdio>
 
-#define MASK_RED 0x80
-#define MASK_WHITE_L 0x40
-#define MASK_ORANGE_L 0x20
-#define MASK_ORANGE_R 0x10
-#define MASK_WHITE_R 0x08
-#define MASK_GREEN 0x04
-#define MASK_BUZZ 0x02
 #define LIGHTS_DURATION_MS 2000
 
 // enum weapon_t {FOIL, EPEE, SABRE, UNKNOWN};
@@ -62,7 +55,7 @@ public:
   void Skip_phase();
   void DoFullScan();
   bool Wait_For_Next_Timer_Tick();
-  unsigned char get_Lights() { return Lights; };
+  uint32_t get_Lights() { return Lights; };
   void BlockAllNewHits() {
     SignalLeft = true;
     SignalRight = true;
@@ -120,9 +113,6 @@ private:
   // below const values are used to make timing calibration possible without
   // having constants in the code
 
-  int Const_FOIL_PARRY_ON_TIME;
-  int Const_FOIL_PARRY_OFF_TIME;
-
   // "long" debouncers are used for automatic weapon detection
   DebounceTimer DebounceLong_b1;
   DebounceTimer DebounceLong_b2;
@@ -145,7 +135,7 @@ private:
   DebounceTimer Debounce_NotConnected;
   DebounceTimer Debounce_AtLeastOneNotConnected;
 
-  unsigned char Lights;
+  uint32_t Lights;
 
   int BlockCounter;
   bool MaybeSignalRight;
@@ -167,6 +157,7 @@ private:
   int BlockedAHitCounter;
 
   DoubleDebouncer Debounce_Parry;
+  bool CurrentParryState = false;
   bool previousParryState = false;
 
   int TimeOfLock;

@@ -172,4 +172,14 @@ union mix_t {
 #define EVENT_WS2812_WARNING 0x08050000
 #define EVENT_WS2812_ENGARDE_PRETS_ALLEZ 0x08060000
 
+constexpr uint32_t MASK_BUZZ = 0x00000002;
+constexpr uint32_t MASK_GREEN = 0x00000004;
+constexpr uint32_t MASK_WHITE_R = 0x00000008;
+constexpr uint32_t MASK_ORANGE_R = 0x00000010;
+constexpr uint32_t MASK_ORANGE_L = 0x00000020;
+constexpr uint32_t MASK_WHITE_L = 0x00000040;
+constexpr uint32_t MASK_RED = 0x00000080;
+constexpr uint32_t MASK_REVERSE_COLORS = 0x00000001;
+constexpr uint32_t MASK_PARRY = 0x00000100;
+
 #endif // EVENTDEFINITIONS_H

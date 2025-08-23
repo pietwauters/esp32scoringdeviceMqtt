@@ -37,15 +37,6 @@
 
 /////////////////////////////////////////////////////////////////////////////////////
 
-#define MASK_RED 0x80
-#define MASK_WHITE_L 0x40
-#define MASK_ORANGE_L 0x20
-#define MASK_ORANGE_R 0x10
-#define MASK_WHITE_R 0x08
-#define MASK_GREEN 0x04
-#define MASK_BUZZ 0x02
-#define MASK_REVERSE_COLORS 0x01
-
 #define BRIGHTNESS_LOW 15
 #define BRIGHTNESS_NORMAL 30
 #define BRIGHTNESS_HIGH 75
@@ -63,16 +54,17 @@ public:
   /** Access m_LedStatus
    * \return The current value of m_LedStatus
    */
-  unsigned char GetLedStatus() { return m_LedStatus; }
+  uint32_t GetLedStatus() { return m_LedStatus; }
   /** Set m_LedStatus
    * \param val New value to set
    */
   void ClearAll();
-  void SetLedStatus(unsigned char val);
+  void SetLedStatus(uint32_t val);
   void setRed(bool Value, bool bReverse = false);
   void setWhiteLeft(bool Value, bool inverse = false);
   void setOrangeLeft(bool Value);
   void setOrangeRight(bool Value);
+  void setParry(bool Value);
   void setWhiteRight(bool Value, bool inverse = false);
   void setGreen(bool Value, bool bReverse = false);
   void setBuzz(bool Value);
@@ -80,6 +72,7 @@ public:
   void SetBrightness(uint8_t val);
   void update(FencingStateMachine *subject, uint32_t eventtype);
   void update(RepeaterReceiver *subject, uint32_t eventtype);
+  // void update(MultiWeaponSensor *subject, uint32_t eventtype);
   void ProcessEvents();
   void ProcessEventsBlocking();
   void setGreenPrio(bool Value, bool bReverse = false);
@@ -117,7 +110,7 @@ private:
 
   void updateHelper(uint32_t eventtype);
   void setUWFTime(uint8_t tens, uint8_t bottom);
-  unsigned char m_LedStatus; //!< Member variable "m_LedStatus"
+  uint32_t m_LedStatus; //!< Member variable "m_LedStatus"
   NeoPixelRMT *m_pixels;
   bool m_HasBegun = false;
   uint8_t m_Brightness = BRIGHTNESS_NORMAL;
@@ -140,6 +133,7 @@ private:
   uint8_t m_UW2Ftens = 0;
   bool m_YellowPCardLeft = false;
   bool m_YellowPCardRight = false;
+  bool Parry = false;
   uint8_t m_RedPCardLeft = 0;
   uint8_t m_RedPCardRight = 0;
 

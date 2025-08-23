@@ -178,7 +178,7 @@ void TimeScoreDisplay::update(RepeaterReceiver *subject, uint32_t eventtype) {
   xQueueSend(queue, &eventtype, portMAX_DELAY);
 }
 
-#define MASK_RED_OR_GREEN 0x84
+constexpr uint32_t MASK_RED_OR_GREEN = MASK_GREEN | MASK_RED;
 
 void TimeScoreDisplay::ProcessEvents() {
   if (queue == NULL)

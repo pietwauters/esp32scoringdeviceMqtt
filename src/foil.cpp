@@ -72,7 +72,7 @@ inline bool EpeeHit_r() {
 inline bool Parry() {
   Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
   int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-  return (tempADValue > BxCy_450_Ohm);
+  return (tempADValue > BxCy_280_Ohm);
 };
 
 enum FoilState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
@@ -81,6 +81,7 @@ void MultiWeaponSensor::DoFoil(void) {
   bool bl, br;
   bool leak;
   bool Valid_l, Valid_r;
+
   static FoilState state = IDLE;
   static int SubsampleCounter = 0;
   // This is needed in case we need to apply the Dos Santos trick
@@ -131,13 +132,7 @@ void MultiWeaponSensor::DoFoil(void) {
         }
         break;
       case 1:
-        if (bAutoDetect) {
-          SubsampleCounter =
-              4; //  <-------------------- Skipping next 3 checks!!!!! Next 2
-                 //  not needed and parry only for Carlos
-        } else {
-          SubsampleCounter = 0;
-        }
+        SubsampleCounter = 2;
         leak = LameLeak_r();
         DebounceLong_ar_cr.update(leak);
         if (Debounce_c2.update(leak)) {

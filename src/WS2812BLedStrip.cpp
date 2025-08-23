@@ -228,6 +228,15 @@ void WS2812B_LedStrip::setOrangeRight(bool Value) {
   // m_pixels->show();   // Send the updated pixel colors to the hardware.
 }
 
+void WS2812B_LedStrip::setParry(bool Value) {
+  if (Value) {
+    m_pixels->fill(m_Blue, 40 - 16, 16);
+    m_pixels->fill(m_Blue, 104 - 16, 16);
+  } else {
+    m_pixels->fill(m_pixels->Color(0, 0, 0), 40 - 16, 16);
+    m_pixels->fill(m_pixels->Color(0, 0, 0), 104 - 16, 16);
+  }
+}
 void WS2812B_LedStrip::setYellowCardRight(bool Value) {
   uint32_t theFillColor = m_Off;
   if (Value) {
@@ -287,7 +296,7 @@ void WS2812B_LedStrip::updateHelper(uint32_t eventtype) {
   uint32_t event_data = eventtype & SUB_TYPE_MASK;
   uint32_t maineventtype = eventtype & MAIN_TYPE_MASK;
   if (EVENT_LIGHTS == maineventtype) {
-    // SetLedStatus((unsigned char)event_data);
+    // SetLedStatus(event_data);
     xQueueSend(queue, &eventtype, portMAX_DELAY);
   }
   switch (maineventtype) {
@@ -469,22 +478,24 @@ void WS2812B_LedStrip::ProcessEvents() {
 
   xQueueReceive(queue, &m_LastEvent, portMAX_DELAY);
   uint32_t event_data = m_LastEvent & SUB_TYPE_MASK;
-  SetLedStatus((unsigned char)event_data);
+
+  SetLedStatus(event_data);
 }
 
 void WS2812B_LedStrip::ProcessEventsBlocking() {
   if (xQueueReceive(queue, &m_LastEvent, 4 / portTICK_PERIOD_MS) == pdPASS) {
     uint32_t event_data = m_LastEvent & SUB_TYPE_MASK;
-    SetLedStatus((unsigned char)event_data);
+    SetLedStatus(event_data);
   }
 }
 
-void WS2812B_LedStrip::SetLedStatus(unsigned char val) {
+void WS2812B_LedStrip::SetLedStatus(uint32_t val) {
   if (val != 0xff) {
     if (m_LedStatus == val)
       return;
     m_LedStatus = val;
   }
+
   bool ColoredOn = m_LedStatus & MASK_RED;
   bool ReverseColor = m_LedStatus & MASK_REVERSE_COLORS;
   setRed(ColoredOn, ReverseColor);
@@ -519,6 +530,12 @@ void WS2812B_LedStrip::SetLedStatus(unsigned char val) {
     }
   }
   setBuzz(m_LedStatus & MASK_BUZZ);
+  uint32_t maskedLedstatus =
+      m_LedStatus & (MASK_GREEN | MASK_WHITE_R | MASK_WHITE_L | MASK_RED |
+                     MASK_ORANGE_L | MASK_ORANGE_R);
+  if (!maskedLedstatus) {
+    setParry(m_LedStatus & MASK_PARRY);
+  }
 
   m_pixels->show();
 }
