@@ -206,6 +206,7 @@ void FPA422Handler::WifiPeriodicalUpdate() {
   if (millis() > TimeForNext1_2s) {
     if (0 == m_WifiPeriodicalUpdateCounter) {
       AllProtocolsTransmitMessage(1);
+      AllProtocolsTransmitMessage(11);
     }
     if (1 == m_WifiPeriodicalUpdateCounter) {
       AllProtocolsTransmitMessage(2);
@@ -482,8 +483,10 @@ void FPA422Handler::ProcessLightsChange(uint32_t eventtype) {
   Message1.SetGreen(event_data & MASK_GREEN);
   Message1.SetWhiteLeft(event_data & MASK_WHITE_L);
   Message1.SetWhiteRight(event_data & MASK_WHITE_R);
-  // Message20.SetContact();
+  Message11.SetContact(event_data & MASK_PARRY);
   AllProtocolsTransmitMessage(1);
+  AllProtocolsTransmitMessage(11);
+
   // Message1.Print();
 }
 

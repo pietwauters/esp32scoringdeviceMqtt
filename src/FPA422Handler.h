@@ -15,7 +15,7 @@
 #include "SubjectObserverTemplate.h"
 #include "network.h"
 
-#define MAX_MESSAGE_TYPE 10
+#define MAX_MESSAGE_TYPE 11
 // #define ALLOW_BLE
 // #define ALLOW_BLUETOOTH
 // #define ALLOW_HARDWARESERIAL
@@ -62,11 +62,11 @@ private:
   // RS422_FPA_Type7_Message Message7;
   RS422_FPA_Type8_Message Message8;
   RS422_FPA_Type10_Message Message10;
-  RS422_FPA_Type20_Message Message20;
+  RS422_FPA_Type20_Message Message11;
 
-  RS422_FPA_Message *Meassages[10] = {
-      &Message1, &Message2, &Message3, &Message4, &Message5,
-      &Message6, &Message1, &Message8, &Message1, &Message10};
+  RS422_FPA_Message *Meassages[MAX_MESSAGE_TYPE] = {
+      &Message1, &Message2, &Message3, &Message4,  &Message5, &Message6,
+      &Message1, &Message8, &Message1, &Message10, &Message11};
 
   uint8_t m_minutes;
   uint8_t m_seconds;
