@@ -601,9 +601,20 @@ char ResistorDividerCalibrator::wait_for_key() {
   while (true) {
     int len = uart_read_bytes(UART_NUM_0, &c, 1, pdMS_TO_TICKS(10));
     if (len > 0) {
-      if (c == '\n' || c == '\r')
+      // Echo the character for user feedback
+      printf("%c", c);
+      fflush(stdout);
+
+      // Return the first meaningful character
+      if (c == 'q' || c == 'Q') {
+        printf("\nExiting...\n");
+        return 'q';
+      }
+      if (c == '\n' || c == '\r') {
+        printf("\nContinuing...\n");
         return '\n';
-      return (char)c;
+      }
+      // For other characters, continue reading
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));
