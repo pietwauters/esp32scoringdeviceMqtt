@@ -101,6 +101,19 @@ WS2812B_LedStrip::~WS2812B_LedStrip() {
   delete m_pixels;
 }
 
+void WS2812B_LedStrip::ShowPowerFailure() {
+  ClearAll();
+  m_pixels->setPixelColor(27, m_Red);
+  m_pixels->setPixelColor(28, m_Red);
+  m_pixels->setPixelColor(27 + 8, m_Red);
+  m_pixels->setPixelColor(28 + 8, m_Red);
+  m_pixels->setPixelColor(27 + 64, m_Red);
+  m_pixels->setPixelColor(28 + 64, m_Red);
+  m_pixels->setPixelColor(27 + 8 + 64, m_Red);
+  m_pixels->setPixelColor(28 + 8 + 64, m_Red);
+  m_pixels->show();
+}
+
 void WS2812B_LedStrip::setRed(bool Value, bool bReverse) {
   uint32_t FillColor = m_Red;
   if (bReverse)
@@ -495,7 +508,10 @@ void WS2812B_LedStrip::SetLedStatus(uint32_t val) {
       return;
     m_LedStatus = val;
   }
-
+  if (m_LedStatus & MASK_POWER_PROBLEM) {
+    ShowPowerFailure();
+    return;
+  }
   bool ColoredOn = m_LedStatus & MASK_RED;
   bool ReverseColor = m_LedStatus & MASK_REVERSE_COLORS;
   setRed(ColoredOn, ReverseColor);

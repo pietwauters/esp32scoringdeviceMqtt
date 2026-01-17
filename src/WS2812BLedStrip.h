@@ -100,6 +100,7 @@ public:
   void static LedStripAnimator(void *parameter);
   void startAnimation(uint32_t eventtype);
   void NewAnimatePrio();
+  void ShowPowerFailure();
 
 protected:
 private:
