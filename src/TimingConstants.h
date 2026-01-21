@@ -18,4 +18,5 @@ constexpr int Epee_DosSantosCorrection_us = 150;
 
 constexpr int SabreContactTime_us = 120;
 constexpr int Sabre_DosSantosCorrection_us = 2 * SabreContactTime_us / 3;
-constexpr int SabreWhiteTime_us = 2000;
+constexpr int SabreWhiteTime_us =
+    2500; // Spec says: 3ms +/- 2ms The setting is a hard lower bound

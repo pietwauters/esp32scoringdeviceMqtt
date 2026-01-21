@@ -21,6 +21,7 @@
 #define IODirection_cr_piste 159
 #define IODirection_cr_cl 219
 #define IODirection_cl_piste 187
+#define IODirection_br_br 223
 
 #define IOValues_ar_br 8
 #define IOValues_ar_cr 8
@@ -42,5 +43,5 @@
 #define IOValues_cr_piste 32
 #define IOValues_cr_cl 32
 #define IOValues_cl_piste 4
-
+#define IOValues_br_br 16
 extern void Set_IODirectionAndValue(uint8_t direction, uint8_t values);

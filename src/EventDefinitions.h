@@ -181,5 +181,6 @@ constexpr uint32_t MASK_WHITE_L = 0x00000040;
 constexpr uint32_t MASK_RED = 0x00000080;
 constexpr uint32_t MASK_REVERSE_COLORS = 0x00000001;
 constexpr uint32_t MASK_PARRY = 0x00000100;
+constexpr uint32_t MASK_POWER_PROBLEM = 0x00001000;
 
 #endif // EVENTDEFINITIONS_H

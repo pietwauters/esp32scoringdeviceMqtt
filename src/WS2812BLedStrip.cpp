@@ -242,6 +242,7 @@ void WS2812B_LedStrip::setOrangeRight(bool Value) {
 }
 
 void WS2812B_LedStrip::setParry(bool Value) {
+  return;
   if (Value) {
     m_pixels->fill(m_Blue, 40 - 16, 16);
     m_pixels->fill(m_Blue, 104 - 16, 16);
