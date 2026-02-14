@@ -129,7 +129,8 @@ void MultiWeaponSensor::DoEpee(void) {
       Debounce_c1.applyDosSantosMarginUs();
     }
 
-    if (Debounce_c1.isOK()) {
+    // if (Debounce_c1.isOK())
+    {
 
       // check validity
       if (HitOnGuard_l()) {
@@ -141,15 +142,18 @@ void MultiWeaponSensor::DoEpee(void) {
           // Serial.println("Piste");
         } else {
           // Serial.println("Red");
-          Red = true;
-          Buzz = true;
-          SignalLeft = true;
-          StartLock(EPEE_LOCK_TIME);
-          Debounce_c1.reset();
+          if (Debounce_c1.isOK()) {
+            Red = true;
+            Buzz = true;
+            SignalLeft = true;
+            StartLock(EPEE_LOCK_TIME);
+            Debounce_c1.reset();
+          }
         }
       }
     }
-    if (Debounce_c2.isOK()) {
+    // if (Debounce_c2.isOK())
+    {
 
       // check validity
       if (HitOnGuard_r()) {
@@ -161,11 +165,13 @@ void MultiWeaponSensor::DoEpee(void) {
           // Serial.println("Piste");
         } else {
           // Serial.println("Green");
-          Green = true;
-          Buzz = true;
-          SignalRight = true;
-          StartLock(EPEE_LOCK_TIME);
-          Debounce_c2.reset();
+          if (Debounce_c2.isOK()) {
+            Green = true;
+            Buzz = true;
+            SignalRight = true;
+            StartLock(EPEE_LOCK_TIME);
+            Debounce_c2.reset();
+          }
         }
       }
     }

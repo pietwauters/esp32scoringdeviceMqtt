@@ -46,8 +46,18 @@ inline bool FoilHit_r() {
   return (tempADValue > AxXy_280_Ohm);
 };
 
-enum SabreState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
+inline bool DummyPisteCheck() {
+  Set_IODirectionAndValue(IODirection_al_piste, IOValues_al_piste);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)piste_analog);
+  return (false);
+};
 
+// ToDo: add a check for piste. This is logically not needed, but it avoids
+// building up out of bound voltages
+enum SabreState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
+static const int sequence[] = {0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8};
+static const int sequence_length = 16;
+static int sequence_index = 0;
 void MultiWeaponSensor::DoSabre(void) {
   bool cl, cr;
   static SabreState state = IDLE;
@@ -74,56 +84,62 @@ void MultiWeaponSensor::DoSabre(void) {
       break;
     } else {
       // Do one of the optional checks
-      vTaskDelay(0);
-      switch (SubsampleCounter) {
+      switch (sequence[sequence_index]) {
       case 0:
-        SubsampleCounter = 1;
+        // SubsampleCounter = 1;
+        if (bAutoDetect) {
+          Debounce_Parry.update(Parry());
+        }
+        break;
+
+      case 1:
+        // SubsampleCounter = 2;
         if (Debounce_SabreWhite_l.update(WireOK_l())) {
           WhiteL = true;
         } else {
           WhiteL = false;
         }
         break;
-      case 1:
-        SubsampleCounter = 2;
+      case 2:
+        // SubsampleCounter = 3;
         if (Debounce_SabreWhite_r.update(WireOK_r())) {
           WhiteR = true;
         } else {
           WhiteR = false;
         }
         break;
-      case 2:
+      case 3:
         // You can also show Yellow here
-        SubsampleCounter = 3;
+        // SubsampleCounter = 4;
         DebounceLong_al_cl.update(EpeeHit_l());
 
         break;
-      case 3:
+      case 4:
         // You can also show Yellow here
-        SubsampleCounter = 4;
+        // SubsampleCounter = 5;
         DebounceLong_ar_cr.update(EpeeHit_r());
         break;
-      case 4:
-        SubsampleCounter = 5;
-        if (bAutoDetect) {
-          Debounce_Parry.update(Parry());
-        }
-        break;
-      case 5:
-        SubsampleCounter = 6;
+
+      case 6:
+        // SubsampleCounter = 7;
         if (bAutoDetect) {
           DebounceLong_al_cr.update(FoilHit_r());
         }
         break;
 
-      case 6:
-        SubsampleCounter = 0;
+      case 7:
+        // SubsampleCounter = 0;
         if (bAutoDetect) {
           DebounceLong_ar_cl.update(FoilHit_l());
         }
         break;
+
+      case 8:
+        DummyPisteCheck();
+        break;
       }
     }
+    sequence_index = (sequence_index + 1) % sequence_length;
     break;
 
   case DEBOUNCING:
@@ -134,12 +150,12 @@ void MultiWeaponSensor::DoSabre(void) {
       break;
     }
     // Trick to satisfy Dos Santos. Not Sure if still needed
-    if (Debounce_c1.isOK()) {
+    /*if (Debounce_c1.isOK()) {
       Debounce_c2.applyDosSantosMarginUs(false);
     }
     if (Debounce_c2.isOK()) {
       Debounce_c1.applyDosSantosMarginUs(false);
-    }
+    }*/
 
     if (Debounce_c1.isOK() && !SignalLeft) {
       // reduce required time for b2

@@ -174,15 +174,17 @@ void MultiWeaponSensor::DoFoil(void) {
       Debounce_b1.applyDosSantosMarginUs();
     }
 
-    if (Debounce_b1.isOK()) {
-
+    // if (Debounce_b1.isOK())
+    {
       // check validity
       if (lastValid_l) {
         // Serial.println("Red");
-        Red = true;
-        Buzz = true;
-        SignalLeft = true;
-        StartLock(FOIL_LOCK_TIME);
+        if (Debounce_b1.isOK()) {
+          Red = true;
+          Buzz = true;
+          SignalLeft = true;
+          StartLock(FOIL_LOCK_TIME);
+        }
       } else {
         if (HitOnGuard_l()) {
           Debounce_b1.reset();
@@ -193,23 +195,28 @@ void MultiWeaponSensor::DoFoil(void) {
             // Serial.println("Piste");
           } else {
             // Serial.println("WhiteL");
-            WhiteL = true;
-            Buzz = true;
-            SignalLeft = true;
-            StartLock(FOIL_LOCK_TIME);
+            if (Debounce_b1.isOK()) {
+              WhiteL = true;
+              Buzz = true;
+              SignalLeft = true;
+              StartLock(FOIL_LOCK_TIME);
+            }
           }
         }
       }
     }
-    if (Debounce_b2.isOK()) {
+    // if (Debounce_b2.isOK())
+    {
 
       // check validity
       if (lastValid_r) {
         // Serial.println("Green");
-        Green = true;
-        Buzz = true;
-        SignalRight = true;
-        StartLock(FOIL_LOCK_TIME);
+        if (Debounce_b2.isOK()) {
+          Green = true;
+          Buzz = true;
+          SignalRight = true;
+          StartLock(FOIL_LOCK_TIME);
+        }
       } else {
         if (HitOnGuard_r()) {
           Debounce_b1.reset();
@@ -220,10 +227,12 @@ void MultiWeaponSensor::DoFoil(void) {
             // Serial.println("Piste");
           } else {
             // Serial.println("WhiteR");
-            WhiteR = true;
-            Buzz = true;
-            SignalRight = true;
-            StartLock(FOIL_LOCK_TIME);
+            if (Debounce_b2.isOK()) {
+              WhiteR = true;
+              Buzz = true;
+              SignalRight = true;
+              StartLock(FOIL_LOCK_TIME);
+            }
           }
         }
       }
