@@ -508,12 +508,42 @@ void TimeScoreDisplay::DisplayWeapon(weapon_t weapon) {
 void TimeScoreDisplay::DisplayVersion() {
   mx.clear();
 
-  uint8_t digit0 = '1' - '0';
-  uint8_t digit1 = 12;
-  uint8_t digit2 = '1' - '0';
-  uint8_t digit3 = '4' - '0';
-  uint8_t digit4 = 12;
-  uint8_t digit5 = '6' - '0';
+  // Parse APP_VERSION: "v1.4.0-2-gd9b801b-dirty"
+  String version = String(APP_VERSION);
+
+  // Remove 'v' prefix if present
+  if (version.startsWith("v")) {
+    version = version.substring(1);
+  }
+
+  // Extract up to first '-'
+  int dashPos = version.indexOf('-');
+  if (dashPos != -1) {
+    version = version.substring(0, dashPos);
+  }
+  // Now version is "1.4.0"
+
+  // Parse major.minor.patch
+  int major = 0, minor = 0, patch = 0;
+  int firstDot = version.indexOf('.');
+  int secondDot = version.indexOf('.', firstDot + 1);
+
+  if (firstDot != -1) {
+    major = version.substring(0, firstDot).toInt();
+    if (secondDot != -1) {
+      minor = version.substring(firstDot + 1, secondDot).toInt();
+      patch = version.substring(secondDot + 1).toInt();
+    }
+  }
+
+  // Format: major(1 digit) . minor(2 digits) . patch(1 digit)
+  uint8_t digit0 = major % 10;        // Major version (1 digit)
+  uint8_t digit1 = 12;                // Dot separator
+  uint8_t digit2 = (minor / 10) % 10; // Minor tens digit
+  uint8_t digit3 = minor % 10;        // Minor ones digit
+  uint8_t digit4 = 12;                // Dot separator
+  uint8_t digit5 = patch % 10;        // Patch version (1 digit)
+
   uint8_t startpos = 2;
   uint8_t w = numbers[digit0][0] + 1 + startpos;
 
