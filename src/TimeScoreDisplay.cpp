@@ -5,6 +5,24 @@
 #define HARDWARE_TYPE MD_MAX72XX::ICSTATION_HW
 #define MAX_DEVICES 4
 
+// Static task function for startup display
+static void StartupDisplayTask(void *parameter) {
+  TimeScoreDisplay *display = static_cast<TimeScoreDisplay *>(parameter);
+
+  // Display version for 3 seconds
+  display->DisplayVersion();
+  vTaskDelay(pdMS_TO_TICKS(3000));
+
+  // Display piste ID for 10 seconds
+  long targetTime = millis() + 8000;
+  while (millis() < targetTime) {
+    display->DisplayPisteId();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+  // Task complete, delete itself
+  vTaskDelete(NULL);
+}
+
 static const int spiClk = 1000000; // 1 MHz
 
 // uninitalised pointers to SPI objects
@@ -416,6 +434,28 @@ void TimeScoreDisplay::DisplayPisteId() {
   SetChar(w, digit4);
 }
 
+void TimeScoreDisplay::DisplayResetReason(int reason) {
+  mx.clear();
+  char text[6];
+  sprintf(text, "R-%03d", reason);
+  uint8_t digit0 = text[0] - 'A' + 15;
+  uint8_t digit1 = 11;
+  uint8_t digit2 = text[2] - '0';
+  uint8_t digit3 = text[3] - '0';
+  uint8_t digit4 = text[4] - '0';
+  uint8_t startpos = 2;
+  uint8_t w = numbers[digit0][0] + 1 + startpos;
+
+  SetChar(startpos, digit0);
+  SetChar(w, digit1);
+  w = w + numbers[digit1][0] + 1;
+  SetChar(w, digit2);
+  w = w + numbers[digit2][0] + 1;
+  SetChar(w, digit3);
+  w = w + numbers[digit3][0] + 1;
+  SetChar(w, digit4);
+}
+
 void TimeScoreDisplay::DisplayWeapon(weapon_t weapon) {
   mx.clear();
   uint8_t digit0 = 'E' - 'A' + 15;
@@ -462,4 +502,39 @@ void TimeScoreDisplay::DisplayWeapon(weapon_t weapon) {
     w = w + numbers[digit3][0] + 1;
     SetChar(w, digit4);
   }
+}
+#include "version.h"
+
+void TimeScoreDisplay::DisplayVersion() {
+  mx.clear();
+
+  uint8_t digit0 = '1' - '0';
+  uint8_t digit1 = 12;
+  uint8_t digit2 = '1' - '0';
+  uint8_t digit3 = '4' - '0';
+  uint8_t digit4 = 12;
+  uint8_t digit5 = '6' - '0';
+  uint8_t startpos = 2;
+  uint8_t w = numbers[digit0][0] + 1 + startpos;
+
+  SetChar(startpos, digit0);
+  SetChar(w, digit1);
+  w = w + numbers[digit1][0] + 1;
+  SetChar(w, digit2);
+  w = w + numbers[digit2][0] + 1;
+  SetChar(w, digit3);
+  w = w + numbers[digit3][0] + 1;
+  SetChar(w, digit4);
+  w = w + numbers[digit4][0] + 1;
+  SetChar(w, digit5);
+}
+
+void TimeScoreDisplay::LaunchStartupDisplay() {
+  xTaskCreate(StartupDisplayTask, // Task function
+              "StartupDisplay",   // Task name
+              2048,               // Stack size (bytes)
+              this,               // Parameter passed to task
+              1,                  // Task priority
+              NULL                // Task handle (not needed)
+  );
 }
