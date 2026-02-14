@@ -35,6 +35,13 @@ int NetWork::begin() {
   networkpreferences.begin("credentials", false);
   LookForExternalWiFi = networkpreferences.getBool("TryGlobalWiFi", false);
   networkpreferences.end();
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  wifi_config_t conf;
+  esp_wifi_get_config(WIFI_IF_AP, &conf);
+
+  conf.ap.beacon_interval = 600; // default 100
+  esp_wifi_set_config(WIFI_IF_AP, &conf);
+
   if (!LookForExternalWiFi)
     return 0;
   networks = WiFi.scanNetworks();
