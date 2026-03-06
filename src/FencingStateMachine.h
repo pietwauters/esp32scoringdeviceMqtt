@@ -305,7 +305,7 @@ private:
   uint32_t m_timeToRearm = 0;
 
   int m_currentRound = 1;
-  int m_nrOfRounds = 1;
+  int m_nrOfRounds = 3;
   FencingTimer m_Timer;
   UW2FTimer m_UW2FTimer;
   long m_UW2FSeconds = 0;

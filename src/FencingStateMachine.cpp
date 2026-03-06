@@ -56,7 +56,7 @@ FencingStateMachine::FencingStateMachine(int hw_timer_nr, int tickPeriod) {
   //    timerAlarm(timer_FSMPeriod, 10, true,0);
   // Start an alarm
   // timerAlarmEnable(timer_FSMPeriod);
-  m_nrOfRounds = 1;
+  m_nrOfRounds = 3;
   ResetAll();
   m_Timer.SetTicksPeriod(tickPeriod);
   // m_Timer.SetDisplayResolution(100);
@@ -307,7 +307,7 @@ void FencingStateMachine::update(UDPIOHandler *subject, uint32_t eventtype) {
 
     switch (m_nrOfRounds) {
     case 1:
-      m_nrOfRounds = 2;
+      m_nrOfRounds = 3;
       break;
 
     case 2:
@@ -798,6 +798,7 @@ void FencingStateMachine::DoStateMachineTick() {
         }
         // we should do something to send only an event on change;
         m_Timer.StopTimer();
+        m_UW2FTimer.Stop();
         StateChanged(EVENT_TIMER_STATE);
         StateChanged(MakeTimerEvent());
         SetNextTimerStateAndRoundAndNewTimeOnTimerZero();
@@ -851,7 +852,7 @@ void FencingStateMachine::DoStateMachineTick() {
     if (!m_GlobalIdle) {
       if (EPEE == m_MachineWeapon) {
         if (m_LastLightEventTime + IDLE_TIME_MS < millis()) {
-          StateChanged(EVENT_IDLE | EVENT_GO_INTO_IDLE);
+          // StateChanged(EVENT_IDLE | EVENT_GO_INTO_IDLE);
           m_GlobalIdle = true;
         }
       }
