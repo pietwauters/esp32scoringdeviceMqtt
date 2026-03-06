@@ -553,6 +553,19 @@ void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
     }
     break;
 
+  case EVENT_UW2F_TIMER:
+    // Unknown to Cyrano -> build UW2F_Timer JSON and publish directly
+    bTransmit = false;
+    {
+      std::string uw2f_json = make_uw2f_timer_from_event_string(
+          eventtype, m_MachineStatus[PisteId], (long long)millis());
+      if (!uw2f_json.empty()) {
+        mqttClient.publish(mqttPublishTopic, 0, true, uw2f_json.c_str(),
+                           uw2f_json.length());
+      }
+    }
+    break;
+
   default:
     bTransmit = false;
   }
