@@ -96,6 +96,11 @@ void MultiWeaponSensor::DoFoil(void) {
     NotConnectedLeft = bl;
     Valid_l = HitOnLame_l();
     DebounceLong_al_cr.update(Valid_l && !bl);
+  } else {
+    Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
+    delayMicroseconds(2);
+    Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
+    delayMicroseconds(2);
   }
 
   if (!SignalRight) { // No need to check again if we already have a signal on
@@ -106,6 +111,11 @@ void MultiWeaponSensor::DoFoil(void) {
     NotConnectedRight = br;
     Valid_r = HitOnLame_r();
     DebounceLong_ar_cl.update(Valid_r && !br);
+  } else {
+    Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
+    delayMicroseconds(2);
+    Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
+    delayMicroseconds(2);
   }
 
   Debounce_b1.update(bl);

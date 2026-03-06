@@ -56,20 +56,28 @@ void MultiWeaponSensor::DoEpee(void) {
   static int SubsampleCounter = 0;
   static int ADCL_0;
   static int ADCR_0;
-  if (!SignalLeft) { // No need to check again if we already have a signal on
-                     // this side
+  { // No need to check again if we already have a signal on
+    // this side
     Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
-    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-    cl = ((tempADValue + ADCL_0) >> 1 > AxXy_160_Ohm);
-    ADCL_0 = tempADValue;
+    if (!SignalLeft) {
+      tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+      cl = ((tempADValue + ADCL_0) >> 1 > AxXy_160_Ohm);
+      ADCL_0 = tempADValue;
+    } else {
+      delayMicroseconds(4); // allow levels to settle
+    }
   }
 
-  if (!SignalRight) { // No need to check again if we already have a signal on
-                      // this side
+  { // No need to check again if we already have a signal on
+    // this side
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
-    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-    cr = ((tempADValue + ADCR_0) >> 1 > AxXy_160_Ohm);
-    ADCR_0 = tempADValue;
+    if (!SignalRight) {
+      tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+      cr = ((tempADValue + ADCR_0) >> 1 > AxXy_160_Ohm);
+      ADCR_0 = tempADValue;
+    } else {
+      delayMicroseconds(4); // allow levels to settle
+    }
   }
 
   Debounce_c1.update(cl);

@@ -1,4 +1,5 @@
 #include <driver/gpio.h> // Ensure ESP32 GPIO driver is included
+#include <esp32-hal.h>
 
 // ESP32 Register Addresses
 #define GPIO_ENABLE_REG (DR_REG_GPIO_BASE + 0x20)    // GPIO 0-31 direction
@@ -52,4 +53,5 @@ void Set_IODirectionAndValue(uint8_t direction, uint8_t values) {
     gpio_set_direction(GPIO_NUM_33, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_NUM_33, (values & 0x01));
   }
+  delayMicroseconds(1); // allow levels to settle before attaching ADC
 }
