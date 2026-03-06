@@ -1,3 +1,39 @@
 cmake_minimum_required(VERSION 3.16.0)
+
+# Set up version header path
+set(VERSION_HEADER_PATH "${CMAKE_CURRENT_BINARY_DIR}/version.h")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp32scoringdeviceMqtt)
+
+# Make sure header is in include path
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# Function to generate version header
+function(update_version_header)
+    execute_process(
+        COMMAND git describe --tags --always --dirty
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    
+    if(NOT GIT_VERSION)
+        set(GIT_VERSION "unknown")
+    endif()
+    
+    file(WRITE ${VERSION_HEADER_PATH} "#pragma once\n#define APP_VERSION \"${GIT_VERSION}\"\n")
+endfunction()
+
+# Generate initial version header at configuration time
+update_version_header()
+
+# Create a target that always runs to update version
+add_custom_target(update_version_always ALL
+    COMMAND ${CMAKE_COMMAND} -E echo "Updating version header..."
+    COMMAND ${CMAKE_COMMAND} -DVERSION_HEADER_PATH=${VERSION_HEADER_PATH} -DSOURCE_DIR=${CMAKE_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/update_version.cmake
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Updating version header from git"
+    VERBATIM
+)

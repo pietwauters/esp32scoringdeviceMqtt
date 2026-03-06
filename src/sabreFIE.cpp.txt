@@ -1,0 +1,196 @@
+// Copyright (c) Piet Wauters 2025 <piet.wauters@gmail.com>
+#include "3WeaponSensor.h"
+#include "FastADC1.h"
+#include "FastGPIOSettings.h"
+#include "ResistorSetting.h"
+
+inline bool WireOK_l() {
+  Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
+  return (tempADValue < AxXy_280_Ohm);
+};
+
+inline bool EpeeHit_l() {
+  Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  return (tempADValue > AxXy_280_Ohm);
+};
+
+inline bool WireOK_r() {
+  Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
+  return (tempADValue < AxXy_280_Ohm);
+};
+
+inline bool EpeeHit_r() {
+  Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  return (tempADValue > AxXy_280_Ohm);
+};
+
+inline bool Parry() {
+  Set_IODirectionAndValue(IODirection_br_bl, IOValues_br_bl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
+  return (tempADValue > BxCy_280_Ohm);
+};
+
+inline bool FoilHit_l() {
+  Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  return (tempADValue > AxXy_280_Ohm);
+};
+
+inline bool FoilHit_r() {
+  Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  return (tempADValue > AxXy_280_Ohm);
+};
+
+enum SabreState { IDLE, DEBOUNCING, DEBOUNCED, LOCKING, LOCKED };
+enum WOState { IDLE, S_0_4_MS, S_4_15_MS, S_15_PLUS};
+
+static const int sequence[] = {0, 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7};
+static const int sequence_length = 14;
+static int sequence_index = 0;
+void MultiWeaponSensor::DoSabre(void) {
+  bool cl, cr;
+  static SabreState state = IDLE;
+  static WOState myWOState = IDLE;
+
+  static int SubsampleCounter = 0;
+  bool tempRed = false;
+  bool tempGreen = false;
+  bool tempParry = Parry();
+
+  Debounce_Parry.update(tempParry);
+  WO_Debounce_Parry.update(tempParry);
+  if(WO_Debounce_Parry.isOK()){
+    if(IDLE == myWOState){
+      myWOState = S_0_4_MS;
+      // log start time
+    }
+  }
+  else{
+  if(IDLE != myWOState){
+      BreakCounter ++;
+      if(BreakCounter > 10){
+        // reset?
+      }
+    }
+  }
+  if(currentTime - ddd){
+
+  }
+
+  Set_IODirectionAndValue(IODirection_bl_cr, IOValues_bl_cr);
+  tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
+  cl = (tempADValue > BxCy_200_Ohm);
+
+  Set_IODirectionAndValue(IODirection_br_cl, IOValues_br_cl);
+  tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
+  cr = (tempADValue > BxCy_200_Ohm);
+
+  Debounce_c1.update(cl);
+  Debounce_c2.update(cr);
+
+  switch (state) {
+  case IDLE:
+
+    if (cl || cr) {
+      state = DEBOUNCING;
+      break;
+    } else {
+      // Do one of the optional checks
+      switch (sequence[sequence_index]) {
+      /*case 0:
+        // SubsampleCounter = 1;
+        if (bAutoDetect) {
+          Debounce_Parry.update(Parry());
+        }
+        break;
+*/
+      case 1:
+        // SubsampleCounter = 2;
+        if (Debounce_SabreWhite_l.update(WireOK_l())) {
+          WhiteL = true;
+        } else {
+          WhiteL = false;
+        }
+        break;
+      case 2:
+        // SubsampleCounter = 3;
+        if (Debounce_SabreWhite_r.update(WireOK_r())) {
+          WhiteR = true;
+        } else {
+          WhiteR = false;
+        }
+        break;
+      case 3:
+        // You can also show Yellow here
+        // SubsampleCounter = 4;
+        DebounceLong_al_cl.update(EpeeHit_l());
+
+        break;
+      case 4:
+        // You can also show Yellow here
+        // SubsampleCounter = 5;
+        DebounceLong_ar_cr.update(EpeeHit_r());
+        break;
+
+      case 6:
+        // SubsampleCounter = 7;
+        if (bAutoDetect) {
+          DebounceLong_al_cr.update(FoilHit_r());
+        }
+        break;
+
+      case 7:
+        // SubsampleCounter = 0;
+        if (bAutoDetect) {
+          DebounceLong_ar_cl.update(FoilHit_l());
+        }
+        break;
+      }
+    }
+    sequence_index = (sequence_index + 1) % sequence_length;
+    break;
+
+  case DEBOUNCING:
+
+    if (!cl && !cr) {
+      // no longer conditions to debounce-> go back to IDLE
+      state = IDLE;
+      break;
+    }
+    // Trick to satisfy Dos Santos. Not Sure if still needed
+    /*if (Debounce_c1.isOK()) {
+      Debounce_c2.applyDosSantosMarginUs(false);
+    }
+    if (Debounce_c2.isOK()) {
+      Debounce_c1.applyDosSantosMarginUs(false);
+    }*/
+
+    if (Debounce_c1.isOK() && !SignalLeft) {
+      // reduce required time for b2
+      // check validity
+
+      // Serial.println("Red");
+      Red = true;
+      Buzz = true;
+      SignalLeft = true;
+      StartLock(SABRE_LOCK_TIME);
+    }
+    if (Debounce_c2.isOK() && !SignalRight) {
+      // reduce required time for b2
+      // check validity
+
+      // Serial.println("Green");
+      Green = true;
+      Buzz = true;
+      SignalRight = true;
+      StartLock(SABRE_LOCK_TIME);
+    }
+
+    break;
+  }
+}

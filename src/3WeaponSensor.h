@@ -5,6 +5,7 @@
 #include "Singleton.h"
 #include "SubjectObserverTemplate.h"
 #include "TimingConstants.h"
+#include "esp_adc_cal.h"
 #include "hardwaredefinition.h"
 #include "weaponenum.h"
 #include <Arduino.h>
@@ -84,6 +85,7 @@ private:
   void StartLock(int TimeToLock);
   bool IsLocked();
   bool OKtoReset();
+  float GetVcc();
   weapon_t GetWeapon();
   int tempADValue = 0;
 
@@ -157,6 +159,7 @@ private:
   int BlockedAHitCounter;
 
   DoubleDebouncer Debounce_Parry;
+  DoubleDebouncer WO_Debounce_Parry;
   bool CurrentParryState = false;
   bool previousParryState = false;
 
@@ -166,6 +169,10 @@ private:
   int LightsDuration = LIGHTS_DURATION_MS;
 
   uint32_t ShortIndicatorsDebouncer = 0;
+
+  esp_adc_cal_characteristics_t adc_chars;
+  int CorrectVccCounter = 10;
+  bool PowerProblem = false;
 };
 
 extern int AxXy_100_Ohm;

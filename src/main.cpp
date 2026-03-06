@@ -78,27 +78,37 @@ void setup() {
   esp_task_wdt_init(20, true);
   esp_task_wdt_add(NULL);
 
-  // uint32_t brown_reg_temp = READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG); //save
-  // WatchDog register
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout detector
+  uint32_t brown_reg_temp =
+      READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG); // save WatchDog register
+  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout detector
   // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, brown_reg_temp); //enable brownout
   // detector
 
   MyTimeScoreDisplay = new TimeScoreDisplay();
   MyTimeScoreDisplay->begin(); // this also powers up the led panels
-  MyTimeScoreDisplay->DisplayPisteId();
+  MyTimeScoreDisplay->LaunchStartupDisplay();
 
   MyLedStrip = &WS2812B_LedStrip::getInstance();
   MyLedStrip->begin();
 
   MyLedStrip->ClearAll();
+  MyLedStrip->attach(*MyTimeScoreDisplay);
+  /*
+    esp_reset_reason_t reset_reason = esp_reset_reason();
+    if (reset_reason != ESP_RST_POWERON) {
+      MyTimeScoreDisplay->DisplayResetReason(reset_reason);
+      while (true) {
+        esp_task_wdt_reset();
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        MyTimeScoreDisplay->DisplayResetReason(reset_reason);
+      }
+    */
   MySensor = &MultiWeaponSensor::getInstance();
   MyLedStrip->ClearAll();
   MyStatemachine = &FencingStateMachine::getInstance();
   // put your setup code here, to run once:
 
   MyLedStrip->ClearAll();
-
   MyLedStrip->ClearAll();
 
   MyFPA422Handler = new FPA422Handler();
@@ -110,13 +120,11 @@ void setup() {
 
   MyNetWork = &NetWork::getInstance();
   MyNetWork->begin();
-  update_reset_reasons();
-  print_historical_reset_reason();
+
   MyNetWork->GlobalStartWiFi();
 
   ESP_LOGI(SET_UP_TAG, "%s", "Wifi started");
-  ESP_LOGI(SET_UP_TAG, "%s",
-           "by now the you should have seen all the lights one by one");
+
   MyUDPIOHandler = &UDPIOHandler::getInstance();
   MyUDPIOHandler->ConnectToAP();
   MyUDPIOHandler->attach(*MyNetWork);
@@ -140,9 +148,6 @@ void setup() {
     MyStatemachine->begin();
     MySensor->begin();
 
-    /*MyTimeScoreDisplay = new TimeScoreDisplay();
-    MyTimeScoreDisplay->begin(); // this also powers up the led panels
-    MyTimeScoreDisplay->DisplayPisteId();*/
     MyStatemachine->attach(*MyTimeScoreDisplay);
     MyCyranoHandler->Begin();
     MyRepeaterSender = &RepeaterSender::getInstance();
@@ -167,9 +172,6 @@ void setup() {
     ESP_LOGI(SET_UP_TAG, "%s", "Ouch! I am a repeater!");
     MyRepeaterReiver->begin();
     MyRepeaterReiver->attach(*MyLedStrip);
-    /*MyTimeScoreDisplay = new TimeScoreDisplay();
-    MyTimeScoreDisplay->begin(); // this also powers up the led panels
-    MyTimeScoreDisplay->DisplayPisteId();*/
     MyRepeaterReiver->attach(*MyTimeScoreDisplay);
     MyRepeaterReiver->StartWatchDog();
     MyLedStrip->SetMirroring(MyRepeaterReiver->Mirror());
@@ -203,6 +205,7 @@ void setup() {
     */
   int freq_mhz = esp_clk_cpu_freq() / 1000000;
   printf("CPU frequency: %d MHz\n", freq_mhz);
+  MyStatemachine->update(MyUDPIOHandler, EVENT_UI_INPUT | UI_INPUT_RESET);
 }
 
 // extern HardwareSerial MySerial;

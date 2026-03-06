@@ -1,5 +1,6 @@
 {
     "files.associations": {
         "*.cpp2": "cpp"
-    }
+    },
+    "idf.currentSetup": "/home/piet/esp/esp-idf"
 }

@@ -26,7 +26,12 @@
 // #define adc1_get_raw FastADC1::read
 
 static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
-
+/*float MultiWeaponSensor::GetVcc() {
+  Set_IODirectionAndValue(IODirection_br_br, IOValues_br_br);
+  int tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
+  return esp_adc_cal_raw_to_voltage(tempADValue, &adc_chars) / 1000.0f;
+}
+*/
 ResistorDividerCalibrator MyCalibrator;
 void initializeResistorThresholds() {
   MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
@@ -87,7 +92,7 @@ void initializeResistorThresholds() {
       450); // Yellow lights
 }
 
-constexpr int scanloop_us = 140;
+constexpr int scanloop_us = 150;
 // #define MEASURE_TIMING
 
 #ifndef MEASURE_TIMING
@@ -203,7 +208,8 @@ void MultiWeaponSensor::begin() {
   printf("Total time: %lld us\n", t1 - t0);
   printf("Total samples: %d\n", samples);
   printf("Average time per sample: %lld us\n", (t1 - t0) / samples);*/
-
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100,
+                           &adc_chars);
   DoReset();
 
   // Timer config
@@ -268,6 +274,9 @@ void MultiWeaponSensor::HandleLights() {
 
   if (CurrentParryState) {
     temp |= MASK_PARRY;
+  }
+  if (PowerProblem) {
+    temp |= MASK_POWER_PROBLEM;
   }
 
   if (Lights != temp) { // only send on change
@@ -351,16 +360,18 @@ void MultiWeaponSensor::DoReset() {
     break;
 
   case SABRE:
-    Debounce_b1.reset(SabreWhiteTime_us);
-    Debounce_b2.reset(SabreWhiteTime_us);
+
     Debounce_c1.reset(SabreContactTime_us);
     Debounce_c2.reset(SabreContactTime_us);
-    Debounce_SabreWhite_l.setRequiredOnUs(2000);     // 2ms
-    Debounce_SabreWhite_l.setRequiredOffUs(1000000); // 1s
+    Debounce_SabreWhite_l.setRequiredOnUs(SabreWhiteTime_us); // 2ms
+    Debounce_SabreWhite_l.setRequiredOffUs(1000000);          // 1s
     Debounce_SabreWhite_l.reset();
-    Debounce_SabreWhite_r.setRequiredOnUs(2000);     // 2ms
-    Debounce_SabreWhite_r.setRequiredOffUs(1000000); // 1s
+    Debounce_SabreWhite_r.setRequiredOnUs(SabreWhiteTime_us); // 2ms
+    Debounce_SabreWhite_r.setRequiredOffUs(1000000);          // 1s
     Debounce_SabreWhite_r.reset();
+    WO_Debounce_Parry.setRequiredOnUs(200);
+    WO_Debounce_Parry.setRequiredOffUs(200);
+    WO_Debounce_Parry.reset();
 
     break;
   }
@@ -392,6 +403,8 @@ bool MultiWeaponSensor::IsLocked() {
 }
 
 void MultiWeaponSensor::DoFullScan() {
+  // allow external charges to flow to gnd
+  Set_IODirectionAndValue(0, 0);
 
   weapon_t temp = GetWeapon();
 
@@ -411,6 +424,7 @@ void MultiWeaponSensor::DoFullScan() {
 
       DoReset();
     }
+
     vTaskDelay(0);
   } else {
     CurrentParryState = Debounce_Parry.isOK();
