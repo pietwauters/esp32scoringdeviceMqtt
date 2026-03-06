@@ -14,7 +14,7 @@ static void StartupDisplayTask(void *parameter) {
   vTaskDelay(pdMS_TO_TICKS(3000));
 
   // Display piste ID for 10 seconds
-  long targetTime = millis() + 8000;
+  long targetTime = millis() + 3000;
   while (millis() < targetTime) {
     display->DisplayPisteId();
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -29,32 +29,62 @@ static const int spiClk = 1000000; // 1 MHz
 SPIClass hspi(HSPI);
 MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, hspi, CS_PIN, MAX_DEVICES);
 
-uint8_t numbers[][9] = {
-    {5, 62, 81, 73, 69, 62, 0, 0, 0},   {3, 66, 127, 64, 0, 0, 0, 0, 0},
-    {5, 113, 73, 73, 73, 70, 0, 0, 0},  {5, 65, 73, 73, 73, 54, 0, 0, 0},
-    {5, 15, 8, 8, 8, 127, 0, 0, 0},     {5, 79, 73, 73, 73, 49, 0, 0, 0},
-    {5, 62, 73, 73, 73, 48, 0, 0, 0},   {5, 3, 1, 1, 1, 127, 0, 0, 0},
-    {5, 54, 73, 73, 73, 54, 0, 0, 0},   {5, 6, 73, 73, 73, 62, 0, 0, 0}, // 9
-    {2, 108, 108, 0, 0, 0, 0, 0, 0},                                     // :
-    {4, 8, 8, 8, 8, 0, 0, 0, 0},                                         // -
-    {2, 96, 96, 0, 0, 0, 0, 0, 0},                                       // .
-    {5, 32, 16, 8, 4, 2, 0, 0, 0},                                       // /
-    {5, 99, 20, 8, 20, 99, 0, 0, 0},                                     // x
-    {5, 124, 18, 17, 18, 124, 0, 0, 0}, // A (offset 15)
-    {5, 127, 73, 73, 73, 54, 0, 0, 0},  {5, 62, 65, 65, 65, 34, 0, 0, 0},
-    {5, 127, 65, 65, 65, 62, 0, 0, 0},  {5, 127, 73, 73, 73, 65, 0, 0, 0},
-    {5, 127, 9, 9, 9, 1, 0, 0, 0},      {5, 62, 65, 65, 81, 115, 0, 0, 0},
-    {5, 127, 8, 8, 8, 127, 0, 0, 0},    {5, 0, 65, 127, 65, 0, 0, 0, 0},
-    {5, 32, 64, 65, 63, 1, 0, 0, 0},    {5, 127, 8, 20, 34, 65, 0, 0, 0},
-    {5, 127, 64, 64, 64, 64, 0, 0, 0},  {5, 127, 2, 28, 2, 127, 0, 0, 0},
-    {5, 127, 4, 8, 16, 127, 0, 0, 0},   {5, 62, 65, 65, 65, 62, 0, 0, 0},
-    {5, 127, 9, 9, 9, 6, 0, 0, 0},      {5, 62, 65, 81, 33, 94, 0, 0, 0},
-    {5, 127, 9, 25, 41, 70, 0, 0, 0},   {5, 38, 73, 73, 73, 50, 0, 0, 0},
-    {5, 3, 1, 127, 1, 3, 0, 0, 0},      {5, 63, 64, 64, 64, 63, 0, 0, 0},
-    {5, 31, 32, 64, 32, 31, 0, 0, 0},   {5, 63, 64, 56, 64, 63, 0, 0, 0},
-    {5, 99, 20, 8, 20, 99, 0, 0, 0},    {5, 3, 4, 120, 4, 3, 0, 0, 0},
-    {5, 97, 89, 73, 77, 67, 0, 0, 0} // Z
+uint8_t numbers[][9] = {{5, 62, 81, 73, 69, 62, 0, 0, 0},
+                        {3, 66, 127, 64, 0, 0, 0, 0, 0},
+                        {5, 113, 73, 73, 73, 70, 0, 0, 0},
+                        {5, 65, 73, 73, 73, 54, 0, 0, 0},
+                        {5, 15, 8, 8, 8, 127, 0, 0, 0},
+                        {5, 79, 73, 73, 73, 49, 0, 0, 0},
+                        {5, 62, 73, 73, 73, 48, 0, 0, 0},
+                        {5, 3, 1, 1, 1, 127, 0, 0, 0},
+                        {5, 54, 73, 73, 73, 54, 0, 0, 0},
+                        {5, 6, 73, 73, 73, 62, 0, 0, 0},    // 9
+                        {2, 108, 108, 0, 0, 0, 0, 0, 0},    // :
+                        {4, 8, 8, 8, 8, 0, 0, 0, 0},        // -
+                        {2, 96, 96, 0, 0, 0, 0, 0, 0},      // .
+                        {5, 32, 16, 8, 4, 2, 0, 0, 0},      // /
+                        {5, 99, 20, 8, 20, 99, 0, 0, 0},    // x
+                        {5, 124, 18, 17, 18, 124, 0, 0, 0}, // A (offset 15)
+                        {5, 127, 73, 73, 73, 54, 0, 0, 0},
+                        {5, 62, 65, 65, 65, 34, 0, 0, 0},
+                        {5, 127, 65, 65, 65, 62, 0, 0, 0},
+                        {5, 127, 73, 73, 73, 65, 0, 0, 0},
+                        {5, 127, 9, 9, 9, 1, 0, 0, 0},
+                        {5, 62, 65, 65, 81, 115, 0, 0, 0},
+                        {5, 127, 8, 8, 8, 127, 0, 0, 0},
+                        {5, 0, 65, 127, 65, 0, 0, 0, 0},
+                        {5, 32, 64, 65, 63, 1, 0, 0, 0},
+                        {5, 127, 8, 20, 34, 65, 0, 0, 0},
+                        {5, 127, 64, 64, 64, 64, 0, 0, 0},
+                        {5, 127, 2, 28, 2, 127, 0, 0, 0},
+                        {5, 127, 4, 8, 16, 127, 0, 0, 0},
+                        {5, 62, 65, 65, 65, 62, 0, 0, 0},
+                        {5, 127, 9, 9, 9, 6, 0, 0, 0},
+                        {5, 62, 65, 81, 33, 94, 0, 0, 0},
+                        {5, 127, 9, 25, 41, 70, 0, 0, 0},
+                        {5, 38, 73, 73, 73, 50, 0, 0, 0},
+                        {5, 3, 1, 127, 1, 3, 0, 0, 0},
+                        {5, 63, 64, 64, 64, 63, 0, 0, 0},
+                        {5, 31, 32, 64, 32, 31, 0, 0, 0},
+                        {5, 63, 64, 56, 64, 63, 0, 0, 0},
+                        {5, 99, 20, 8, 20, 99, 0, 0, 0},
+                        {5, 3, 4, 120, 4, 3, 0, 0, 0},
+                        {5, 97, 89, 73, 77, 67, 0, 0, 0},  // Z
+                        {3, 248, 40, 56, 0, 0, 0, 0, 0},   // Prio
+                        {3, 248, 136, 248, 0, 0, 0, 0, 0}, // Small 0
+                        {3, 144, 248, 128, 0, 0, 0, 0, 0}, // Small 1
+                        {3, 232, 168, 184, 0, 0, 0, 0, 0},
+                        {3, 168, 168, 248, 0, 0, 0, 0, 0},
+                        {3, 56, 32, 248, 0, 0, 0, 0, 0},
+                        {3, 184, 168, 232, 0, 0, 0, 0, 0},
+                        {3, 248, 168, 232, 0, 0, 0, 0, 0},
+                        {3, 8, 232, 24, 0, 0, 0, 0, 0},
+                        {3, 248, 168, 248, 0, 0, 0, 0, 0},
+                        {3, 184, 168, 248, 0, 0, 0, 0, 0}
+
 };
+constexpr int PRIO_OFFSET = 'Z' - 'A' + 1 + 15;
+constexpr int SMALL_ZERO_OFFSET = 'Z' - 'A' + 2 + 15;
 
 #define TIME_SCORE_PERIOD_INTERVAL_MS 2000
 
@@ -138,6 +168,33 @@ void TimeScoreDisplay::DisplayScore(uint8_t scoreLeft, uint8_t scoreRight) {
   SetChar(32 - w - diff / 2, digit3);
 }
 
+constexpr int constTimeStartPosition = 5;
+int TimeScoreDisplay::calculateTimeStartPosition() {
+  // If prio -> shift time to the opposite side
+  // If no prio, and during pools -> Time central
+  // If no prio and direct elimination or team event -> shit time to left to
+  // leave space for period
+
+  int TimeStartPosition = constTimeStartPosition;
+  switch (m_Prio) {
+  case 0:
+    if (m_maxround > 1) {
+      TimeStartPosition -= 4;
+    }
+    break;
+  case 1:
+    TimeStartPosition += 3;
+
+    break;
+
+  case 2:
+    TimeStartPosition -= 3;
+    break;
+  }
+
+  return TimeStartPosition;
+}
+
 void TimeScoreDisplay::DisplayTime(uint8_t minutes, uint8_t seconds,
                                    uint8_t hundreths, bool TenthsOnly) {
   mx.clear();
@@ -145,27 +202,41 @@ void TimeScoreDisplay::DisplayTime(uint8_t minutes, uint8_t seconds,
   uint8_t digit1 = seconds / 10;
   uint8_t digit2 = seconds - digit1 * 10;
   bool bDisplayDigit2 = true;
+  int TimeStartPosition = calculateTimeStartPosition();
+  switch (m_Prio) {
+  case 0:
+    if ((m_round > 0) && (m_round < m_maxround + 1) && (m_maxround > 1))
+      SetChar(29, SMALL_ZERO_OFFSET + m_round);
+    break;
+  case 1:
+    SetChar(0, PRIO_OFFSET);
+    break;
+
+  case 2:
+    SetChar(29, PRIO_OFFSET);
+    break;
+  }
 
   if ((minutes == 0) && (seconds < 10)) {
     digit0 = seconds;
     digit1 = hundreths / 10;
     digit2 = hundreths - digit1 * 10;
-    SetChar(13, 12); // .
+    SetChar(TimeStartPosition + 7, 12); // .
     if (TIMER_RUNNING == m_TimerStatus) {
       bDisplayDigit2 = false;
     }
   } else {
-    SetChar(13, 10); // ::
+    SetChar(TimeStartPosition + 7, 10); // ::
   }
 
   uint8_t w = numbers[digit0][0];
   uint8_t diff = 5 - w;
-  SetChar(6 + diff / 2, digit0);
+  SetChar(TimeStartPosition + diff / 2, digit0);
   w = numbers[digit1][0];
   diff = 5 - w;
-  SetChar(18 - diff / 2, digit1);
+  SetChar(TimeStartPosition + 11 - diff / 2, digit1);
   if (bDisplayDigit2)
-    SetChar(18 + numbers[digit1][0] + 1 - diff / 2, digit2);
+    SetChar(TimeStartPosition + 11 + numbers[digit1][0] + 1 - diff / 2, digit2);
 }
 
 void TimeScoreDisplay::DisplayMatchCount(uint8_t match, uint8_t maxmatch) {
@@ -263,7 +334,21 @@ void TimeScoreDisplay::ProcessEvents() {
     NextTimeToSwitchBetweenScoreAndTime = millis() + 2500;
     DisplayMatchCount(m_round, m_maxround);
     break;
+  case EVENT_PRIO:
+    switch (event_data) {
+    case 0:
+      m_Prio = 0;
+      break;
 
+    case 1:
+      m_Prio = 1;
+      break;
+
+    case 2:
+      m_Prio = 2;
+      break;
+    }
+    break;
   case EVENT_SCORE_LEFT:
     m_scoreLeft = event_data;
     NextTimeToSwitchBetweenScoreAndTime = millis() + 2500;
@@ -310,8 +395,9 @@ void TimeScoreDisplay::ProcessEvents() {
 
   case EVENT_WEAPON:
     NextTimeToSwitchBetweenScoreAndTime = millis() + 4500;
-    // below is needed because when I switch to foil with no weapons connected,
-    // there will be a double hit, resulting in immediately showing the score
+    // below is needed because when I switch to foil with no weapons
+    // connected, there will be a double hit, resulting in immediately showing
+    // the score
     m_objectshown = 3;
     switch (event_data) {
     case WEAPON_MASK_EPEE:
@@ -365,12 +451,14 @@ void TimeScoreDisplay::CycleScoreMatchAndTimeWhenNotFighting() {
       return;
     if (millis() > NextTimeToTogglecolon) {
       NextTimeToTogglecolon = millis() + 250;
+      int TimeStartPosition = calculateTimeStartPosition();
+
       if (m_separatorshown) {
         m_separatorshown = false;
-        ClearColumn(13);
-        ClearColumn(14);
+        ClearColumn(TimeStartPosition + 7);
+        ClearColumn(TimeStartPosition + 8);
       } else {
-        SetChar(13, 10);
+        SetChar(TimeStartPosition + 7, 10);
         m_separatorshown = true;
       }
     }
@@ -383,28 +471,28 @@ void TimeScoreDisplay::CycleScoreMatchAndTimeWhenNotFighting() {
     switch (m_objectshown) {
     case 0:
       ShowTime();
-      m_objectshown = 1;
+      m_objectshown = 3;
       NextTimeToSwitchBetweenScoreAndTime =
           millis() + TIME_SCORE_PERIOD_INTERVAL_MS;
       break;
 
     case 1:
-      ShowScore();
+      /*ShowScore();
       m_objectshown = 2;
       NextTimeToSwitchBetweenScoreAndTime =
-          millis() + TIME_SCORE_PERIOD_INTERVAL_MS;
+          millis() + TIME_SCORE_PERIOD_INTERVAL_MS;*/
       break;
 
     case 2:
-      DisplayMatchCount(m_round, m_maxround);
+      /*DisplayMatchCount(m_round, m_maxround);
       m_objectshown = 0;
       NextTimeToSwitchBetweenScoreAndTime =
-          millis() + TIME_SCORE_PERIOD_INTERVAL_MS / 3;
+          millis() + TIME_SCORE_PERIOD_INTERVAL_MS / 2;*/
       break;
 
     case 3:
       ShowTime();
-      m_objectshown = 1;
+      m_objectshown = 2;
       NextTimeToSwitchBetweenScoreAndTime =
           millis() + TIME_SCORE_PERIOD_INTERVAL_MS;
       break;

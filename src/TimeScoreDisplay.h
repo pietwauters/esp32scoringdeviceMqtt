@@ -6,6 +6,7 @@
 #include "FencingStateMachine.h"
 #include "RepeaterReceiver.h"
 #include "SubjectObserverTemplate.h"
+#include "WS2812BLedStrip.h"
 #include <MD_MAX72xx.h>
 #include <Preferences.h>
 #include <SPI.h>
@@ -39,7 +40,8 @@ enum TimerStatus_t {
 };
 
 class TimeScoreDisplay : public Observer<FencingStateMachine>,
-                         public Observer<RepeaterReceiver> {
+                         public Observer<RepeaterReceiver>,
+                         public Observer<WS2812B_LedStrip> {
 public:
   /** Default constructor */
   TimeScoreDisplay();
@@ -48,6 +50,7 @@ public:
   void begin();
   void update(FencingStateMachine *subject, uint32_t eventtype);
   void update(RepeaterReceiver *subject, uint32_t eventtype);
+  void update(WS2812B_LedStrip *subject, uint32_t eventtype) { ShowTime(); };
   void ProcessEvents();
   void DisplayScore(uint8_t scoreLeft, uint8_t scoreRight);
   void DisplayTime(uint8_t minutes, uint8_t seconds, uint8_t hundreths,
@@ -65,6 +68,7 @@ public:
   void ClearColumn(uint8_t MostLeftPosition);
   void SetChar(uint8_t MostLeftPosition, uint8_t character);
   void ShowScore() {
+    return;
     DisplayScore(m_scoreLeft, m_scoreRight);
     m_ScoreIsShown = true;
   };
@@ -98,6 +102,7 @@ private:
   uint8_t m_hundredths = 0;
   uint8_t m_round = 0;
   uint8_t m_maxround = 0;
+  uint8_t m_Prio = 0;
 
   TimerStatus_t m_TimerStatus = NO_TIME;
   bool m_separatorshown = true;
@@ -111,6 +116,8 @@ private:
   int m_Brightness = TEXT_BRIGHTNESS_NORMAL;
   int PisteId = -1;
   bool m_Idle = false;
+
+  int calculateTimeStartPosition();
 };
 
 #endif // TIMESCOREDISPLAY_H

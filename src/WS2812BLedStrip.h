@@ -27,6 +27,9 @@
 #define RELATIVE_LOW LOW
 #endif
 
+#define END_OF_WELCOME_ANIMATION 1
+#define END_OF_PRIO_ANIMATION 2
+
 // How many NeoPixels are attached to the Arduino?
 #define NUMPIXELS 128
 
@@ -44,7 +47,8 @@
 
 enum AnimationType_t { WELCOME, PRIO, ENGARED_PRETS_ALLEZ, WARNING };
 
-class WS2812B_LedStrip : public Observer<FencingStateMachine>,
+class WS2812B_LedStrip : public Subject<WS2812B_LedStrip>,
+                         public Observer<FencingStateMachine>,
                          public Observer<RepeaterReceiver>,
                          public SingletonMixin<WS2812B_LedStrip> {
 public:
@@ -92,6 +96,18 @@ public:
   void begin();
   void setUWFTimeLeft(uint8_t tens);
   void setUWFTimeRight(uint8_t tens);
+  void showNumberLeft(uint8_t number);  // Display 0-45 on the left  8x8 panel
+  void showNumberRight(uint8_t number); // Display 0-45 on the right 8x8 panel
+  uint8_t GetLeftScore() const { return m_LeftScore; }
+  void SetLeftScore(uint8_t val) {
+    m_LeftScore = val;
+    SetLedStatus(0xff); // full redraw so orange/prio paint on top of score
+  }
+  uint8_t GetRightScore() const { return m_RightScore; }
+  void SetRightScore(uint8_t val) {
+    m_RightScore = val;
+    SetLedStatus(0xff); // full redraw so orange/prio paint on top of score
+  }
   void SetMirroring(bool value) { m_ReverseColors = value; }
   void ShowWelcomeLights();
   void DoAnimation(uint32_t type);
@@ -101,6 +117,7 @@ public:
   void startAnimation(uint32_t eventtype);
   void NewAnimatePrio();
   void ShowPowerFailure();
+  void StateChanged(uint32_t eventtype) { notify(eventtype); }
 
 protected:
 private:
@@ -111,6 +128,10 @@ private:
 
   void updateHelper(uint32_t eventtype);
   void setUWFTime(uint8_t tens, uint8_t bottom);
+  void drawDigit3x5(uint8_t panelOffset, uint8_t digit, uint8_t startRow,
+                    uint8_t startCol, uint32_t color);
+  void showNumber(uint8_t panelOffset, uint8_t number, uint32_t color,
+                  uint8_t startCol);
   uint32_t m_LedStatus; //!< Member variable "m_LedStatus"
   NeoPixelRMT *m_pixels;
   bool m_HasBegun = false;
@@ -131,12 +152,16 @@ private:
   bool m_YellowCardRight = false;
   bool m_RedCardLeft = false;
   bool m_RedCardRight = false;
+  bool m_BlackCardLeft = false;
+  bool m_BlackCardRight = false;
   uint8_t m_UW2Ftens = 0;
   bool m_YellowPCardLeft = false;
   bool m_YellowPCardRight = false;
   bool Parry = false;
   uint8_t m_RedPCardLeft = 0;
   uint8_t m_RedPCardRight = 0;
+  uint8_t m_LeftScore = 0;
+  uint8_t m_RightScore = 0;
 
   QueueHandle_t queue = NULL;
   QueueHandle_t Animationqueue = NULL;

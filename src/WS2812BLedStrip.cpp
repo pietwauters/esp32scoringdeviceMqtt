@@ -26,6 +26,20 @@ void WS2812B_LedStrip::LedStripAnimator(void *parameter) {
   }
 }
 
+// 3x5 pixel font for digits 0-9 (each row is 3 bits, MSB = leftmost column)
+static const uint8_t digitFont3x5[10][5] = {
+    {0b111, 0b101, 0b101, 0b101, 0b111}, // 0
+    {0b010, 0b110, 0b010, 0b010, 0b111}, // 1
+    {0b111, 0b001, 0b111, 0b100, 0b111}, // 2
+    {0b111, 0b001, 0b011, 0b001, 0b111}, // 3
+    {0b101, 0b101, 0b111, 0b001, 0b001}, // 4
+    {0b111, 0b100, 0b111, 0b001, 0b111}, // 5
+    {0b111, 0b100, 0b111, 0b101, 0b111}, // 6
+    {0b111, 0b001, 0b010, 0b010, 0b010}, // 7
+    {0b111, 0b101, 0b111, 0b101, 0b111}, // 8
+    {0b111, 0b101, 0b111, 0b001, 0b111}, // 9
+};
+
 char Cross[] = {1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,
                 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0,
                 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0,
@@ -131,7 +145,7 @@ void WS2812B_LedStrip::setRed(bool Value, bool bReverse) {
   }
   // m_pixels->show();   // Send the updated pixel colors to the hardware.
 }
-
+constexpr int priostartpostion = 0;
 void WS2812B_LedStrip::setRedPrio(bool Value, bool bReverse) {
   uint32_t FillColor = m_Red;
   if (bReverse) {
@@ -139,9 +153,9 @@ void WS2812B_LedStrip::setRedPrio(bool Value, bool bReverse) {
   }
 
   if (Value) {
-    m_pixels->fill(FillColor, 0, 8);
+    m_pixels->fill(FillColor, priostartpostion, 8);
   } else {
-    m_pixels->fill(m_pixels->Color(0, 0, 0), 0, 8);
+    m_pixels->fill(m_pixels->Color(0, 0, 0), priostartpostion, 8);
   }
   // m_pixels->show();   // Send the updated pixel colors to the hardware.
 }
@@ -165,10 +179,9 @@ void WS2812B_LedStrip::setGreenPrio(bool Value, bool bReverse) {
     FillColor = m_Red;
   }
   if (Value) {
-    m_pixels->fill(FillColor, 64, 8);
-
+    m_pixels->fill(FillColor, priostartpostion + 64, 8);
   } else {
-    m_pixels->fill(m_pixels->Color(0, 0, 0), 64, 8);
+    m_pixels->fill(m_pixels->Color(0, 0, 0), priostartpostion + 64, 8);
   }
   // m_pixels->show();   // Send the updated pixel colors to the hardware.
 }
@@ -234,7 +247,6 @@ void WS2812B_LedStrip::setOrangeLeft(bool Value) {
 void WS2812B_LedStrip::setOrangeRight(bool Value) {
   if (Value) {
     m_pixels->fill(m_Orange, 104 - 16, 16);
-
   } else {
     m_pixels->fill(m_pixels->Color(0, 0, 0), 104 - 16, 16);
   }
@@ -256,7 +268,7 @@ void WS2812B_LedStrip::setYellowCardRight(bool Value) {
   if (Value) {
     theFillColor = m_Yellow;
   }
-  m_pixels->fill(theFillColor, 70 + 5 * 8, 2);
+  // m_pixels->fill(theFillColor, 70 + 5 * 8, 2);
   m_pixels->fill(theFillColor, 70 + 6 * 8, 2);
   m_pixels->fill(theFillColor, 70 + 7 * 8, 2);
 }
@@ -266,7 +278,7 @@ void WS2812B_LedStrip::setYellowCardLeft(bool Value) {
   if (Value) {
     theFillColor = m_Yellow;
   }
-  m_pixels->fill(theFillColor, 0 + 5 * 8, 2);
+  // m_pixels->fill(theFillColor, 0 + 5 * 8, 2);
   m_pixels->fill(theFillColor, 0 + 6 * 8, 2);
   m_pixels->fill(theFillColor, 0 + 7 * 8, 2);
 
@@ -278,7 +290,7 @@ void WS2812B_LedStrip::setRedCardRight(bool Value) {
   if (Value) {
     theFillColor = m_Red;
   }
-  m_pixels->fill(theFillColor, 68 + 5 * 8, 2);
+  // m_pixels->fill(theFillColor, 68 + 5 * 8, 2);
   m_pixels->fill(theFillColor, 68 + 6 * 8, 2);
   m_pixels->fill(theFillColor, 68 + 7 * 8, 2);
 }
@@ -288,7 +300,7 @@ void WS2812B_LedStrip::setRedCardLeft(bool Value) {
   if (Value) {
     theFillColor = m_Red;
   }
-  m_pixels->fill(theFillColor, 2 + 5 * 8, 2);
+  // m_pixels->fill(theFillColor, 2 + 5 * 8, 2);
   m_pixels->fill(theFillColor, 2 + 6 * 8, 2);
   m_pixels->fill(theFillColor, 2 + 7 * 8, 2);
 }
@@ -337,6 +349,13 @@ void WS2812B_LedStrip::updateHelper(uint32_t eventtype) {
       break;
     }
 
+    break;
+  case EVENT_SCORE_LEFT:
+    SetLeftScore(event_data);
+    break;
+
+  case EVENT_SCORE_RIGHT:
+    SetRightScore(event_data);
     break;
 
   case EVENT_PRIO:
@@ -402,6 +421,28 @@ void WS2812B_LedStrip::updateHelper(uint32_t eventtype) {
       m_RedCardRight = false;
     }
     setRedCardRight(m_RedCardRight);
+    SetLedStatus(0xff);
+    break;
+
+  case EVENT_BLACK_CARD_RIGHT:
+
+    if (event_data) {
+      m_BlackCardRight = true;
+    } else {
+      m_BlackCardRight = false;
+    }
+    setWhiteRight(true, true);
+    SetLedStatus(0xff);
+    break;
+
+  case EVENT_BLACK_CARD_LEFT:
+
+    if (event_data) {
+      m_BlackCardLeft = true;
+    } else {
+      m_BlackCardLeft = false;
+    }
+    setWhiteLeft(true, true);
     SetLedStatus(0xff);
     break;
 
@@ -515,37 +556,63 @@ void WS2812B_LedStrip::SetLedStatus(uint32_t val) {
   }
   bool ColoredOn = m_LedStatus & MASK_RED;
   bool ReverseColor = m_LedStatus & MASK_REVERSE_COLORS;
+  bool ClearRightPanel =
+      (m_LedStatus & MASK_RED) || (m_LedStatus & MASK_WHITE_L);
+  bool ClearLeftPanel =
+      (m_LedStatus & MASK_GREEN) || (m_LedStatus & MASK_WHITE_R);
   setRed(ColoredOn, ReverseColor);
-  if (!ColoredOn) {
-    setWhiteLeft(m_LedStatus & MASK_WHITE_L);
-    if (!(m_LedStatus & MASK_WHITE_L)) // This is needed because I'm re-using
-                                       // the "white part" to show orange
-    {
-      setOrangeLeft(m_LedStatus & MASK_ORANGE_L);
-      setRedPrio(m_PrioLeft, m_ReverseColors);
-      setYellowCardLeft(m_YellowCardLeft);
-      setRedCardLeft(m_RedCardLeft);
-      setUWFTimeLeft(m_UW2Ftens);
-      setYellowPCardLeft(m_YellowPCardLeft);
-      setRedPCardLeft(m_RedPCardLeft);
+  if (m_BlackCardLeft) {
+    setWhiteLeft(true, true);
+  } else {
+    if (!ColoredOn) {
+      setWhiteLeft(m_LedStatus & MASK_WHITE_L);
+      if (!(m_LedStatus & MASK_WHITE_L)) // This is needed because I'm re-using
+                                         // the "white part" to show orange
+      {
+        if (ClearLeftPanel) {
+          setRed(false, m_ReverseColors);
+        } else {
+          showNumberLeft(m_LeftScore); // score first
+          if (m_LedStatus & MASK_ORANGE_L)
+            setOrangeLeft(true); // orange on top
+          if (m_PrioLeft)
+            setRedPrio(true, m_ReverseColors); // prio on top
+          setYellowCardLeft(m_YellowCardLeft);
+          setRedCardLeft(m_RedCardLeft);
+          setUWFTimeLeft(m_UW2Ftens);
+          setYellowPCardLeft(m_YellowPCardLeft);
+          setRedPCardLeft(m_RedPCardLeft);
+        }
+      }
     }
   }
 
   ColoredOn = m_LedStatus & MASK_GREEN;
   setGreen(ColoredOn, m_ReverseColors);
-
-  if (!ColoredOn) {
-    setWhiteRight(m_LedStatus & MASK_WHITE_R);
-    if (!(m_LedStatus & MASK_WHITE_R)) {
-      setOrangeRight(m_LedStatus & MASK_ORANGE_R);
-      setGreenPrio(m_PrioRight, m_ReverseColors);
-      setYellowCardRight(m_YellowCardRight);
-      setRedCardRight(m_RedCardRight);
-      setUWFTimeRight(m_UW2Ftens);
-      setYellowPCardRight(m_YellowPCardRight);
-      setRedPCardRight(m_RedPCardRight);
+  if (m_BlackCardRight) {
+    setWhiteRight(true, true);
+  } else {
+    if (!ColoredOn) {
+      setWhiteRight(m_LedStatus & MASK_WHITE_R);
+      if (!(m_LedStatus & MASK_WHITE_R)) {
+        if (ClearRightPanel) {
+          setGreen(false, m_ReverseColors);
+        } else {
+          showNumberRight(m_RightScore); // score first
+          if (m_LedStatus & MASK_ORANGE_R)
+            setOrangeRight(true); // orange on top
+          if (m_PrioRight)
+            setGreenPrio(true, m_ReverseColors); // prio on top
+          setYellowCardRight(m_YellowCardRight);
+          setRedCardRight(m_RedCardRight);
+          setUWFTimeRight(m_UW2Ftens);
+          setYellowPCardRight(m_YellowPCardRight);
+          setRedPCardRight(m_RedPCardRight);
+        }
+      }
     }
   }
+
   setBuzz(m_LedStatus & MASK_BUZZ);
   uint32_t maskedLedstatus =
       m_LedStatus & (MASK_GREEN | MASK_WHITE_R | MASK_WHITE_L | MASK_RED |
@@ -553,7 +620,6 @@ void WS2812B_LedStrip::SetLedStatus(uint32_t val) {
   if (!maskedLedstatus) {
     setParry(m_LedStatus & MASK_PARRY);
   }
-
   m_pixels->show();
 }
 
@@ -664,6 +730,63 @@ void WS2812B_LedStrip::setUWFTime(uint8_t tens, uint8_t bottom) {
 void WS2812B_LedStrip::setUWFTimeLeft(uint8_t tens) { setUWFTime(tens, 63); }
 
 void WS2812B_LedStrip::setUWFTimeRight(uint8_t tens) { setUWFTime(tens, 120); }
+
+// Draw a single 3x5 digit on an 8x8 panel.
+// panelOffset: 0 = left panel, 64 = right panel.
+// startRow/startCol: top-left corner of the 3x5 glyph (row- and
+// col-within-panel). Pixel addressing: panelOffset + row * 8 + col  (same
+// convention as rest of code).
+void WS2812B_LedStrip::drawDigit3x5(uint8_t panelOffset, uint8_t digit,
+                                    uint8_t startRow, uint8_t startCol,
+                                    uint32_t color) {
+  if (digit > 9)
+    digit = 9;
+  for (uint8_t r = 0; r < 5; r++) {
+    uint8_t row = startRow + r;
+    for (uint8_t c = 0; c < 3; c++) {
+      uint8_t col = startCol + c;
+      bool lit = (digitFont3x5[digit][r] >> (2 - c)) & 1;
+      m_pixels->setPixelColor(panelOffset + row * 8 + col, lit ? color : m_Off);
+    }
+  }
+}
+
+// Display a number (0-45) as two 3x5 digits on one 8x8 panel.
+// startCol: first column of the 7-wide number rectangle.
+// Left panel : startCol=0  → cols 0-6, col 7 reserved.
+// Right panel: startCol=1  → cols 1-7, col 0 reserved.
+// Rows 0-4 used; rows 5-7 are never touched.
+void WS2812B_LedStrip::showNumber(uint8_t panelOffset, uint8_t number,
+                                  uint32_t color, uint8_t startCol) {
+  if (number > 45)
+    number = 45;
+  uint8_t tens = number / 10;
+  uint8_t units = number % 10;
+  // Clear only the 7x5 number rectangle (startCol..startCol+6, rows 0-4)
+  for (uint8_t r = 0; r < 5; r++) {
+    for (uint8_t c = 0; c < 7; c++) {
+      m_pixels->setPixelColor(panelOffset + r * 8 + startCol + c, m_Off);
+    }
+  }
+  if (tens == 0) {
+    // Single digit: center it in the 7-wide rectangle (col startCol+2)
+    drawDigit3x5(panelOffset, units, 0, startCol + 2, color);
+  } else {
+    // Two digits: tens flush left, units flush right, gap at startCol+3
+    drawDigit3x5(panelOffset, tens, 0, startCol, color);
+    drawDigit3x5(panelOffset, units, 0, startCol + 4, color);
+  }
+  // Note: no show() here - caller (SetLedStatus) calls show() after
+  // drawing orange/prio on top, so those always have visual priority.
+}
+
+void WS2812B_LedStrip::showNumberLeft(uint8_t number) {
+  showNumber(0, number, m_Orange, 0);
+}
+
+void WS2812B_LedStrip::showNumberRight(uint8_t number) {
+  showNumber(64, number, m_Orange, 1);
+}
 
 void WS2812B_LedStrip::setYellowPCardRight(bool Value) {
   uint32_t theFillColor = m_Off;
@@ -792,10 +915,17 @@ void WS2812B_LedStrip::ShowWelcomeLights() {
   myShow();
   vTaskDelay(xDelay);
   ClearAll();
+  /* for (int i = 0; i < 46; i++) {
+     showNumberLeft(i);
+     showNumberRight(i);
+     vTaskDelay(xDelay);
+     ClearAll();
+   }*/
   for (int i = 0; i < 10; i++) {
     ClearAll();
     vTaskDelay(50 / portTICK_PERIOD_MS);
   }
+  StateChanged(1);
 }
 
 void WS2812B_LedStrip::DoAnimation(uint32_t type) {
@@ -812,6 +942,8 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     m_pixels->show(); // clear directly, no animation needed
     m_PrioLeft = false;
     m_PrioRight = false;
+    StateChanged(END_OF_PRIO_ANIMATION);
+    SetLedStatus(0xff);
 
     break;
 
@@ -822,6 +954,7 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     m_targetprio = 1;
     m_counter = 17 + 1;
     NewAnimatePrio();
+    StateChanged(END_OF_PRIO_ANIMATION);
     break;
 
   case EVENT_WS2812_PRIO_LEFT:
@@ -830,7 +963,9 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     m_PrioRight = false;
     m_targetprio = 2;
     m_counter = 17 + 2;
+
     NewAnimatePrio();
+    StateChanged(END_OF_PRIO_ANIMATION);
     break;
 
   case EVENT_WS2812_WARNING:
@@ -848,7 +983,7 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
 
 void WS2812B_LedStrip::NewAnimatePrio() {
   long sleeptime;
-
+  ClearAll();
   m_NextTimeToTogglePrioLights = millis() + 100 + m_counter * 15;
   m_Animating = true;
   vTaskDelay((100 + m_counter * 15) / portTICK_PERIOD_MS);
@@ -868,4 +1003,12 @@ void WS2812B_LedStrip::NewAnimatePrio() {
     sleeptime = m_NextTimeToTogglePrioLights = 60 + m_counter * 15;
     vTaskDelay(sleeptime / portTICK_PERIOD_MS);
   }
+  vTaskDelay(1500 / portTICK_PERIOD_MS);
+  // Below is added because the prio is shown in the text display. This is
+  // animation only
+  setGreenPrio(false, m_ReverseColors);
+  setRedPrio(false, m_ReverseColors);
+  m_PrioLeft = false;
+  m_PrioRight = false;
+  SetLedStatus(0xff);
 }
