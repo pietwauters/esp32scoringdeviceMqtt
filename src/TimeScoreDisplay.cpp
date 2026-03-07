@@ -502,6 +502,7 @@ void TimeScoreDisplay::CycleScoreMatchAndTimeWhenNotFighting() {
 
 void TimeScoreDisplay::DisplayPisteId() {
   mx.clear();
+
   char text[6];
   sprintf(text, "P-%03d", PisteId);
   uint8_t digit0 = text[0] - 'A' + 15;

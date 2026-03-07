@@ -346,6 +346,7 @@ void WS2812B_LedStrip::updateHelper(uint32_t eventtype) {
       default:
         SetBrightness(BRIGHTNESS_NORMAL);
       }
+      SetLedStatus(0xff);
       break;
     }
 
@@ -719,10 +720,11 @@ void WS2812B_LedStrip::setUWFTime(uint8_t tens, uint8_t bottom) {
     for (int i = 0; i < tens; i++) {
       m_pixels->setPixelColor(bottom - 8 * i, m_Blue);
     }
+    for (int i = 4; i < tens; i++) {
+      m_pixels->setPixelColor(bottom - i * 8, m_Orange);
+    }
     for (int i = 5; i < tens; i++) {
-      {
-        m_pixels->setPixelColor(bottom - i * 8, m_Red);
-      }
+      m_pixels->setPixelColor(bottom - i * 8, m_Red);
     }
   }
 }
