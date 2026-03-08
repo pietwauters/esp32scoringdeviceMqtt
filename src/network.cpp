@@ -401,6 +401,7 @@ void NetWork::update(UDPIOHandler *subject, uint32_t eventtype) {
 }
 
 WiFiManagerParameter WiFiPistId("WiFiPisteId", "PisteNr", "", 16);
+WiFiManagerParameter CyranoPisteName("Pistename", "Pistename", "", 8);
 WiFiManagerParameter WiFiAPPasswd("WiFiAPPasswd", "WiFiAPPasswd", "01041967",
                                   64);
 WiFiManagerParameter PowerMode("PowerSaveMode", "Deep Sleep", "N", 1);
@@ -442,6 +443,40 @@ void saveParamsCallback() {
   Preferences networkpreferences;
   networkpreferences.begin("credentials", false);
   networkpreferences.putInt("pisteNr", newPistId);
+  auto temp = CyranoPisteName.getValue();
+  const char *cyranoValue = CyranoPisteName.getValue();
+  String pistename = "";
+  if (cyranoValue != nullptr && cyranoValue[0] != '\0') {
+    char c = cyranoValue[0];
+    switch (c) {
+    case 'R':
+    case 'r':
+      pistename = "Red";
+      break;
+    case 'B':
+    case 'b':
+      pistename = "Blue";
+      break;
+    case 'Y':
+    case 'y':
+      pistename = "Yellow";
+      break;
+    case 'G':
+    case 'g':
+      pistename = "Green";
+      break;
+    case 'P':
+    case 'p':
+      pistename = "Podium";
+      break;
+    default:
+      pistename = "";
+      break;
+    }
+  }
+
+  networkpreferences.putString("Pistename", pistename.c_str());
+
   networkpreferences.putString("AP_Password", WiFiAPPasswd.getValue());
   uint16_t ThePort = 0;
   sscanf(CyranoPort.getValue(), "%d", &ThePort);
@@ -511,6 +546,9 @@ void NetWork::WaitForNewSettingsViaPortal() {
   sprintf(temp, "%d", PisteNr);
   WiFiPistId.setValue(temp, 8);
 
+  CyranoPisteName.setValue(
+      networkpreferences.getString("Pistename", "").c_str(), 8);
+
   String soft_ap_password =
       networkpreferences.getString("AP_Password", "01041967");
   WiFiAPPasswd.setValue(soft_ap_password.c_str(), 64);
@@ -573,6 +611,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
   server.end();
 
   wm.addParameter(&WiFiPistId);
+  wm.addParameter(&CyranoPisteName);
   wm.addParameter(&WiFiAPPasswd);
 
   wm.addParameter(&TryGlobalWiFi);

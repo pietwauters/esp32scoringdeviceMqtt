@@ -33,7 +33,8 @@ class CyranoHandler : public Observer<FencingStateMachine>,
 public:
   /** Default destructor */
   virtual ~CyranoHandler();
-  void ProcessMessageFromSoftware(const EFP1Message &input);
+  void ProcessMessageFromSoftware(const EFP1Message &input,
+                                  bool bVerifyPisteID = true);
   void SendInfoMessage();
   void ProcessUIEvents(uint32_t const event);
   void SetPisteID(const std::string &ID) { m_MachineStatus[PisteId] = ID; };

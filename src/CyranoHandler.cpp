@@ -45,7 +45,7 @@ void onMqttMessage(const char *topic, const char *payload,
   CyranoHandler &MyCyranoHandler = CyranoHandler::getInstance();
   std::string CyranoStr = convert_json_to_cyrano_string((char *)payload);
   if (CyranoStr != "") {
-    MyCyranoHandler.ProcessMessageFromSoftware((EFP1Message(CyranoStr)));
+    MyCyranoHandler.ProcessMessageFromSoftware((EFP1Message(CyranoStr)), false);
     // std::cout << "Reveiced mqtt message: " << CyranoStr << std::endl;
   }
 }
@@ -54,13 +54,18 @@ void CyranoHandler::Begin() {
 
   networkpreferences.begin("credentials", false);
   uint32_t PisteNr = networkpreferences.getInt("pisteNr", 304);
+  String pisteName = networkpreferences.getString("Pistename", "");
   CyranoPort = networkpreferences.getUShort("CyranoPort", CYRANO_PORT);
   CyranoBroadcastPort = networkpreferences.getUShort("CyranoBroadcastPort",
                                                      CYRANO_BROADCAST_PORT);
+  if (pisteName == "") {
+    char temp[8];
+    sprintf(temp, "%d", PisteNr);
+    m_MachineStatus[PisteId] = (std::string)temp;
+  } else {
+    m_MachineStatus[PisteId] = (std::string)pisteName.c_str();
+  }
 
-  char temp[8];
-  sprintf(temp, "%d", PisteNr);
-  m_MachineStatus[PisteId] = (std::string)temp;
   NextPeriodicalUpdate = millis() + 10000;
   strncpy(mqttServer,
           networkpreferences.getString("MqttBroker", "10.154.1.130").c_str(),
@@ -164,9 +169,12 @@ void CyranoHandler::SendInfoMessage() {
   return;
 }
 
-void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input) {
-  if (input[PisteId] != m_MachineStatus[PisteId])
-    return; // wrong Piste
+void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
+                                               bool bVerifyPisteID) {
+  if (bVerifyPisteID) {
+    if (input[PisteId] != m_MachineStatus[PisteId])
+      return; // wrong Piste
+  }
   switch (input.GetType()) {
   case HELLO:
     if ("" == m_MachineStatus[State]) {
