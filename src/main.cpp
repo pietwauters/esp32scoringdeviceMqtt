@@ -80,7 +80,7 @@ void setup() {
 
   uint32_t brown_reg_temp =
       READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG); // save WatchDog register
-  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout detector
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout detector
   // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, brown_reg_temp); //enable brownout
   // detector
 
