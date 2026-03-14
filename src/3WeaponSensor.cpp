@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "3WeaponSensor.h"
+#include "FlashWriteGuard.h"
 #include "driver/adc.h"
 #include "driver/gpio.h"
 #include "soc/sens_reg.h"
@@ -146,33 +147,36 @@ MultiWeaponSensor::MultiWeaponSensor() {
 
 void MultiWeaponSensor::begin() {
   Preferences mypreferences;
-  mypreferences.begin("scoringdevice", false);
-  LightsDuration = mypreferences.getInt("LIGHTS_MS", 0);
-  if (!LightsDuration) {
-    mypreferences.putInt("LIGHTS_MS", LIGHTS_DURATION_MS);
-    LightsDuration = LIGHTS_DURATION_MS;
-  }
-  uint8_t storedweapon = mypreferences.getUChar("START_WEAPON", 99);
-  if (99 == storedweapon) {
-    mypreferences.putUChar("START_WEAPON", 0);
-    storedweapon = 0;
-  }
-  switch (storedweapon) {
-  case 0:
-    m_ActualWeapon = FOIL;
-    break;
+  {
+    FlashWriteGuard guard; // enable brownout detection while NVS may write
+    mypreferences.begin("scoringdevice", false);
+    LightsDuration = mypreferences.getInt("LIGHTS_MS", 0);
+    if (!LightsDuration) {
+      mypreferences.putInt("LIGHTS_MS", LIGHTS_DURATION_MS);
+      LightsDuration = LIGHTS_DURATION_MS;
+    }
+    uint8_t storedweapon = mypreferences.getUChar("START_WEAPON", 99);
+    if (99 == storedweapon) {
+      mypreferences.putUChar("START_WEAPON", 0);
+      storedweapon = 0;
+    }
+    switch (storedweapon) {
+    case 0:
+      m_ActualWeapon = FOIL;
+      break;
 
-  case 1:
-    m_ActualWeapon = EPEE;
-    break;
+    case 1:
+      m_ActualWeapon = EPEE;
+      break;
 
-  case 2:
-    m_ActualWeapon = SABRE;
-    break;
-  default:
-    m_ActualWeapon = EPEE;
-  }
-  mypreferences.end();
+    case 2:
+      m_ActualWeapon = SABRE;
+      break;
+    default:
+      m_ActualWeapon = EPEE;
+    }
+    mypreferences.end();
+  } // guard destroyed here: brownout detection disabled again
 
   adc1_fast_register_channel(ADC1_CHANNEL_0);
   adc1_fast_register_channel(ADC1_CHANNEL_3);

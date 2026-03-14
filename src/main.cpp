@@ -22,6 +22,7 @@
 #include "FPA422Handler.h"
 #include "FastADC1.h"
 #include "FencingStateMachine.h"
+#include "FlashWriteGuard.h"
 #include "RepeaterReceiver.h"
 #include "RepeaterSender.h"
 #include "ResetHandler.h"
@@ -78,12 +79,6 @@ void setup() {
   esp_task_wdt_init(20, true);
   esp_task_wdt_add(NULL);
 
-  uint32_t brown_reg_temp =
-      READ_PERI_REG(RTC_CNTL_BROWN_OUT_REG); // save WatchDog register
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout detector
-  // WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, brown_reg_temp); //enable brownout
-  // detector
-
   MyTimeScoreDisplay = new TimeScoreDisplay();
   MyTimeScoreDisplay->begin(); // this also powers up the led panels
   MyTimeScoreDisplay->LaunchStartupDisplay();
@@ -116,6 +111,9 @@ void setup() {
   mypreferences.begin("scoringdevice", RO_MODE);
   bIsRepeater = mypreferences.getBool("RepeaterMode", false);
   bEnableDeepSleep = mypreferences.getBool("Powersave", false);
+  bool DisableBrownOut = mypreferences.getBool("DisableBrownout", true);
+  FlashWriteGuard::init(DisableBrownOut); // capture brownout register, disable
+                                          // detection globally
   mypreferences.end();
 
   MyNetWork = &NetWork::getInstance();

@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "FencingStateMachine.h"
+#include "FlashWriteGuard.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
@@ -102,6 +103,8 @@ void FencingStateMachine::ProcessSpecialSetting(uint32_t eventtype) {
   uint32_t eventsubtype = eventtype & SPECIAL_SETTING_SUBTYPE_MASK;
   if (UI_SET_PISTE_NR == eventsubtype) {
     Preferences networkpreferences;
+    FlashWriteGuard
+        guard; // enable brownout detection while writing piste number
     networkpreferences.begin("credentials", false);
     networkpreferences.putInt("U", event_data);
     networkpreferences.end();

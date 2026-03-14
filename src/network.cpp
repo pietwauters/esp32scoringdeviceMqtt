@@ -1,6 +1,7 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "network.h"
 #include "AsyncUDP.h"
+#include "FlashWriteGuard.h"
 #include "MDNSResolver.h"
 #include <Preferences.h>
 #include <WiFi.h>
@@ -423,6 +424,8 @@ WiFiManagerParameter MuteBuzzer("MuteBuzzer", "Mute Buzzer", "N", 1);
 WiFiManagerParameter RepeaterMode("RepeaterMode", "Is this a repeater", "N", 1);
 WiFiManagerParameter MasterPisteId("MasterPiste", "Piste to repeat", "500", 3);
 WiFiManagerParameter MirrorLights("MirrorLights", "Mirror lights", "N", 1);
+WiFiManagerParameter DisableBrownout("DisableBrownOut",
+                                     "Disable Brownout detecton", "Y", 1);
 
 bool ToBool(const char *input) {
   bool result = false;
@@ -437,6 +440,8 @@ bool ToBool(const char *input) {
 }
 
 void saveParamsCallback() {
+  FlashWriteGuard
+      guard; // enable brownout detection for all NVS writes in this callback
 
   int newPistId = -1;
   sscanf(WiFiPistId.getValue(), "%d", &newPistId);
@@ -516,6 +521,8 @@ void saveParamsCallback() {
   mypreferences.putBool("RepeaterMode", ToBool(RepeaterMode.getValue()));
   mypreferences.putBool("Powersave", ToBool(PowerMode.getValue()));
   mypreferences.putBool("MirrorLights", ToBool(MirrorLights.getValue()));
+  mypreferences.putBool("DisableBrownout", ToBool(DisableBrownout.getValue()));
+
   int MasterId = -1;
   sscanf(MasterPisteId.getValue(), "%d", &MasterId);
   mypreferences.putInt("MasterPiste", MasterId);
@@ -602,6 +609,8 @@ void NetWork::WaitForNewSettingsViaPortal() {
   MuteBuzzer.setValue(BoolToStr(mypreferences.getBool("MuteBuzzer", false)), 1);
   MirrorLights.setValue(BoolToStr(mypreferences.getBool("MirrorLights", false)),
                         1);
+  DisableBrownout.setValue(
+      BoolToStr(mypreferences.getBool("DisableBrownout", false)), 1);
 
   int32_t MasterNr = mypreferences.getInt("MasterPiste", -1);
   sprintf(temp, "%d", MasterNr);
@@ -626,6 +635,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
   wm.addParameter(&RepeaterMode);
   wm.addParameter(&MasterPisteId);
   wm.addParameter(&MirrorLights);
+  wm.addParameter(&DisableBrownout);
 
   wm.setEnableConfigPortal(true);
   wm.setConfigPortalBlocking(true);
