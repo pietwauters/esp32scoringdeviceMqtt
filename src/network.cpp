@@ -315,9 +315,7 @@ void NetWork::GlobalStartWiFi() {
   m_GlobalWifiStarted = true;
 
   // Start mDNS
-  MDNSResolver *MymDNS;
-  MymDNS->getInstance();
-  MymDNS->begin(soft_ap_ssid.c_str());
+  MDNSResolver::getInstance().begin(soft_ap_ssid.c_str());
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Hi! I am ESP32.");

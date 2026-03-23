@@ -18,7 +18,7 @@ CyranoHandler::CyranoHandler() {
 
 auto &mqttClient = AtlasAsyncMqttClient::getInstance();
 char mqttServer[16];           // MQTT Broker address
-const int mqttPort = 8883;     // MQTT Broker port
+const int mqttPort = 1883;     // MQTT Broker port (testing: no TLS)
 const char *mqttUser = "";     // MQTT username (optional)
 const char *mqttPassword = ""; // MQTT password (optional)
 char *mqttClientId;            // MQTT Client ID
@@ -103,17 +103,10 @@ void CyranoHandler::Begin() {
   theBroker.fromString(mqttServer);
   mqttClient.onMessage(onMqttMessage);
 
-  /*MDNSResolver *MymDNS;
-  MymDNS->getInstance();
-    mqttClient.setServer(MymDNS->lookupService("mqtt", "tcp",
-  theBroker,mdnsName), mqttPort);
-  */
-
-  std::string theMqttBroker = mdnsName;
-  theMqttBroker += ".local";
-
-  mqttClient.setServer(theMqttBroker, 8883);
-  mqttClient.setTLS(true, ca_cert_pem);
+  IPAddress resolvedBroker = MDNSResolver::getInstance().lookupService(
+      "mqtt", "tcp", theBroker, mdnsName);
+  mqttClient.setServer(resolvedBroker, resolvedPort);
+  mqttClient.setTLS(false);
   mqttClient.setCredentials(mqttUser, mqttPassword);
   mqttClient.setClientId(mqttClientId);
 
