@@ -306,6 +306,7 @@ private:
 
   int m_currentRound = 1;
   int m_nrOfRounds = 3;
+  bool m_MiniDE = false;
   FencingTimer m_Timer;
   UW2FTimer m_UW2FTimer;
   long m_UW2FSeconds = 0;

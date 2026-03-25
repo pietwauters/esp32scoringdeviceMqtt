@@ -67,6 +67,14 @@ FencingStateMachine::FencingStateMachine(int hw_timer_nr, int tickPeriod) {
 void FencingStateMachine::begin() {
   if (m_HasBegun)
     return;
+  Preferences mypreferences;
+  {
+    FlashWriteGuard guard; // enable brownout detection while NVS may write
+    mypreferences.begin("scoringdevice", false);
+    m_MiniDE = mypreferences.getBool("SmallDE", false);
+    mypreferences.end();
+  } // guard destroyed here: brownout detection disabled again
+
   xTaskCreatePinnedToCore(StateMachineHandler,   /* Task function. */
                           "StateMachineHandler", /* String with name of task. */
                           32768,                 /* Stack size in words. 65535*/
@@ -310,9 +318,12 @@ void FencingStateMachine::update(UDPIOHandler *subject, uint32_t eventtype) {
 
     switch (m_nrOfRounds) {
     case 1:
-      m_nrOfRounds = 3;
+      if (m_MiniDE) {
+        m_nrOfRounds = 2;
+      } else {
+        m_nrOfRounds = 3;
+      }
       break;
-
     case 2:
       m_nrOfRounds = 3;
       break;

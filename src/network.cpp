@@ -418,6 +418,7 @@ WiFiManagerParameter MqttBrokerIPAddress("MQTTIPAddress", "mqtt broker IP",
 
 WiFiManagerParameter StartUpWeapon("StartUpWeapon",
                                    "Default Weapon at start_up", "F", 8);
+WiFiManagerParameter SmallDE("SmallDE", "Have a 2 period DE", "N", 1);
 WiFiManagerParameter MuteBuzzer("MuteBuzzer", "Mute Buzzer", "N", 1);
 WiFiManagerParameter RepeaterMode("RepeaterMode", "Is this a repeater", "N", 1);
 WiFiManagerParameter MasterPisteId("MasterPiste", "Piste to repeat", "500", 3);
@@ -513,6 +514,7 @@ void saveParamsCallback() {
     break;
   }
   mypreferences.putUChar("START_WEAPON", startweapon);
+  mypreferences.putBool("SmallDE", ToBool(SmallDE.getValue()));
 
   // Code related to repeater / master mode
   mypreferences.putBool("MuteBuzzer", ToBool(MuteBuzzer.getValue()));
@@ -599,6 +601,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
     sprintf(temp, "E");
   }
   StartUpWeapon.setValue(temp, 1);
+  SmallDE.setValue(BoolToStr(mypreferences.getBool("SmallDE", false)), 1);
 
   PowerMode.setValue(BoolToStr(mypreferences.getBool("Powersave", false)), 1);
   RepeaterMode.setValue(BoolToStr(mypreferences.getBool("RepeaterMode", false)),
@@ -628,6 +631,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
   wm.addParameter(&FixedIPAddress);
   wm.addParameter(&MqttBrokerIPAddress);
   wm.addParameter(&StartUpWeapon);
+  wm.addParameter(&SmallDE);
   wm.addParameter(&MuteBuzzer);
   wm.addParameter(&PowerMode);
   wm.addParameter(&RepeaterMode);
