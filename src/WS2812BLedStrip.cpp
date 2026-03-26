@@ -237,18 +237,18 @@ void WS2812B_LedStrip::setWhiteRight(bool Value, bool inverse) {
 
 void WS2812B_LedStrip::setOrangeLeft(bool Value) {
   if (Value) {
-    m_pixels->fill(m_Orange, 40 - 16, 16);
+    m_pixels->fill(m_Orange, 40, 8);
   } else {
-    m_pixels->fill(m_pixels->Color(0, 0, 0), 40 - 16, 16);
+    m_pixels->fill(m_pixels->Color(0, 0, 0), 40, 8);
   }
   // m_pixels->show();   // Send the updated pixel colors to the hardware.
 }
 
 void WS2812B_LedStrip::setOrangeRight(bool Value) {
   if (Value) {
-    m_pixels->fill(m_Orange, 104 - 16, 16);
+    m_pixels->fill(m_Orange, 104, 8);
   } else {
-    m_pixels->fill(m_pixels->Color(0, 0, 0), 104 - 16, 16);
+    m_pixels->fill(m_pixels->Color(0, 0, 0), 104, 8);
   }
   // m_pixels->show();   // Send the updated pixel colors to the hardware.
 }
@@ -783,11 +783,11 @@ void WS2812B_LedStrip::showNumber(uint8_t panelOffset, uint8_t number,
 }
 
 void WS2812B_LedStrip::showNumberLeft(uint8_t number) {
-  showNumber(0, number, m_Orange, 0);
+  showNumber(0, number, m_Red, 0);
 }
 
 void WS2812B_LedStrip::showNumberRight(uint8_t number) {
-  showNumber(64, number, m_Orange, 1);
+  showNumber(64, number, m_Green, 1);
 }
 
 void WS2812B_LedStrip::setYellowPCardRight(bool Value) {
