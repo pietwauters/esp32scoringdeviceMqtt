@@ -91,7 +91,7 @@ void WS2812B_LedStrip::begin() {
                           "LedStripHandler", /* String with name of task. */
                           16384,             /* Stack size in words. */
                           NULL, /* Parameter passed as input of the task */
-                          6,    /* Priority of the task. */
+                          4,    /* Priority of the task. */
                           &LedStripTask, /* Task handle. */
                           1);
   esp_task_wdt_add(LedStripTask);
@@ -539,7 +539,7 @@ void WS2812B_LedStrip::ProcessEvents() {
 }
 
 void WS2812B_LedStrip::ProcessEventsBlocking() {
-  if (xQueueReceive(queue, &m_LastEvent, 4 / portTICK_PERIOD_MS) == pdPASS) {
+  if (xQueueReceive(queue, &m_LastEvent, 400 / portTICK_PERIOD_MS) == pdPASS) {
     uint32_t event_data = m_LastEvent & SUB_TYPE_MASK;
     SetLedStatus(event_data);
   }
@@ -691,6 +691,7 @@ void WS2812B_LedStrip::AnimateEngardePretsAllez() {
       }
     }
   }
+  SetLedStatus(0xff);
 }
 void WS2812B_LedStrip::StartEngardePretsAllezSequence() {
   m_EngardePretsAllezCounter = 0;

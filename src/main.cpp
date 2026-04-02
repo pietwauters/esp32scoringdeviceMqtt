@@ -18,6 +18,7 @@
  */
 // #include "LedMatrix.h"
 #include "3WeaponSensor.h"
+#include "AutoRef.h"
 #include "CyranoHandler.h"
 #include "FPA422Handler.h"
 #include "FastADC1.h"
@@ -74,10 +75,8 @@ bool bEnableDeepSleep = false;
 int FactoryResetCounter = 50;
 
 void setup() {
-
+  esp_task_wdt_init(20, false);
   Serial.begin(115200);
-  esp_task_wdt_init(20, true);
-  esp_task_wdt_add(NULL);
 
   MyTimeScoreDisplay = new TimeScoreDisplay();
   MyTimeScoreDisplay->begin(); // this also powers up the led panels
@@ -117,14 +116,20 @@ void setup() {
   mypreferences.end();
 
   MyNetWork = &NetWork::getInstance();
+  printf("[setup] NetWork begin\n");
   MyNetWork->begin();
+  printf("[setup] NetWork begin done\n");
 
+  printf("[setup] GlobalStartWiFi\n");
   MyNetWork->GlobalStartWiFi();
+  printf("[setup] GlobalStartWiFi done\n");
 
   ESP_LOGI(SET_UP_TAG, "%s", "Wifi started");
 
   MyUDPIOHandler = &UDPIOHandler::getInstance();
+  printf("[setup] ConnectToAP\n");
   MyUDPIOHandler->ConnectToAP();
+  printf("[setup] ConnectToAP done\n");
   MyUDPIOHandler->attach(*MyNetWork);
 
   // In repeater mode don't start these 2 tasks
@@ -143,11 +148,18 @@ void setup() {
     MyCyranoHandler->attach(*MyFPA422Handler);
     MySensor->attach(*MyStatemachine);
     MyStatemachine->RegisterMultiWeaponSensor(MySensor);
+    printf("[setup] Statemachine begin\n");
     MyStatemachine->begin();
+    printf("[setup] Statemachine begin done\n");
+    printf("[setup] Sensor begin\n");
     MySensor->begin();
-
+    printf("[setup] Sensor begin done\n");
     MyStatemachine->attach(*MyTimeScoreDisplay);
+    printf("[setup] CyranoHandler Begin\n");
     MyCyranoHandler->Begin();
+    printf("[setup] CyranoHandler Begin done\n");
+    esp_task_wdt_add(
+        NULL); // register main task with WDT only after slow mDNS lookup
     MyRepeaterSender = &RepeaterSender::getInstance();
     MyRepeaterSender->begin();
     MyStatemachine->attach(*MyRepeaterSender);
@@ -203,12 +215,18 @@ void setup() {
     */
   int freq_mhz = esp_clk_cpu_freq() / 1000000;
   printf("CPU frequency: %d MHz\n", freq_mhz);
+  printf("[setup] AutoRef begin\n");
+  MyStatemachine->attach(AutoRef::getInstance());
+  AutoRef::getInstance().begin();
+  printf("[setup] AutoRef begin done\n");
   MyStatemachine->update(MyUDPIOHandler, EVENT_UI_INPUT | UI_INPUT_RESET);
+  printf("Setup complete\n");
 }
 
 // extern HardwareSerial MySerial;
 
 void loop() {
+
   /*  // put your main code here, to run repeatedly:
     button->doUpdate();
     if (button->stateHasChanged()) {
@@ -290,8 +308,11 @@ void loop() {
 extern "C" void app_main() {
   // Call Arduino setup and loop
   initArduino(); // Initialize Arduino if needed
+  setup();       // Call the Arduino setup function
+  printf("At start of loop\n");
+  AutoRef::getInstance().setEnabled(true);
+  esp_task_wdt_init(20, false);
 
-  setup(); // Call the Arduino setup function
   while (true) {
     loop(); // Call the Arduino loop function
   }

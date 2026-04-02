@@ -174,6 +174,7 @@ void FencingStateMachine::update(UDPIOHandler *subject, uint32_t eventtype) {
 
   uint32_t maineventtype = eventtype & MAIN_TYPE_MASK;
   uint32_t card_event;
+
   m_IsConnectedToRemote = true;
   if (EVENT_UI_INPUT_SPECIAL_SETTINGS == maineventtype)
     ProcessSpecialSetting(eventtype);

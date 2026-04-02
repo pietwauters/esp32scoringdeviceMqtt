@@ -51,8 +51,10 @@ void onMqttMessage(const char *topic, const char *payload,
 }
 
 void CyranoHandler::Begin() {
+  printf("[Cyrano] Begin start t=%lu\n", millis());
 
   networkpreferences.begin("credentials", false);
+  printf("[Cyrano] NVS open t=%lu\n", millis());
   uint32_t PisteNr = networkpreferences.getInt("pisteNr", 304);
   String pisteName = networkpreferences.getString("Pistename", "");
   CyranoPort = networkpreferences.getUShort("CyranoPort", CYRANO_PORT);
@@ -68,9 +70,10 @@ void CyranoHandler::Begin() {
 
   NextPeriodicalUpdate = millis() + 10000;
   strncpy(mqttServer,
-          networkpreferences.getString("MqttBroker", "10.154.1.130").c_str(),
+          networkpreferences.getString("MqttBroker", "10.154.1.126").c_str(),
           16);
   networkpreferences.end();
+  printf("[Cyrano] NVS done t=%lu\n", millis());
 
   mqttClientId = (char *)malloc(sizeof("Piste_001") + 1);
   sprintf(mqttClientId, "Piste_%.3d", PisteNr);
@@ -102,9 +105,12 @@ void CyranoHandler::Begin() {
 
   theBroker.fromString(mqttServer);
   mqttClient.onMessage(onMqttMessage);
+  printf("[Cyrano] mDNS lookup start t=%lu\n", millis());
 
-  IPAddress resolvedBroker = MDNSResolver::getInstance().lookupService(
-      "mqtt", "tcp", theBroker, mdnsName);
+  /*IPAddress resolvedBroker = MDNSResolver::getInstance().lookupService(
+      "mqtt", "tcp", theBroker, mdnsName);*/
+  IPAddress resolvedBroker = theBroker;
+  printf("[Cyrano] mDNS done t=%lu\n", millis());
   mqttClient.setServer(resolvedBroker, resolvedPort);
   mqttClient.setTLS(false);
   mqttClient.setCredentials(mqttUser, mqttPassword);
@@ -114,6 +120,7 @@ void CyranoHandler::Begin() {
       (char *)malloc(sizeof("MQTT_Cyrano/Piste_001/Connection") + 1);
   sprintf(mqttLastWillTopic, "MQTT_Cyrano/Piste_%.3d/Connection", PisteNr);
   mqttClient.setWill(mqttLastWillTopic, "offline", 1, true);
+  printf("[Cyrano] Begin done t=%lu\n", millis());
 }
 
 CyranoHandler::~CyranoHandler() {

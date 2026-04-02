@@ -199,6 +199,7 @@ public:
    * \return The current value of m_ScoreLeft
    */
   unsigned int GetScoreLeft() { return m_ScoreLeft; }
+  int GetNrOfRounds() { return m_nrOfRounds; }
   /** Set m_ScoreLeft
    * \param val New value to set
    */
