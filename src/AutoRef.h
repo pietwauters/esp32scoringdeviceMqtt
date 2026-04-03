@@ -14,6 +14,8 @@
 #define AUTOREF_POST_AWARD_DELAY_MS 12000
 #define AUTOREF_POST_OFFTARGET_DELAY_MS 8000
 #define AUTOREF_EGPA_DURATION_MS 4000
+#define AUTOREF_LONG_PRESS_WINDOW_MS                                           \
+  300 // re-hit within this window = long press
 
 enum AutoRefState_t {
   AR_ARMED,
@@ -45,6 +47,7 @@ private:
   void processWaitingForLightsOff(uint32_t lights, uint32_t now);
   void processDecision(uint32_t peakLights, uint32_t now);
   void processConfirmation(uint32_t lights, uint32_t now);
+  void handleLongPress(bool longL, bool longR, uint32_t now);
   void checkTimeouts(uint32_t now);
   void award(int deltaLeft, int deltaRight, uint32_t now);
   void continueMatch(uint32_t now);
@@ -63,6 +66,8 @@ private:
   uint32_t m_lastQueuedLights = 0xFFFFFFFF; // for flood prevention in update()
   bool m_isOffTargetContinue =
       false; // true when AR_AWARDING was triggered by off-target (no point)
+  uint32_t m_lightsOffAt =
+      0; // timestamp when lights last went to 0 (Option A long-press)
 };
 
 #endif // AUTOREF_H

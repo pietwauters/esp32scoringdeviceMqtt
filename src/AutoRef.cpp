@@ -52,6 +52,20 @@ void AutoRef::update(FencingStateMachine *subject, uint32_t eventtype) {
 }
 
 void AutoRef::processLights(uint32_t lights, uint32_t now) {
+  // Option A long-press detection: re-hit on same side within window after
+  // lights-off
+  if (m_lightsOffAt > 0 &&
+      (now - m_lightsOffAt) < AUTOREF_LONG_PRESS_WINDOW_MS) {
+    uint32_t risingEdge = lights & ~m_prevLights;
+    bool longL = (risingEdge & MASK_RED) && (m_peakLights & MASK_RED);
+    bool longR = (risingEdge & MASK_GREEN) && (m_peakLights & MASK_GREEN);
+    if (longL || longR) {
+      handleLongPress(longL, longR, now);
+      m_prevLights = lights;
+      return;
+    }
+  }
+
   switch (m_state) {
   case AR_ARMED:
     processArmed(lights);
@@ -62,9 +76,15 @@ void AutoRef::processLights(uint32_t lights, uint32_t now) {
   case AR_AWAITING_CONFIRMATION:
     processConfirmation(lights, now);
     break;
+  case AR_AWARDING:
+    m_peakLights |= lights;
+    break;
   default:
     break;
   }
+  // Centralized: stamp lights-off timestamp whenever lights go to zero
+  if (lights == 0 && m_prevLights != 0)
+    m_lightsOffAt = now;
   m_prevLights = lights;
 }
 
@@ -84,8 +104,9 @@ void AutoRef::processWaitingForLightsOff(uint32_t lights, uint32_t now) {
   // Accumulate all lights seen while weapons are in contact
   m_peakLights |= lights;
   // Wait until all lights are off before taking a decision
-  if (lights == 0)
+  if (lights == 0) {
     processDecision(m_peakLights, now);
+  }
 }
 
 void AutoRef::processDecision(uint32_t peakLights, uint32_t now) {
@@ -168,6 +189,36 @@ void AutoRef::processConfirmation(uint32_t lights, uint32_t now) {
   // Both sides again → stay in AWAITING_CONFIRMATION
 }
 
+void AutoRef::handleLongPress(bool longL, bool longR, uint32_t now) {
+  m_lightsOffAt = 0; // consume the window
+  printf("AutoRef: long press L=%d R=%d state=%d\n", longL, longR, m_state);
+
+  // Clear the corresponding hit light(s) immediately and refresh the display
+  auto &strip = WS2812B_LedStrip::getInstance();
+  uint32_t newStatus = strip.GetLedStatus();
+  if (longL)
+    newStatus &= ~(MASK_RED | MASK_WHITE_L);
+  if (longR)
+    newStatus &= ~(MASK_GREEN | MASK_WHITE_R);
+  strip.SetLedStatus(newStatus);
+  strip.SetLedStatus(0xff);
+
+  if (longL && longR) {
+    // Double long press
+    if (m_state == AR_MATCH_OVER) {
+      sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
+      m_state = AR_ARMED;
+      m_prevLights = 0;
+      m_peakLights = 0;
+    }
+    // double long press in other states: TBD per user instruction
+  } else if (longL) {
+    sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_LEFT);
+  } else {
+    sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_RIGHT);
+  }
+}
+
 void AutoRef::checkTimeouts(uint32_t now) {
   switch (m_state) {
   case AR_AWAITING_CONFIRMATION:
@@ -193,6 +244,7 @@ void AutoRef::checkTimeouts(uint32_t now) {
       m_state = AR_ARMED;
       m_prevLights = 0;
       m_peakLights = 0;
+      m_lightsOffAt = 0;
     }
     break;
   default:
@@ -218,7 +270,9 @@ void AutoRef::continueMatch(uint32_t now) {
   m_state = AR_AWARDING;
   m_stateEnteredAt = now;
   m_prevLights = 0;
-  m_peakLights = 0;
+  // m_peakLights intentionally NOT cleared — needed for long press detection
+  // m_lightsOffAt intentionally NOT cleared — long press window must survive
+  // Both are cleared in checkTimeouts when AR_EGPA → AR_ARMED
 }
 
 bool AutoRef::isMatchOver() {
