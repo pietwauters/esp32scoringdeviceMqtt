@@ -56,32 +56,36 @@ void MultiWeaponSensor::DoEpee(void) {
   static int SubsampleCounter = 0;
   static int ADCL_0;
   static int ADCR_0;
-  { // No need to check again if we already have a signal on
-    // this side
+  { // Always measure left contact so LongHitDetector_ tracks uninterrupted
+    // contact even after a normal hit has set SignalLeft.
     Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
+    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
     if (!SignalLeft) {
-      tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
       cl = ((tempADValue + ADCL_0) >> 1 > AxXy_160_Ohm);
       ADCL_0 = tempADValue;
     } else {
-      delayMicroseconds(4); // allow levels to settle
+      cl = (tempADValue > AxXy_160_Ohm); // LongHit tracking (unaveraged)
     }
   }
 
-  { // No need to check again if we already have a signal on
-    // this side
+  { // Always measure right contact so LongHitDetector_ tracks uninterrupted
+    // contact even after a normal hit has set SignalRight.
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
+    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
     if (!SignalRight) {
-      tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
       cr = ((tempADValue + ADCR_0) >> 1 > AxXy_160_Ohm);
       ADCR_0 = tempADValue;
     } else {
-      delayMicroseconds(4); // allow levels to settle
+      cr = (tempADValue > AxXy_160_Ohm); // LongHit tracking (unaveraged)
     }
   }
 
   Debounce_c1.update(cl);
   Debounce_c2.update(cr);
+
+  // Epee has no invalid hits; guard/piste checks remain in DEBOUNCING only.
+  LongHitDetector_.update(cl, cr);
+  DoubleHitDetector_.update(cl, cr);
 
   switch (state) {
   case IDLE:

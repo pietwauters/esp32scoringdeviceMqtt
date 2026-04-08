@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2025 <piet.wauters@gmail.com>
 #include "AutoRef.h"
+#include "DoubleHitDetector.h"
 #include "EventDefinitions.h"
 #include "WS2812BLedStrip.h"
 #include "esp_task_wdt.h"
@@ -19,12 +20,30 @@ void AutoRef::AutoRefHandler(void *parameter) {
         xQueueReceive(ar.m_queue, &event, 40 / portTICK_PERIOD_MS) == pdPASS;
     esp_task_wdt_reset();
 
-    if (!ar.m_enabled)
+    if (!ar.m_enabled) {
+      if (got) {
+        uint32_t mainType = event & MAIN_TYPE_MASK;
+        if (mainType == EVENT_LONGHIT) {
+          uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+          ar.handleLongPress(event, now);
+        }
+        // Single double-hits ignored when AutoRef is disabled.
+      }
       continue;
+    }
     uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    if (got && (event & MAIN_TYPE_MASK) == EVENT_LIGHTS) {
-      uint32_t lights = event & DATA_24BIT_MASK;
-      ar.processLights(lights, now);
+    if (got) {
+      uint32_t mainType = event & MAIN_TYPE_MASK;
+      if (mainType == EVENT_LIGHTS) {
+        uint32_t lights = event & DATA_24BIT_MASK;
+        ar.processLights(lights, now);
+      } else if (mainType == EVENT_LONGHIT) {
+        ar.handleLongPress(event, now);
+      } else if (mainType == EVENT_DOUBLEHIT) {
+        ar.handleDoubleHit(event, now);
+      } else if (mainType == AUTOREF_TIMER_ZERO) {
+        ar.handleTimerZero(event, now);
+      }
     }
     ar.checkTimeouts(now);
   }
@@ -40,8 +59,32 @@ void AutoRef::begin() {
   printf("Autoref launched\n");
 }
 
+void AutoRef::update(LongHitDetector *subject, uint32_t eventtype) {
+  LongHitDetector::printEvent(eventtype);
+  xQueueSend(m_queue, &eventtype, 0);
+}
+
+void AutoRef::update(DoubleHitDetector *subject, uint32_t eventtype) {
+  DoubleHitDetector::printEvent(eventtype);
+  xQueueSend(m_queue, &eventtype, 0);
+}
+
 void AutoRef::update(FencingStateMachine *subject, uint32_t eventtype) {
-  if ((eventtype & MAIN_TYPE_MASK) != EVENT_LIGHTS)
+  uint32_t mainType = eventtype & MAIN_TYPE_MASK;
+  if (mainType == EVENT_TIMER) {
+    if ((eventtype & DATA_24BIT_MASK) == 0) {
+      // Snapshot pre-transition context synchronously (FSM state not yet
+      // changed)
+      uint32_t ctx =
+          AUTOREF_TIMER_ZERO | ((uint32_t)subject->GetTimerstate() << 8) |
+          (subject->GetCurrentRound() >= subject->GetNrOfRounds() ? 0x02
+                                                                  : 0x00) |
+          (subject->GetScoreLeft() == subject->GetScoreRight() ? 0x01 : 0x00);
+      xQueueSend(m_queue, &ctx, 0);
+    }
+    return;
+  }
+  if (mainType != EVENT_LIGHTS)
     return;
   uint32_t lights = eventtype & DATA_24BIT_MASK;
   // Only enqueue when lights actually change — prevents 100/s queue flooding
@@ -52,20 +95,6 @@ void AutoRef::update(FencingStateMachine *subject, uint32_t eventtype) {
 }
 
 void AutoRef::processLights(uint32_t lights, uint32_t now) {
-  // Option A long-press detection: re-hit on same side within window after
-  // lights-off
-  if (m_lightsOffAt > 0 &&
-      (now - m_lightsOffAt) < AUTOREF_LONG_PRESS_WINDOW_MS) {
-    uint32_t risingEdge = lights & ~m_prevLights;
-    bool longL = (risingEdge & MASK_RED) && (m_peakLights & MASK_RED);
-    bool longR = (risingEdge & MASK_GREEN) && (m_peakLights & MASK_GREEN);
-    if (longL || longR) {
-      handleLongPress(longL, longR, now);
-      m_prevLights = lights;
-      return;
-    }
-  }
-
   switch (m_state) {
   case AR_ARMED:
     processArmed(lights);
@@ -82,9 +111,6 @@ void AutoRef::processLights(uint32_t lights, uint32_t now) {
   default:
     break;
   }
-  // Centralized: stamp lights-off timestamp whenever lights go to zero
-  if (lights == 0 && m_prevLights != 0)
-    m_lightsOffAt = now;
   m_prevLights = lights;
 }
 
@@ -189,33 +215,110 @@ void AutoRef::processConfirmation(uint32_t lights, uint32_t now) {
   // Both sides again → stay in AWAITING_CONFIRMATION
 }
 
-void AutoRef::handleLongPress(bool longL, bool longR, uint32_t now) {
-  m_lightsOffAt = 0; // consume the window
-  printf("AutoRef: long press L=%d R=%d state=%d\n", longL, longR, m_state);
+void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
+  bool isDouble = (lhdEvent & LONGHIT_IS_DOUBLE) != 0;
+  printf("AutoRef: long press double=%d\n", isDouble);
 
-  // Clear the corresponding hit light(s) immediately and refresh the display
+  // Single long hits are intentionally ignored; only a double long press
+  // (both fencers holding for the full duration) triggers an action.
+  if (!isDouble)
+    return;
+
+  if (!m_enabled) {
+    // Double long press while disabled: enter AutoRef mode.
+    auto &strip = WS2812B_LedStrip::getInstance();
+    strip.ClearAll();
+    strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
+    setEnabled(true);
+    m_state = AR_AWARDING;
+    m_stateEnteredAt = now;
+    m_prevLights = 0;
+    m_peakLights = 0;
+    return;
+  }
+
+  if (m_state != AR_AWARDING)
+    return;
+
+  // Double long press while enabled: full match reset.
   auto &strip = WS2812B_LedStrip::getInstance();
-  uint32_t newStatus = strip.GetLedStatus();
-  if (longL)
-    newStatus &= ~(MASK_RED | MASK_WHITE_L);
-  if (longR)
-    newStatus &= ~(MASK_GREEN | MASK_WHITE_R);
-  strip.SetLedStatus(newStatus);
-  strip.SetLedStatus(0xff);
+  strip.ClearAll();
+  strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
+  sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
+  m_stateEnteredAt = now;
+  m_prevLights = 0;
+  m_peakLights = 0;
+}
 
-  if (longL && longR) {
-    // Double long press
-    if (m_state == AR_MATCH_OVER) {
-      sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
-      m_state = AR_ARMED;
-      m_prevLights = 0;
-      m_peakLights = 0;
-    }
-    // double long press in other states: TBD per user instruction
-  } else if (longL) {
+void AutoRef::handleDoubleHit(uint32_t dhdEvent, uint32_t now) {
+  bool hitL = (dhdEvent & DOUBLEHIT_VALID_LEFT) != 0;
+  bool hitR = (dhdEvent & DOUBLEHIT_VALID_RIGHT) != 0;
+  printf("AutoRef: double-hit L=%d R=%d\n", hitL, hitR);
+
+  if (!m_enabled)
+    return;
+  if (m_state != AR_AWARDING)
+    return;
+
+  auto &strip = WS2812B_LedStrip::getInstance();
+
+  if (hitL) {
+    uint32_t newStatus = strip.GetLedStatus();
+    newStatus &= ~(MASK_RED | MASK_WHITE_L);
+    strip.SetLedStatus(newStatus);
+    strip.SetLedStatus(0xff);
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_LEFT);
-  } else {
+  }
+  if (hitR) {
+    uint32_t newStatus = strip.GetLedStatus();
+    newStatus &= ~(MASK_GREEN | MASK_WHITE_R);
+    strip.SetLedStatus(newStatus);
+    strip.SetLedStatus(0xff);
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_RIGHT);
+  }
+}
+
+void AutoRef::handleTimerZero(uint32_t ctx, uint32_t now) {
+  // Unpack snapshot captured synchronously in update() — no FSM getters needed
+  TimerState_t timerState = (TimerState_t)((ctx >> 8) & 0xff);
+  bool isLastRound = (ctx & 0x02) != 0;
+  bool scoresEqual = (ctx & 0x01) != 0;
+  printf("AutoRef: timer zero timerState=%d lastRound=%d tied=%d\n", timerState,
+         isLastRound, scoresEqual);
+
+  auto &strip = WS2812B_LedStrip::getInstance();
+
+  // Always give an audible signal
+  strip.startAnimation(EVENT_WS2812_WARNING | 0x00000003); // 3 beeps
+
+  switch (timerState) {
+  case FIGHTING:
+    if (!isLastRound) {
+      // Not last round: FSM auto-advances to BREAK, start the break timer
+      sendToFSM(EVENT_UI_INPUT | UI_INPUT_START_TIMER);
+    } else if (scoresEqual) {
+      // Last round, tied: draw priority, play EGPA, then start overtime
+      sendToFSM(EVENT_UI_INPUT | UI_INPUT_PRIO);
+      strip.startAnimation(EVENT_WS2812_ENGARDE_PRETS_ALLEZ);
+      m_state = AR_PERIOD_END;
+      m_stateEnteredAt = now;
+    }
+    // Last round, not tied: match ended in FSM, nothing to do
+    break;
+
+  case BREAK:
+    // Break ended: play EGPA then start next fighting period
+    strip.startAnimation(EVENT_WS2812_ENGARDE_PRETS_ALLEZ);
+    m_state = AR_PERIOD_END;
+    m_stateEnteredAt = now;
+    break;
+
+  case ADDITIONAL_MINUTE:
+    // Overtime ended; FSM sets MATCH_ENDED, nothing else for AutoRef
+    break;
+
+  default:
+    break;
   }
 }
 
@@ -244,7 +347,14 @@ void AutoRef::checkTimeouts(uint32_t now) {
       m_state = AR_ARMED;
       m_prevLights = 0;
       m_peakLights = 0;
-      m_lightsOffAt = 0;
+    }
+    break;
+  case AR_PERIOD_END:
+    if (now - m_stateEnteredAt >= AUTOREF_PERIOD_END_DELAY_MS) {
+      sendToFSM(EVENT_UI_INPUT | UI_INPUT_START_TIMER);
+      m_state = AR_ARMED;
+      m_prevLights = 0;
+      m_peakLights = 0;
     }
     break;
   default:
@@ -270,9 +380,7 @@ void AutoRef::continueMatch(uint32_t now) {
   m_state = AR_AWARDING;
   m_stateEnteredAt = now;
   m_prevLights = 0;
-  // m_peakLights intentionally NOT cleared — needed for long press detection
-  // m_lightsOffAt intentionally NOT cleared — long press window must survive
-  // Both are cleared in checkTimeouts when AR_EGPA → AR_ARMED
+  m_peakLights = 0;
 }
 
 bool AutoRef::isMatchOver() {

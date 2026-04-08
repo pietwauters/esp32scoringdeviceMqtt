@@ -165,6 +165,13 @@ void setup() {
     MyStatemachine->attach(*MyRepeaterSender);
     MyStatemachine->attach(*MyLedStrip);
     MyStatemachine->SetMachineWeapon(MySensor->GetActualWeapon());
+    printf("[setup] AutoRef begin\n");
+    MyStatemachine->attach(AutoRef::getInstance());
+    AutoRef::getInstance().begin();
+    AutoRef::getInstance().setEnabled(false);
+    printf("[setup] AutoRef begin done\n");
+    MySensor->getLongHitDetector().attach(AutoRef::getInstance());
+    MySensor->getDoubleHitDetector().attach(AutoRef::getInstance());
     switch (MySensor->GetActualWeapon()) {
     case FOIL:
       MyStatemachine->StateChanged(EVENT_WEAPON | WEAPON_MASK_FOIL);
@@ -215,10 +222,7 @@ void setup() {
     */
   int freq_mhz = esp_clk_cpu_freq() / 1000000;
   printf("CPU frequency: %d MHz\n", freq_mhz);
-  printf("[setup] AutoRef begin\n");
-  MyStatemachine->attach(AutoRef::getInstance());
-  AutoRef::getInstance().begin();
-  printf("[setup] AutoRef begin done\n");
+
   MyStatemachine->update(MyUDPIOHandler, EVENT_UI_INPUT | UI_INPUT_RESET);
   printf("Setup complete\n");
 }
@@ -310,7 +314,6 @@ extern "C" void app_main() {
   initArduino(); // Initialize Arduino if needed
   setup();       // Call the Arduino setup function
   printf("At start of loop\n");
-  AutoRef::getInstance().setEnabled(true);
   esp_task_wdt_init(20, false);
 
   while (true) {

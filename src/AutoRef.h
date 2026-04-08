@@ -2,7 +2,9 @@
 #ifndef AUTOREF_H
 #define AUTOREF_H
 
+#include "DoubleHitDetector.h"
 #include "FencingStateMachine.h"
+#include "LongHitDetector.h"
 #include "Singleton.h"
 #include "SubjectObserverTemplate.h"
 #include "freertos/FreeRTOS.h"
@@ -14,8 +16,8 @@
 #define AUTOREF_POST_AWARD_DELAY_MS 12000
 #define AUTOREF_POST_OFFTARGET_DELAY_MS 8000
 #define AUTOREF_EGPA_DURATION_MS 4000
-#define AUTOREF_LONG_PRESS_WINDOW_MS                                           \
-  300 // re-hit within this window = long press
+#define AUTOREF_PERIOD_END_DELAY_MS                                            \
+  6000 // warning + EGPA before starting next period
 
 enum AutoRefState_t {
   AR_ARMED,
@@ -25,15 +27,25 @@ enum AutoRefState_t {
                              // confirmation
   AR_AWARDING,               // point awarded, waiting before EGPA
   AR_EGPA,                   // EGPA animation running
-  AR_MATCH_OVER              // match ended, waiting for double-long-press reset
+  AR_PERIOD_END, // timer reached zero: warning+EGPA playing, waiting to start
+                 // next period
+  AR_MATCH_OVER  // match ended, waiting for double-long-press reset
 };
+class LongHitDetector;
+class DoubleHitDetector;
 
 class AutoRef : public Observer<FencingStateMachine>,
+                public Observer<LongHitDetector>,
+                public Observer<DoubleHitDetector>,
                 public SingletonMixin<AutoRef> {
 public:
   virtual ~AutoRef();
   void begin();
   void update(FencingStateMachine *subject, uint32_t eventtype);
+  void update(LongHitDetector *subject, uint32_t eventtype);
+  void update(LongHitDetector *subject, std::string eventtype) { return; };
+  void update(DoubleHitDetector *subject, uint32_t eventtype);
+  void update(DoubleHitDetector *subject, std::string eventtype) { return; };
   void setEnabled(bool enabled) { m_enabled = enabled; }
   bool isEnabled() const { return m_enabled; }
 
@@ -47,7 +59,9 @@ private:
   void processWaitingForLightsOff(uint32_t lights, uint32_t now);
   void processDecision(uint32_t peakLights, uint32_t now);
   void processConfirmation(uint32_t lights, uint32_t now);
-  void handleLongPress(bool longL, bool longR, uint32_t now);
+  void handleLongPress(uint32_t lhdEvent, uint32_t now);
+  void handleDoubleHit(uint32_t dhdEvent, uint32_t now);
+  void handleTimerZero(uint32_t ctx, uint32_t now);
   void checkTimeouts(uint32_t now);
   void award(int deltaLeft, int deltaRight, uint32_t now);
   void continueMatch(uint32_t now);
@@ -66,8 +80,6 @@ private:
   uint32_t m_lastQueuedLights = 0xFFFFFFFF; // for flood prevention in update()
   bool m_isOffTargetContinue =
       false; // true when AR_AWARDING was triggered by off-target (no point)
-  uint32_t m_lightsOffAt =
-      0; // timestamp when lights last went to 0 (Option A long-press)
 };
 
 #endif // AUTOREF_H

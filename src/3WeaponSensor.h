@@ -2,6 +2,8 @@
 #ifndef WEAPONSENSOR_H
 #define WEAPONSENSOR_H
 #include "DebounceTimer.h"
+#include "DoubleHitDetector.h"
+#include "LongHitDetector.h"
 #include "Singleton.h"
 #include "SubjectObserverTemplate.h"
 #include "TimingConstants.h"
@@ -68,6 +70,12 @@ public:
   void Setweapon_detection_mode(weapon_detection_mode_t mode) {
     m_DectionMode = mode;
   };
+
+  // Attach observers to long-hit events (EVENT_LONGHIT | LONGHIT_* flags)
+  LongHitDetector &getLongHitDetector() { return LongHitDetector_; }
+
+  // Attach observers to double-hit events (EVENT_DOUBLEHIT | DOUBLEHIT_* flags)
+  DoubleHitDetector &getDoubleHitDetector() { return DoubleHitDetector_; }
 
 protected:
 private:
@@ -157,6 +165,9 @@ private:
   bool WeHaveBlockedAhit;
 
   int BlockedAHitCounter;
+
+  LongHitDetector LongHitDetector_;
+  DoubleHitDetector DoubleHitDetector_;
 
   DoubleDebouncer Debounce_Parry;
   DoubleDebouncer WO_Debounce_Parry;

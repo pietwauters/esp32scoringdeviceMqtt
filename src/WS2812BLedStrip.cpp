@@ -644,13 +644,22 @@ void WS2812B_LedStrip::AnimateWarning() {
     if (m_warningcounter & 1) {
       m_NextTimeToToggleBuzzer = WARNING_TIME_Off;
       setBuzz(false);
+      setWhiteLeft(false);
+      setWhiteRight(false);
+      myShow();
     } else {
       m_NextTimeToToggleBuzzer = WARNING_TIME_ON;
       setBuzz(true);
+      setWhiteLeft(true);
+      setWhiteRight(true);
+      myShow();
     }
     m_warningcounter--;
     if (!m_warningcounter) {
       setBuzz(false);
+      setWhiteLeft(false);
+      setWhiteRight(false);
+      myShow();
       m_WarningOngoing = false;
     }
 
@@ -981,6 +990,22 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     StartEngardePretsAllezSequence();
     AnimateEngardePretsAllez();
     break;
+
+  case EVENT_WS2812_AUTOREF_MODE: {
+    // Clear lights immediately, then flash the current score 4 times to
+    // signal that AutoRef mode has been activated.
+    ClearAll();
+    for (int i = 0; i < 5; i++) {
+      showNumberLeft(m_LeftScore);
+      showNumberRight(m_RightScore);
+      myShow();
+      vTaskDelay(450 / portTICK_PERIOD_MS);
+      ClearAll();
+      vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
+    SetLedStatus(0xff); // restore normal display
+    break;
+  }
   }
 }
 

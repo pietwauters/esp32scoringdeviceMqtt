@@ -200,6 +200,7 @@ public:
    */
   unsigned int GetScoreLeft() { return m_ScoreLeft; }
   int GetNrOfRounds() { return m_nrOfRounds; }
+  int GetCurrentRound() { return m_currentRound; }
   /** Set m_ScoreLeft
    * \param val New value to set
    */

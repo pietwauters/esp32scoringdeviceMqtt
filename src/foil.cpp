@@ -88,38 +88,36 @@ void MultiWeaponSensor::DoFoil(void) {
   static bool lastValid_l = false;
   static bool lastValid_r = false;
 
-  if (!SignalLeft) { // No need to check again if we already have a signal on
-                     // this side
-    Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
-    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
-    bl = (tempADValue < AxXy_300_Ohm);
+  // Always measure left contact so LongHitDetector_ tracks uninterrupted
+  // contact even after a normal hit has set SignalLeft.
+  Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
+  tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
+  bl = (tempADValue < AxXy_300_Ohm);
+  Valid_l = HitOnLame_l();
+  if (!SignalLeft) {
     NotConnectedLeft = bl;
-    Valid_l = HitOnLame_l();
     DebounceLong_al_cr.update(Valid_l && !bl);
-  } else {
-    Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
-    delayMicroseconds(2);
-    Set_IODirectionAndValue(IODirection_al_cr, IOValues_al_cr);
-    delayMicroseconds(2);
   }
 
-  if (!SignalRight) { // No need to check again if we already have a signal on
-                      // this side
-    Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
-    tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
-    br = (tempADValue < AxXy_300_Ohm);
+  // Always measure right contact so LongHitDetector_ tracks uninterrupted
+  // contact even after a normal hit has set SignalRight.
+  Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
+  tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
+  br = (tempADValue < AxXy_300_Ohm);
+  Valid_r = HitOnLame_r();
+  if (!SignalRight) {
     NotConnectedRight = br;
-    Valid_r = HitOnLame_r();
     DebounceLong_ar_cl.update(Valid_r && !br);
-  } else {
-    Set_IODirectionAndValue(IODirection_ar_br, IOValues_ar_br);
-    delayMicroseconds(2);
-    Set_IODirectionAndValue(IODirection_ar_cl, IOValues_ar_cl);
-    delayMicroseconds(2);
   }
 
   Debounce_b1.update(bl);
   Debounce_b2.update(br);
+
+  // validL/R = tip contact on lame; invalidL/R = tip contact but off-target
+  LongHitDetector_.update(bl && Valid_l, br && Valid_r, bl && !Valid_l,
+                          br && !Valid_r);
+  DoubleHitDetector_.update(bl && Valid_l, br && Valid_r, bl && !Valid_l,
+                            br && !Valid_r);
 
   switch (state) {
   case IDLE:
