@@ -271,7 +271,7 @@ void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
     strip.ClearAll();
     strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
     setEnabled(true);
-    m_state = AR_ARMED;
+    m_state = AR_AWARDING;
     m_stateEnteredAt = now;
     m_prevLights = 0;
     m_peakLights = 0;
@@ -283,7 +283,7 @@ void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
   strip.ClearAll();
   strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
   sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
-  m_state = AR_ARMED;
+  m_state = AR_AWARDING;
   m_stateEnteredAt = now;
   m_prevLights = 0;
   m_peakLights = 0;
