@@ -51,6 +51,26 @@ union mix_t {
 #define EVENT_WS2812_START_ANIMATION 0x16000000
 #define EVENT_IDLE 0x17000000
 #define EVENT_BLADECONTACT 0x20000000
+#define EVENT_LONGHIT 0x21000000
+#define EVENT_DOUBLEHIT 0x22000000
+
+// Sub-type bit flags for EVENT_LONGHIT (lower 24 bits):
+#define LONGHIT_VALID_LEFT 0x00000001
+#define LONGHIT_VALID_RIGHT 0x00000002
+#define LONGHIT_INVALID_LEFT 0x00000004
+#define LONGHIT_INVALID_RIGHT 0x00000008
+#define LONGHIT_IS_DOUBLE 0x00000010
+
+// Sub-type bit flags for EVENT_DOUBLEHIT (lower 24 bits):
+#define DOUBLEHIT_VALID_LEFT 0x00000001
+#define DOUBLEHIT_VALID_RIGHT 0x00000002
+#define DOUBLEHIT_INVALID_LEFT 0x00000004
+#define DOUBLEHIT_INVALID_RIGHT 0x00000008
+
+// Internal AutoRef-only event — never originates from FSM, only lives in
+// AutoRef queue bits 23:8 = TimerState_t at moment of zero bit 1     =
+// isLastRound (1 = last round) bit 0     = scoresEqual (1 = tied)
+#define AUTOREF_TIMER_ZERO 0xFF000000
 
 #define EVENT_GO_INTO_IDLE 0x00000001
 #define EVENT_GO_OUT_OF_IDLE 0x00000000
@@ -171,6 +191,7 @@ union mix_t {
 #define EVENT_WS2812_PRIO_RIGHT 0x08040000
 #define EVENT_WS2812_WARNING 0x08050000
 #define EVENT_WS2812_ENGARDE_PRETS_ALLEZ 0x08060000
+#define EVENT_WS2812_AUTOREF_MODE 0x08070000
 
 constexpr uint32_t MASK_BUZZ = 0x00000002;
 constexpr uint32_t MASK_GREEN = 0x00000004;

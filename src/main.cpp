@@ -18,6 +18,7 @@
  */
 // #include "LedMatrix.h"
 #include "3WeaponSensor.h"
+#include "AutoRef.h"
 #include "CyranoHandler.h"
 #include "FPA422Handler.h"
 #include "FastADC1.h"
@@ -165,6 +166,11 @@ void setup() {
       MyStatemachine->StateChanged(EVENT_WEAPON | WEAPON_MASK_SABRE);
       break;
     }
+    MyStatemachine->attach(AutoRef::getInstance());
+    AutoRef::getInstance().begin();
+    AutoRef::getInstance().setEnabled(false);
+    MySensor->getLongHitDetector().attach(AutoRef::getInstance());
+    // MySensor->getDoubleHitDetector().attach(AutoRef::getInstance());
     MySensor->start();
   } else {
     // When running in repeater mode

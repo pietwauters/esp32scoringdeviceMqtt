@@ -225,6 +225,8 @@ public:
    * \return The current value of m_MachineWeapon
    */
   weapon_t GetMachineWeapon() { return m_MachineWeapon; }
+  int GetNrOfRounds() { return m_nrOfRounds; }
+  int GetCurrentRound() { return m_currentRound; }
   /** Set m_MachineWeapon
    * \param val New value to set
    */

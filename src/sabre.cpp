@@ -76,6 +76,10 @@ void MultiWeaponSensor::DoSabre(void) {
   Debounce_c1.update(cl);
   Debounce_c2.update(cr);
 
+  // Sabre has no invalid hits.
+  LongHitDetector_.update(cl, cr);
+  DoubleHitDetector_.update(cl, cr);
+
   switch (state) {
   case IDLE:
 

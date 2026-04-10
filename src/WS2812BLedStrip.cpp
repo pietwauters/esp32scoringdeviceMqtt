@@ -645,13 +645,22 @@ void WS2812B_LedStrip::AnimateWarning() {
     if (m_warningcounter & 1) {
       m_NextTimeToToggleBuzzer = WARNING_TIME_Off;
       setBuzz(false);
+      setWhiteLeft(false);
+      setWhiteRight(false);
+      myShow();
     } else {
       m_NextTimeToToggleBuzzer = WARNING_TIME_ON;
       setBuzz(true);
+      setWhiteLeft(true);
+      setWhiteRight(true);
+      myShow();
     }
     m_warningcounter--;
     if (!m_warningcounter) {
       setBuzz(false);
+      setWhiteLeft(false);
+      setWhiteRight(false);
+      myShow();
       m_WarningOngoing = false;
     }
 
@@ -974,12 +983,13 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
   case EVENT_WS2812_WARNING:
     StartWarning(type & 0x0000ffff);
     AnimateWarning();
-
+    SetLedStatus(0xff);
     break;
 
   case EVENT_WS2812_ENGARDE_PRETS_ALLEZ:
     StartEngardePretsAllezSequence();
     AnimateEngardePretsAllez();
+    SetLedStatus(0xff);
     break;
   }
 }
