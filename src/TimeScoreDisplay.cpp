@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "TimeScoreDisplay.h"
+#include "RTOSSettings.h"
 #include "hardwaredefinition.h"
 
 #define HARDWARE_TYPE MD_MAX72XX::ICSTATION_HW
@@ -111,7 +112,7 @@ void TimeScoreDisplay::begin() {
 
   mx.begin();
   mx.clear();
-  queue = xQueueCreate(60, sizeof(int));
+  queue = xQueueCreate(QUEUE_DEPTH_TIME_SCORE_DISPLAY, sizeof(uint32_t));
   SetBrightness(TEXT_BRIGHTNESS_NORMAL);
   Preferences networkpreferences;
   networkpreferences.begin("credentials", false);
@@ -649,11 +650,11 @@ void TimeScoreDisplay::DisplayVersion() {
 }
 
 void TimeScoreDisplay::LaunchStartupDisplay() {
-  xTaskCreate(StartupDisplayTask, // Task function
-              "StartupDisplay",   // Task name
-              2048,               // Stack size (bytes)
-              this,               // Parameter passed to task
-              1,                  // Task priority
-              NULL                // Task handle (not needed)
-  );
+  xTaskCreatePinnedToCore(StartupDisplayTask,       // Task function
+                          "StartupDisplay",         // Task name
+                          STACK_STARTUP_DISPLAY,    // Stack size (bytes)
+                          this,                     // Parameter passed to task
+                          PRIORITY_STARTUP_DISPLAY, // Task priority
+                          NULL,                     // Task handle (not needed)
+                          CORE_STARTUP_DISPLAY);
 }

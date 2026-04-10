@@ -23,6 +23,7 @@
 #include "FastADC1.h"
 #include "FencingStateMachine.h"
 #include "FlashWriteGuard.h"
+#include "RTOSSettings.h"
 #include "RepeaterReceiver.h"
 #include "RepeaterSender.h"
 #include "ResetHandler.h"
@@ -287,12 +288,17 @@ void loop() {
   }
 }
 
-extern "C" void app_main() {
-  // Call Arduino setup and loop
-  initArduino(); // Initialize Arduino if needed
-
-  setup(); // Call the Arduino setup function
+static void arduino_task(void *) {
+  setup();
   while (true) {
-    loop(); // Call the Arduino loop function
+    loop();
   }
+}
+
+extern "C" void app_main() {
+  initArduino();
+  // Pin setup()/loop() to Core 0 alongside all other application tasks.
+  // Core 1 is then exclusively used by the sensor (esp_timer, pri 22).
+  xTaskCreatePinnedToCore(arduino_task, "arduino_task", STACK_ARDUINO_TASK,
+                          NULL, PRIORITY_ARDUINO_TASK, NULL, CORE_ARDUINO_TASK);
 }

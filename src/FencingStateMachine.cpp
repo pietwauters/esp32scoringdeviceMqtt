@@ -1,6 +1,7 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "FencingStateMachine.h"
 #include "FlashWriteGuard.h"
+#include "RTOSSettings.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
@@ -77,11 +78,11 @@ void FencingStateMachine::begin() {
 
   xTaskCreatePinnedToCore(StateMachineHandler,   /* Task function. */
                           "StateMachineHandler", /* String with name of task. */
-                          32768,                 /* Stack size in words. 65535*/
+                          STACK_STATE_MACHINE,   /* Stack size in bytes. */
                           NULL, /* Parameter passed as input of the task */
-                          5,    /* Priority of the task. */
-                          &StateMachineTask, /* Task handle. */
-                          1);
+                          PRIORITY_STATE_MACHINE, /* Priority of the task. */
+                          &StateMachineTask,      /* Task handle. */
+                          CORE_STATE_MACHINE);
   esp_task_wdt_add(StateMachineTask);
 }
 FencingStateMachine::~FencingStateMachine() {

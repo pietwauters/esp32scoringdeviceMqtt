@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "WS2812BLedStrip.h"
+#include "RTOSSettings.h"
 #include "driver/gpio.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
@@ -59,8 +60,8 @@ WS2812B_LedStrip::WS2812B_LedStrip() {
   m_pixels->fill(m_pixels->Color(0, 0, 0),0,NUMPIXELS);
   SetBrightness(BRIGHTNESS_NORMAL);*/
 
-  queue = xQueueCreate(60, sizeof(int));
-  Animationqueue = xQueueCreate(30, sizeof(int));
+  queue = xQueueCreate(QUEUE_DEPTH_LED_STRIP, sizeof(uint32_t));
+  Animationqueue = xQueueCreate(QUEUE_DEPTH_LED_ANIMATION, sizeof(uint32_t));
 }
 void WS2812B_LedStrip::begin() {
 
@@ -82,18 +83,18 @@ void WS2812B_LedStrip::begin() {
   m_pixels->show();
   xTaskCreatePinnedToCore(LedStripAnimator,   /* Task function. */
                           "LedStripAnimator", /* String with name of task. */
-                          16384,              /* Stack size in words. */
+                          STACK_LED_ANIMATOR, /* Stack size in bytes. */
                           NULL, /* Parameter passed as input of the task */
-                          0,    /* Priority of the task. */
+                          PRIORITY_LED_ANIMATOR,  /* Priority of the task. */
                           &LedStripAnimationTask, /* Task handle. */
-                          1);
+                          CORE_LED_ANIMATOR);
   xTaskCreatePinnedToCore(LedStripHandler,   /* Task function. */
                           "LedStripHandler", /* String with name of task. */
-                          16384,             /* Stack size in words. */
+                          STACK_LED_HANDLER, /* Stack size in bytes. */
                           NULL, /* Parameter passed as input of the task */
-                          6,    /* Priority of the task. */
-                          &LedStripTask, /* Task handle. */
-                          1);
+                          PRIORITY_LED_HANDLER, /* Priority of the task. */
+                          &LedStripTask,        /* Task handle. */
+                          CORE_LED_HANDLER);
   esp_task_wdt_add(LedStripTask);
   startAnimation(EVENT_WS2812_WELCOME);
   m_HasBegun = true;
