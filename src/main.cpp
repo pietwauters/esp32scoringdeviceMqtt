@@ -170,7 +170,7 @@ void setup() {
     AutoRef::getInstance().begin();
     AutoRef::getInstance().setEnabled(false);
     MySensor->getLongHitDetector().attach(AutoRef::getInstance());
-    // MySensor->getDoubleHitDetector().attach(AutoRef::getInstance());
+    MySensor->getDoubleHitDetector().attach(AutoRef::getInstance());
     MySensor->start();
   } else {
     // When running in repeater mode
