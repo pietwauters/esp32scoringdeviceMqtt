@@ -165,6 +165,7 @@ void setup() {
       MyStatemachine->StateChanged(EVENT_WEAPON | WEAPON_MASK_SABRE);
       break;
     }
+    MySensor->start();
   } else {
     // When running in repeater mode
     MyRepeaterReiver = &RepeaterReceiver::getInstance();

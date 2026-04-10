@@ -29,6 +29,7 @@ class MultiWeaponSensor : public Subject<MultiWeaponSensor>,
                           public SingletonMixin<MultiWeaponSensor> {
 public:
   void begin();
+  void start();
   /** Default destructor */
   virtual ~MultiWeaponSensor();
 
@@ -74,6 +75,7 @@ private:
   friend class SingletonMixin<MultiWeaponSensor>;
   /** Default constructor */
   MultiWeaponSensor();
+  esp_timer_handle_t m_scan_timer{nullptr};
   bool Do_Common_Start();
   // void Skip_phase();
   void HandleLights();

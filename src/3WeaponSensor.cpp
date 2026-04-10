@@ -217,18 +217,19 @@ void MultiWeaponSensor::begin() {
   DoReset();
 
   // Timer config
-  static esp_timer_handle_t scan_timer;
   const esp_timer_create_args_t scan_timer_args = {
       .callback = &scan_timer_callback,
       .arg = nullptr,
       .dispatch_method =
           ESP_TIMER_TASK, // Use ESP_TIMER_TASK for longer callbacks
       .name = "scan_timer"};
-  esp_timer_create(&scan_timer_args, &scan_timer);
+  esp_timer_create(&scan_timer_args, &m_scan_timer);
   // calibrator.begin(ADC1_CHANNEL_6);
   // calibrator.calibrate_interactively(ADC1_CHANNEL_6);
-  //  Start timer: period in microseconds (e.g., 250 us = 0.25 ms)
-  esp_timer_start_periodic(scan_timer, scanloop_us); // 250 us interval
+}
+
+void MultiWeaponSensor::start() {
+  esp_timer_start_periodic(m_scan_timer, scanloop_us); // 250 us interval
 }
 
 adc1_channel_t ADC1_CHANNELS[] = {
