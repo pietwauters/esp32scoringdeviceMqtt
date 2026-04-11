@@ -316,6 +316,9 @@ void WS2812B_LedStrip::update(RepeaterReceiver *subject, uint32_t eventtype) {
 }
 
 void WS2812B_LedStrip::startAnimation(uint32_t eventtype) {
+  m_animPhase1Status =
+      m_LedStatus;           // capture display state before FSM can change it
+  m_animationRunning = true; // suppress LED queue rendering immediately
   xQueueSend(Animationqueue, &eventtype, portMAX_DELAY);
 }
 
@@ -551,6 +554,8 @@ void WS2812B_LedStrip::SetLedStatus(uint32_t val) {
     if (m_LedStatus == val)
       return;
     m_LedStatus = val;
+    if (m_animationRunning)
+      return; // state updated, rendering deferred until animation ends
   }
   if (m_LedStatus & MASK_POWER_PROBLEM) {
     ShowPowerFailure();
@@ -941,6 +946,7 @@ void WS2812B_LedStrip::ShowWelcomeLights() {
 }
 
 void WS2812B_LedStrip::DoAnimation(uint32_t type) {
+  m_animationRunning = true;
 
   switch (type & 0xffff0000) {
   case EVENT_WS2812_WELCOME:
@@ -996,13 +1002,43 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     AnimateAutoRefMode();
     SetLedStatus(0xff);
     break;
+
+  case EVENT_WS2812_UNDO_HIT:
+    AnimateUndoHit((type & 0xffff) == 0x0001);
+    SetLedStatus(0xff);
+    break;
   }
+  m_animationRunning = false;
+}
+
+void WS2812B_LedStrip::AnimateUndoHit(bool leftSide) {
+  uint32_t panelOffset = leftSide ? 0 : 64;
+  uint32_t color = leftSide ? m_Red : m_Green;
+
+  // Phase 1: render the state captured at animation start (old score, hit
+  // lights cleared)
+  m_LedStatus = m_animPhase1Status;
+  SetLedStatus(0xff);
+  for (uint8_t i = 0; i < 8; i++) {
+    m_pixels->setPixelColor(panelOffset + i * 8 + i, color);
+    m_pixels->setPixelColor(panelOffset + i * 8 + (7 - i), color);
+  }
+  m_pixels->show();
+  vTaskDelay(1200 / portTICK_PERIOD_MS);
+  // DoAnimation() calls SetLedStatus(0xff) for final clean render
 }
 
 void WS2812B_LedStrip::AnimateAutoRefMode() {
   // Expand 2x2->4x4->6x6->8x8 then contract back, 500ms per step.
   // Left panel (offset 0) in red, right panel (offset 64) in green.
   static const uint8_t halves[] = {1, 2, 3, 4, 3, 2, 1};
+  setBuzz(false);
+  m_pixels->clear();
+  m_pixels->show();
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+  m_pixels->clear();
+  m_pixels->show();
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   for (int s = 0; s < 7; s++) {
     uint8_t half = halves[s];
     uint8_t startRC = 4 - half;
@@ -1019,6 +1055,7 @@ void WS2812B_LedStrip::AnimateAutoRefMode() {
   }
   m_pixels->clear();
   m_pixels->show();
+  vTaskDelay(500 / portTICK_PERIOD_MS);
 }
 
 void WS2812B_LedStrip::NewAnimatePrio() {

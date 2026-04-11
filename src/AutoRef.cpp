@@ -49,10 +49,6 @@ void AutoRef::AutoRefHandler(void *parameter) {
       } else if (mainType == EVENT_UW2F_TIMER) {
         if (ar.m_state != AR_MATCH_OVER)
           ar.handleUW2FTimerZero(now);
-      } else if (mainType == EVENT_BLACK_CARD_LEFT ||
-                 mainType == EVENT_BLACK_CARD_RIGHT ||
-                 mainType == EVENT_P_CARD) {
-        ar.m_state = AR_MATCH_OVER;
       }
     }
     ar.checkTimeouts(now);
@@ -97,19 +93,6 @@ void AutoRef::update(FencingStateMachine *subject, uint32_t eventtype) {
   if (mainType == EVENT_UW2F_TIMER) {
     // Forward only the 60-second mark (1 min elapsed, 0 sec = 0x00010000)
     if ((eventtype & DATA_24BIT_MASK) == UW2F_TIMER_60S_MARK)
-      xQueueSend(m_queue, &eventtype, 0);
-    return;
-  }
-  if (mainType == EVENT_BLACK_CARD_LEFT || mainType == EVENT_BLACK_CARD_RIGHT) {
-    // Black card issued — match ends immediately
-    xQueueSend(m_queue, &eventtype, 0);
-    return;
-  }
-  if (mainType == EVENT_P_CARD) {
-    // Black P-card: value 4 in byte0 (left) or byte1 (right)
-    uint8_t pcL = (eventtype >> 0) & 0xff;
-    uint8_t pcR = (eventtype >> 8) & 0xff;
-    if (pcL == EVENT_BLACK_P_CARD || pcR == EVENT_BLACK_P_CARD)
       xQueueSend(m_queue, &eventtype, 0);
     return;
   }
@@ -278,12 +261,14 @@ void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
     return;
   }
 
+  if (m_state != AR_AWARDING)
+    return;
+
   // Double long press while enabled: full match reset.
   auto &strip = WS2812B_LedStrip::getInstance();
   strip.ClearAll();
   strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
   sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
-  m_state = AR_AWARDING;
   m_stateEnteredAt = now;
   m_prevLights = 0;
   m_peakLights = 0;
@@ -306,14 +291,30 @@ void AutoRef::handleDoubleHit(uint32_t dhdEvent, uint32_t now) {
     newStatus &= ~(MASK_RED | MASK_WHITE_L);
     strip.SetLedStatus(newStatus);
     strip.SetLedStatus(0xff);
+    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0001);
+    taskYIELD();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    taskYIELD();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    taskYIELD();
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_LEFT);
+    taskYIELD();
+    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0001);
   }
   if (hitR) {
     uint32_t newStatus = strip.GetLedStatus();
     newStatus &= ~(MASK_GREEN | MASK_WHITE_R);
     strip.SetLedStatus(newStatus);
     strip.SetLedStatus(0xff);
+    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0002);
+    taskYIELD();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    taskYIELD();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    taskYIELD();
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_RIGHT);
+    taskYIELD();
+    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0002);
   }
 }
 

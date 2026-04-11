@@ -83,6 +83,7 @@ public:
   void setRedPrio(bool Value, bool bReverse = false);
   void AnimateWarning();
   void AnimateAutoRefMode();
+  void AnimateUndoHit(bool leftSide);
   void StartWarning(uint32_t prio);
   void AnimateEngardePretsAllez();
   void StartEngardePretsAllezSequence();
@@ -168,6 +169,10 @@ private:
   QueueHandle_t Animationqueue = NULL;
   uint32_t m_NextTimeToTogglePrioLights;
   bool m_Animating = false;
+  volatile bool m_animationRunning =
+      false; // true while animator task is drawing
+  uint32_t m_animPhase1Status =
+      0; // m_LedStatus snapshot taken at startAnimation()
   uint32_t m_counter = 0;
   uint32_t m_targetprio = 0;
   bool m_WarningOngoing = false;
