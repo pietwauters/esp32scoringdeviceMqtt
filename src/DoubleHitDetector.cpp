@@ -89,6 +89,18 @@ void DoubleHitDetector::update(bool validL, bool validR, bool invalidL,
     } else if (!anyActive) {
       // Released.
       if (held >= min_hit_us_) {
+        // A tap-tap undo is performed by ONE fencer: the same side must have
+        // been active in BOTH taps. A cross-side scoring double-hit (left hits,
+        // releases, right hits) must NOT be treated as a tap-tap.
+        bool sameL = (first_validL_ || first_invalidL_) &&
+                     (second_validL_ || second_invalidL_);
+        bool sameR = (first_validR_ || first_invalidR_) &&
+                     (second_validR_ || second_invalidR_);
+        if (!sameL && !sameR) {
+          // Cross-side pattern — not a tap-tap, discard.
+          state_ = State::IDLE;
+          break;
+        }
         // Valid second tap — fire the double-hit event.
         emitDoubleHit(first_validL_ || second_validL_,
                       first_validR_ || second_validR_,

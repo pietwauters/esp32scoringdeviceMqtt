@@ -62,6 +62,7 @@ void MultiWeaponSensor::DoEpee(void) {
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
     if (!SignalLeft) {
       cl = ((tempADValue + ADCL_0) >> 1 > AxXy_160_Ohm);
+      Debounce_c1.update(cl);
       ADCL_0 = tempADValue;
     } else {
       cl = (tempADValue > AxXy_160_Ohm); // LongHit tracking (unaveraged)
@@ -74,14 +75,12 @@ void MultiWeaponSensor::DoEpee(void) {
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
     if (!SignalRight) {
       cr = ((tempADValue + ADCR_0) >> 1 > AxXy_160_Ohm);
+      Debounce_c2.update(cr);
       ADCR_0 = tempADValue;
     } else {
       cr = (tempADValue > AxXy_160_Ohm); // LongHit tracking (unaveraged)
     }
   }
-
-  Debounce_c1.update(cl);
-  Debounce_c2.update(cr);
 
   // Epee has no invalid hits; guard/piste checks remain in DEBOUNCING only.
   LongHitDetector_.update(cl, cr);

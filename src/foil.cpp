@@ -96,6 +96,7 @@ void MultiWeaponSensor::DoFoil(void) {
   Valid_l = HitOnLame_l();
   if (!SignalLeft) {
     NotConnectedLeft = bl;
+    Debounce_b1.update(bl);
     DebounceLong_al_cr.update(Valid_l && !bl);
   }
 
@@ -107,11 +108,9 @@ void MultiWeaponSensor::DoFoil(void) {
   Valid_r = HitOnLame_r();
   if (!SignalRight) {
     NotConnectedRight = br;
+    Debounce_b2.update(br);
     DebounceLong_ar_cl.update(Valid_r && !br);
   }
-
-  Debounce_b1.update(bl);
-  Debounce_b2.update(br);
 
   // validL/R = tip contact on lame; invalidL/R = tip contact but off-target
   LongHitDetector_.update(bl && Valid_l, br && Valid_r, bl && !Valid_l,
