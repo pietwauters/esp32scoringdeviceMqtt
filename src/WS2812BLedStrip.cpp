@@ -991,7 +991,34 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     AnimateEngardePretsAllez();
     SetLedStatus(0xff);
     break;
+
+  case EVENT_WS2812_AUTOREF_MODE:
+    AnimateAutoRefMode();
+    SetLedStatus(0xff);
+    break;
   }
+}
+
+void WS2812B_LedStrip::AnimateAutoRefMode() {
+  // Expand 2x2->4x4->6x6->8x8 then contract back, 500ms per step.
+  // Left panel (offset 0) in red, right panel (offset 64) in green.
+  static const uint8_t halves[] = {1, 2, 3, 4, 3, 2, 1};
+  for (int s = 0; s < 7; s++) {
+    uint8_t half = halves[s];
+    uint8_t startRC = 4 - half;
+    uint8_t count = 2 * half;
+    m_pixels->clear();
+    for (uint8_t r = startRC; r < startRC + count; r++) {
+      for (uint8_t c = startRC; c < startRC + count; c++) {
+        m_pixels->setPixelColor(r * 8 + c, m_Red);        // left panel
+        m_pixels->setPixelColor(64 + r * 8 + c, m_Green); // right panel
+      }
+    }
+    m_pixels->show();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+  m_pixels->clear();
+  m_pixels->show();
 }
 
 void WS2812B_LedStrip::NewAnimatePrio() {

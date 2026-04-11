@@ -384,8 +384,6 @@ void MultiWeaponSensor::DoReset() {
   SignalLeft = 0;
   SignalRight = 0;
   LockStarted = false;
-  LongHitDetector_.reset();
-  DoubleHitDetector_.reset();
 
   Debounce_Parry.setRequiredOnUs(200);
   Debounce_Parry.setRequiredOffUs(5000);

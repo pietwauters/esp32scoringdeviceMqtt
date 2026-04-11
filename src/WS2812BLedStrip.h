@@ -82,6 +82,7 @@ public:
   void setGreenPrio(bool Value, bool bReverse = false);
   void setRedPrio(bool Value, bool bReverse = false);
   void AnimateWarning();
+  void AnimateAutoRefMode();
   void StartWarning(uint32_t prio);
   void AnimateEngardePretsAllez();
   void StartEngardePretsAllezSequence();
