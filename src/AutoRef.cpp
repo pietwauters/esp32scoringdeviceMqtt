@@ -247,7 +247,11 @@ void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
   // (both fencers holding for the full duration) triggers an action.
   if (!isDouble)
     return;
-
+  bool hitL = (lhdEvent & DOUBLEHIT_VALID_LEFT) != 0;  // red = scored hit
+  bool hitR = (lhdEvent & DOUBLEHIT_VALID_RIGHT) != 0; // green = scored hit
+  if (!hitL || !hitR) {
+    return;
+  }
   if (!m_enabled) {
     // Double long press while disabled: enter AutoRef mode.
     auto &strip = WS2812B_LedStrip::getInstance();
