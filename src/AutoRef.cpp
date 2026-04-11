@@ -390,12 +390,19 @@ void AutoRef::checkTimeouts(uint32_t now) {
     if (now - m_stateEnteredAt >= delay) {
       auto &fsm = FencingStateMachine::getInstance();
       bool inOvertime = fsm.GetTimerstate() == ADDITIONAL_MINUTE;
+      bool inBreak = fsm.GetTimerstate() == BREAK;
       bool matchDone =
           !m_isOffTargetContinue &&
           (isMatchOver() ||
            (inOvertime && fsm.GetScoreLeft() != fsm.GetScoreRight()));
       if (matchDone) {
         m_state = AR_MATCH_OVER;
+      } else if (inBreak) {
+        // Hit during break: suppress EGPA — the break timer is still running
+        // and handleTimerZero(BREAK) will play EGPA at the correct moment.
+        m_state = AR_ARMED;
+        m_prevLights = 0;
+        m_peakLights = 0;
       } else {
         WS2812B_LedStrip::getInstance().startAnimation(
             EVENT_WS2812_ENGARDE_PRETS_ALLEZ);
