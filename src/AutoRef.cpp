@@ -289,7 +289,8 @@ void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
   strip.ClearAll();
   strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
   sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
-  m_state = AR_AWARDING;
+  strip.startAnimation(EVENT_WS2812_ENGARDE_PRETS_ALLEZ);
+  m_state = AR_PERIOD_END;
   m_stateEnteredAt = now;
   m_prevLights = 0;
   m_peakLights = 0;
@@ -308,12 +309,24 @@ void AutoRef::handleDoubleHit(uint32_t dhdEvent, uint32_t now) {
   auto &strip = WS2812B_LedStrip::getInstance();
 
   if (hitL) {
+    uint32_t newStatus = strip.GetLedStatus();
+    newStatus &= ~(MASK_RED | MASK_WHITE_L);
+    strip.SetLedStatus(newStatus);
+    strip.SetLedStatus(0xff);
     strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0001);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_LEFT);
+    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0001);
   }
   if (hitR) {
+    uint32_t newStatus = strip.GetLedStatus();
+    newStatus &= ~(MASK_GREEN | MASK_WHITE_R);
+    strip.SetLedStatus(newStatus);
+    strip.SetLedStatus(0xff);
     strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0002);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_RIGHT);
+    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0002);
   }
 }
 

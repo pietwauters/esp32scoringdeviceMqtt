@@ -103,12 +103,14 @@ public:
   uint8_t GetLeftScore() const { return m_LeftScore; }
   void SetLeftScore(uint8_t val) {
     m_LeftScore = val;
-    SetLedStatus(0xff); // full redraw so orange/prio paint on top of score
+    if (!m_animationRunning)
+      SetLedStatus(0xff); // full redraw so orange/prio paint on top of score
   }
   uint8_t GetRightScore() const { return m_RightScore; }
   void SetRightScore(uint8_t val) {
     m_RightScore = val;
-    SetLedStatus(0xff); // full redraw so orange/prio paint on top of score
+    if (!m_animationRunning)
+      SetLedStatus(0xff); // full redraw so orange/prio paint on top of score
   }
   void SetMirroring(bool value) { m_ReverseColors = value; }
   void ShowWelcomeLights();
