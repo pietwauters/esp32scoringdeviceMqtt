@@ -291,34 +291,12 @@ void AutoRef::handleDoubleHit(uint32_t dhdEvent, uint32_t now) {
   auto &strip = WS2812B_LedStrip::getInstance();
 
   if (hitL) {
-    uint32_t newStatus = strip.GetLedStatus();
-    newStatus &= ~(MASK_RED | MASK_WHITE_L);
-    strip.SetLedStatus(newStatus);
-    strip.SetLedStatus(0xff);
     strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0001);
-    taskYIELD();
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    taskYIELD();
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    taskYIELD();
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_LEFT);
-    taskYIELD();
-    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0001);
   }
   if (hitR) {
-    uint32_t newStatus = strip.GetLedStatus();
-    newStatus &= ~(MASK_GREEN | MASK_WHITE_R);
-    strip.SetLedStatus(newStatus);
-    strip.SetLedStatus(0xff);
     strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0002);
-    taskYIELD();
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    taskYIELD();
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    taskYIELD();
     sendToFSM(EVENT_UI_INPUT | UI_INPUT_DECR_SCORE_RIGHT);
-    taskYIELD();
-    strip.startAnimation(EVENT_WS2812_UNDO_HIT | 0x0002);
   }
 }
 
@@ -335,6 +313,7 @@ void AutoRef::handleTimerZero(uint32_t ctx, uint32_t now) {
 
   // Always give an audible signal
   strip.startAnimation(EVENT_WS2812_WARNING | 0x00000003); // 3 beeps
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
 
   switch (timerState) {
   case FIGHTING:
@@ -344,11 +323,14 @@ void AutoRef::handleTimerZero(uint32_t ctx, uint32_t now) {
     } else if (scoresEqual) {
       // Last round, tied: draw priority, play EGPA, then start overtime
       sendToFSM(EVENT_UI_INPUT | UI_INPUT_PRIO);
+      vTaskDelay(5000 / portTICK_PERIOD_MS);
       strip.startAnimation(EVENT_WS2812_ENGARDE_PRETS_ALLEZ);
       m_state = AR_PERIOD_END;
       m_stateEnteredAt = now;
     }
-    // Last round, not tied: match ended in FSM, nothing to do
+    // Last round, not tied: match is over.
+    if (!scoresEqual)
+      m_state = AR_MATCH_OVER;
     break;
 
   case BREAK:
@@ -359,7 +341,8 @@ void AutoRef::handleTimerZero(uint32_t ctx, uint32_t now) {
     break;
 
   case ADDITIONAL_MINUTE:
-    // Overtime ended; FSM sets MATCH_ENDED, nothing else for AutoRef
+    // Overtime ended; match is over.
+    m_state = AR_MATCH_OVER;
     break;
 
   default:
