@@ -71,6 +71,8 @@ union mix_t {
 // AutoRef queue bits 23:8 = TimerState_t at moment of zero bit 1     =
 // isLastRound (1 = last round) bit 0     = scoresEqual (1 = tied)
 #define AUTOREF_TIMER_ZERO 0xFF000000
+// Internal AutoRef-only event: black card or black P-card — match is over
+#define AUTOREF_BLACK_CARD 0xFD000000
 
 #define EVENT_GO_INTO_IDLE 0x00000001
 #define EVENT_GO_OUT_OF_IDLE 0x00000000

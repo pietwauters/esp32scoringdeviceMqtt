@@ -46,6 +46,8 @@ void AutoRef::AutoRefHandler(void *parameter) {
         ar.handleDoubleHit(event, now);
       } else if (mainType == AUTOREF_TIMER_ZERO) {
         ar.handleTimerZero(event, now);
+      } else if (mainType == AUTOREF_BLACK_CARD) {
+        ar.m_state = AR_MATCH_OVER;
       } else if (mainType == EVENT_UW2F_TIMER) {
         if (ar.m_state != AR_MATCH_OVER)
           ar.handleUW2FTimerZero(now);
@@ -94,6 +96,23 @@ void AutoRef::update(FencingStateMachine *subject, uint32_t eventtype) {
     // Forward only the 60-second mark (1 min elapsed, 0 sec = 0x00010000)
     if ((eventtype & DATA_24BIT_MASK) == UW2F_TIMER_60S_MARK)
       xQueueSend(m_queue, &eventtype, 0);
+    return;
+  }
+  // Black card or black P-card: match is over regardless of time/score
+  if (mainType == EVENT_BLACK_CARD_LEFT || mainType == EVENT_BLACK_CARD_RIGHT) {
+    if ((eventtype & DATA_24BIT_MASK) > 0) {
+      uint32_t blackCard = AUTOREF_BLACK_CARD;
+      xQueueSend(m_queue, &blackCard, 0);
+    }
+    return;
+  }
+  if (mainType == EVENT_P_CARD) {
+    uint8_t left = eventtype & 0xFF;
+    uint8_t right = (eventtype >> 8) & 0xFF;
+    if (left == 4 || right == 4) {
+      uint32_t blackCard = AUTOREF_BLACK_CARD;
+      xQueueSend(m_queue, &blackCard, 0);
+    }
     return;
   }
   if (mainType != EVENT_LIGHTS)
