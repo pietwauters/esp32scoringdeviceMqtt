@@ -284,14 +284,12 @@ void AutoRef::handleLongPress(uint32_t lhdEvent, uint32_t now) {
     return;
   }
 
-  if (m_state != AR_AWARDING)
-    return;
-
-  // Double long press while enabled: full match reset.
+  // Double long press while enabled: full match reset (allowed from any state).
   auto &strip = WS2812B_LedStrip::getInstance();
   strip.ClearAll();
   strip.startAnimation(EVENT_WS2812_AUTOREF_MODE);
   sendToFSM(EVENT_UI_INPUT | UI_INPUT_RESET);
+  m_state = AR_AWARDING;
   m_stateEnteredAt = now;
   m_prevLights = 0;
   m_peakLights = 0;
