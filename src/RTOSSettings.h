@@ -52,7 +52,7 @@
 #define PRIORITY_STARTUP_DISPLAY 0 // StartupDisplayTask — one-shot startup
 #define PRIORITY_LED_HANDLER 4     // LedStripHandler   — display updates
 #define PRIORITY_STATE_MACHINE 6   // StateMachineHandler — 10 ms tick
-#define PRIORITY_ARDUINO_TASK 1    // setup() + loop()  — below FSM/LED tasks
+#define PRIORITY_ARDUINO_TASK 3    // setup() + loop()  — below FSM/LED tasks
 
 // ---------------------------------------------------------------------------
 // Stack sizes (bytes)

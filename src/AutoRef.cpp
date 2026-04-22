@@ -204,6 +204,8 @@ void AutoRef::processDecision(uint32_t peakLights, uint32_t now) {
       // Double valid, or valid+off-target mix → need confirmation
       m_state = AR_AWAITING_CONFIRMATION;
       m_stateEnteredAt = now;
+      WS2812B_LedStrip::getInstance().startAnimation(
+          EVENT_WS2812_CONFIRMATION_WAIT);
     } else if (redOn) {
       award(1, 0, now);
     } else {
@@ -216,6 +218,8 @@ void AutoRef::processDecision(uint32_t peakLights, uint32_t now) {
     if (redOn && greenOn) {
       m_state = AR_AWAITING_CONFIRMATION;
       m_stateEnteredAt = now;
+      WS2812B_LedStrip::getInstance().startAnimation(
+          EVENT_WS2812_CONFIRMATION_WAIT);
     } else if (redOn) {
       award(1, 0, now);
     } else if (greenOn) {
@@ -394,8 +398,12 @@ void AutoRef::handleUW2FTimerZero(uint32_t now) {
 void AutoRef::checkTimeouts(uint32_t now) {
   switch (m_state) {
   case AR_AWAITING_CONFIRMATION:
-    if (now - m_stateEnteredAt >= AUTOREF_CONFIRMATION_TIMEOUT_MS)
-      continueMatch(now); // no points, restart
+    if (now - m_stateEnteredAt >= AUTOREF_CONFIRMATION_TIMEOUT_MS) {
+      WS2812B_LedStrip::getInstance().m_AnimatingConfirmation = false;
+      GoImmediatelyToArmed(now);
+      // continueMatch(now); // no points, restart
+    }
+
     break;
   case AR_AWARDING: {
     uint32_t delay = m_isOffTargetContinue ? AUTOREF_POST_OFFTARGET_DELAY_MS
@@ -473,6 +481,15 @@ void AutoRef::award(int deltaLeft, int deltaRight, uint32_t now) {
   // window
   m_isOffTargetContinue = false;
   continueMatch(now);
+}
+
+void AutoRef::GoImmediatelyToArmed(uint32_t now) {
+  m_prevLights = 0;
+  m_peakLights = 0;
+  WS2812B_LedStrip::getInstance().startAnimation(
+      EVENT_WS2812_ENGARDE_PRETS_ALLEZ);
+  m_state = AR_EGPA;
+  m_stateEnteredAt = now;
 }
 
 void AutoRef::continueMatch(uint32_t now) {

@@ -1,7 +1,50 @@
-// Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "WS2812BLedStrip.h"
 #include "RTOSSettings.h"
 #include "driver/gpio.h"
+#include <stdint.h>
+// 8x8 bitmap for a question mark
+static const uint8_t questionMark8x8[8] = {0b00111100, 0b01000010, 0b00000010,
+                                           0b00001100, 0b00010000, 0b00010000,
+                                           0b00000000, 0b00010000};
+
+void WS2812B_LedStrip::AnimateConfirmationWait() {
+  m_AnimatingConfirmation = true;
+  for (int repeat = 0; repeat < 15 && m_AnimatingConfirmation; ++repeat) {
+    // Left panel: question mark in red
+    m_pixels->clear();
+    for (uint8_t r = 0; r < 8; ++r) {
+      for (uint8_t c = 0; c < 8; ++c) {
+        if ((questionMark8x8[r] >> (7 - c)) & 1) {
+          m_pixels->setPixelColor(r * 8 + c, m_Red); // left panel
+        }
+      }
+    }
+    m_pixels->show();
+    for (int t = 0; t < 100 && m_AnimatingConfirmation; ++t) {
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+
+    if (!m_AnimatingConfirmation)
+      break;
+
+    // Right panel: question mark in green
+    m_pixels->clear();
+    for (uint8_t r = 0; r < 8; ++r) {
+      for (uint8_t c = 0; c < 8; ++c) {
+        if ((questionMark8x8[r] >> (7 - c)) & 1) {
+          m_pixels->setPixelColor(64 + r * 8 + c, m_Green); // right panel
+        }
+      }
+    }
+    m_pixels->show();
+    for (int t = 0; t < 100 && m_AnimatingConfirmation; ++t) {
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+  }
+  m_pixels->clear();
+  m_pixels->show();
+  m_AnimatingConfirmation = false;
+}
 #include "esp_task_wdt.h"
 #include <Preferences.h>
 
@@ -949,6 +992,15 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
   m_animationRunning = true;
 
   switch (type & 0xffff0000) {
+
+  case EVENT_WS2812_CONFIRMATION_WAIT:
+    m_AnimatingConfirmation = true;
+    AnimateConfirmationWait();
+    m_AnimatingConfirmation = false;
+    m_pixels->clear();
+    m_pixels->show();
+    SetLedStatus(0xff);
+    break;
   case EVENT_WS2812_WELCOME:
     ShowWelcomeLights();
     break;

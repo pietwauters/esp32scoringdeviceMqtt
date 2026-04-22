@@ -13,8 +13,8 @@
 
 // Timing constants (ms)
 #define AUTOREF_CONFIRMATION_TIMEOUT_MS 15000
-#define AUTOREF_POST_AWARD_DELAY_MS 12000
-#define AUTOREF_POST_OFFTARGET_DELAY_MS 8000
+#define AUTOREF_POST_AWARD_DELAY_MS 5000
+#define AUTOREF_POST_OFFTARGET_DELAY_MS 1000
 #define AUTOREF_EGPA_DURATION_MS 4000
 #define AUTOREF_PERIOD_END_DELAY_MS                                            \
   6000 // warning + EGPA before starting next period
@@ -73,6 +73,7 @@ private:
   void checkTimeouts(uint32_t now);
   void award(int deltaLeft, int deltaRight, uint32_t now);
   void continueMatch(uint32_t now);
+  void GoImmediatelyToArmed(uint32_t now) ;
   bool isMatchOver();
   int getMaxScore();
   void sendToFSM(uint32_t cmd);

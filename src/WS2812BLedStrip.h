@@ -30,6 +30,9 @@
 #define END_OF_WELCOME_ANIMATION 1
 #define END_OF_PRIO_ANIMATION 2
 
+// New events for confirmation wait animation
+#define EVENT_WS2812_CONFIRMATION_WAIT 0x00FF0000
+#define EVENT_WS2812_CONFIRMATION_END 0x00FF0001
 // How many NeoPixels are attached to the Arduino?
 #define NUMPIXELS 128
 
@@ -66,6 +69,8 @@ public:
   void SetLedStatus(uint32_t val);
   void setRed(bool Value, bool bReverse = false);
   void setWhiteLeft(bool Value, bool inverse = false);
+  void AnimateConfirmationWait();
+  volatile bool m_AnimatingConfirmation = false;
   void setOrangeLeft(bool Value);
   void setOrangeRight(bool Value);
   void setParry(bool Value);
