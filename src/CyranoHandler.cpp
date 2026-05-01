@@ -103,8 +103,11 @@ void CyranoHandler::Begin() {
   theBroker.fromString(mqttServer);
   mqttClient.onMessage(onMqttMessage);
 
-  IPAddress resolvedBroker = MDNSResolver::getInstance().lookupService(
-      "mqtt", "tcp", theBroker, mdnsName);
+  /*IPAddress resolvedBroker = MDNSResolver::getInstance().lookupService(
+      "mqtt", "tcp", theBroker, mdnsName);*/
+
+  IPAddress resolvedBroker =
+      MDNSResolver::getInstance().resolveHostname(mdnsName, theBroker);
   mqttClient.setServer(resolvedBroker, resolvedPort);
   mqttClient.setTLS(false);
   mqttClient.setCredentials(mqttUser, mqttPassword);
