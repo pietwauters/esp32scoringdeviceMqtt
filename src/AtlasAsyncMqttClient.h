@@ -58,6 +58,8 @@ public:
     m_ca_cert = caCert;
     m_port = enable ? 8883 : 1883;
   };
+  // Connection status
+  bool isConnected();
 
 private:
   AtlasAsyncMqttClient(); // singleton protected
@@ -70,6 +72,8 @@ private:
   std::string m_host;
   uint16_t m_port = 1883;
   bool m_tlsEnabled = false;
+  // Connection status flag
+  bool m_connected = false;
   std::string m_username;
   std::string m_password;
   std::string m_clientId;

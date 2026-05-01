@@ -1,9 +1,12 @@
+
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "AtlasAsyncMqttClient.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
 #include <cstring>
 #include <iostream>
+
+bool AtlasAsyncMqttClient::isConnected() { return m_connected; }
 
 static const char *TAG = "ATLAS_MQTT";
 
@@ -54,14 +57,14 @@ void AtlasAsyncMqttClient::onSubscribe(mqtt_subscribe_cb_t cb) {
 
 void AtlasAsyncMqttClient::publish(const char *topic, int qos, bool retain,
                                    const char *payload) {
-  if (!client)
+  if (!client || !isConnected())
     return;
   esp_mqtt_client_publish(client, topic, payload, 0, qos, retain);
 }
 
 void AtlasAsyncMqttClient::publish(const char *topic, int qos, bool retain,
                                    const void *payload, size_t length) {
-  if (!client)
+  if (!client || !isConnected())
     return;
   esp_mqtt_client_publish(client, topic, static_cast<const char *>(payload),
                           length, qos, retain);
@@ -83,7 +86,7 @@ void AtlasAsyncMqttClient::setWill(const char *topic, const char *message,
 }
 
 void AtlasAsyncMqttClient::subscribe(const char *topic, int qos) {
-  if (!client)
+  if (!client || !isConnected())
     return;
   esp_mqtt_client_subscribe(client, topic, qos);
 }
@@ -101,11 +104,13 @@ void AtlasAsyncMqttClient::handleEvent(esp_mqtt_event_handle_t event) {
   switch (event->event_id) {
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+    m_connected = true;
     if (connectCb)
       connectCb(event->session_present);
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+    m_connected = false;
     if (disconnectCb)
       disconnectCb();
     break;
@@ -148,8 +153,11 @@ void AtlasAsyncMqttClient::begin() {
     mqtt_cfg.lwt_msg = m_lwtMessage.c_str();
     mqtt_cfg.lwt_qos = m_lwtQos;
     mqtt_cfg.lwt_retain = m_lwtRetain;
-    mqtt_cfg.keepalive = 30;
   }
+  // Fast disconnect/reconnect settings
+  mqtt_cfg.keepalive = 5;               // seconds, fast dead peer detection
+  mqtt_cfg.reconnect_timeout_ms = 2000; // ms, fast reconnect
+  mqtt_cfg.network_timeout_ms = 5000;   // ms, fast socket timeout
 
   // TLS / CA certificate (optional, for server cert verification)
   if (m_tlsEnabled && !m_ca_cert.empty()) {
