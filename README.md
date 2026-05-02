@@ -19,6 +19,8 @@ Commercial fencing scoring devices are expensive. The OpenPiste scoring device d
 | Period management | ✓ |
 | Priority (drawing and sudden death) | ✓ |
 | All three weapons (foil, épée, sabre) | ✓ |
+| Wifi connectivity with Cyrano | ✓ |
+| Wireless repeaters (esp-now) | ✓ |
 
 **Build cost: under €60.** The remote control is a free Android app — no dedicated hardware to buy.
 
