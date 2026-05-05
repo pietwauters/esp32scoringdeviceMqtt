@@ -52,7 +52,7 @@ public:
    * \return The current value of m_DetectedWeapon
    */
   weapon_t GetDetectedWeapon() { return m_DetectedWeapon; }
-
+  void initializeResistorThresholds();
   void DoSabre();
   void DoEpee(void);
   void DoFoil(void);
@@ -186,6 +186,7 @@ private:
   esp_adc_cal_characteristics_t adc_chars;
   int CorrectVccCounter = 10;
   bool PowerProblem = false;
+  bool ForceThresholdCalibration = false;
 };
 
 extern int AxXy_100_Ohm;

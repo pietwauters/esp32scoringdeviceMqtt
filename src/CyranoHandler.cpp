@@ -36,7 +36,7 @@ void onMqttConnect(bool sessionPresent) {
   mqttClient.subscribe(mqttListenTopic, 1);
 }
 
-void onMqttDisconnect() { Serial.println("Disconnected from MQTT broker"); }
+void onMqttDisconnect() {}
 
 void onMqttMessage(const char *topic, const char *payload,
                    unsigned int length) {
@@ -56,8 +56,8 @@ void CyranoHandler::Begin() {
   uint32_t PisteNr = networkpreferences.getInt("pisteNr", 304);
   String pisteName = networkpreferences.getString("Pistename", "");
   CyranoPort = networkpreferences.getUShort("CyranoPort", CYRANO_PORT);
-  CyranoBroadcastPort = networkpreferences.getUShort("CyranoBroadcastPort",
-                                                     CYRANO_BROADCAST_PORT);
+  CyranoBroadcastPort =
+      networkpreferences.getUShort("CyranoBcPort", CYRANO_BROADCAST_PORT);
   if (pisteName == "") {
     char temp[8];
     sprintf(temp, "%d", PisteNr);

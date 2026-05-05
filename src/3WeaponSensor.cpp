@@ -34,11 +34,12 @@ static const char *CORE_SCORING_MACHINE_TAG = "Core Scoring machine";
 }
 */
 ResistorDividerCalibrator MyCalibrator;
-void initializeResistorThresholds() {
-  MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
+void MultiWeaponSensor::initializeResistorThresholds() {
+  // MyCalibrator.begin((adc1_channel_t)br_analog, (adc1_channel_t)cr_analog);
   bool success = true;
-  if (!MyCalibrator.begin((adc1_channel_t)br_analog,
-                          (adc1_channel_t)cr_analog)) {
+  if ((!MyCalibrator.begin((adc1_channel_t)br_analog,
+                           (adc1_channel_t)cr_analog)) &&
+      (ForceThresholdCalibration)) {
     printf("\nCalibration will be done on the connector of the right fencer "
            "(Left on view from the back, Green light\n");
     printf("The calibration will be done in 2 phases.\n");
@@ -62,6 +63,7 @@ void initializeResistorThresholds() {
       MyCalibrator.save_calibration_to_nvs(CALIBRATION_VERSION);
     }
   }
+  MyCalibrator.set_default_calibration();
   constexpr int sdev = 7;
   // During calibration we have measured a sdev of 6-7 ADC raw units (constant
   // over the entire range) I'm not adding extra correction factors here. These
@@ -155,6 +157,7 @@ void MultiWeaponSensor::begin() {
       mypreferences.putInt("LIGHTS_MS", LIGHTS_DURATION_MS);
       LightsDuration = LIGHTS_DURATION_MS;
     }
+    ForceThresholdCalibration = mypreferences.getBool("ForceCal", false);
     uint8_t storedweapon = mypreferences.getUChar("START_WEAPON", 99);
     if (99 == storedweapon) {
       mypreferences.putUChar("START_WEAPON", 0);

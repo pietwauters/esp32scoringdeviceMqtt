@@ -36,6 +36,7 @@ public:
 
   // NVS support
   bool load_calibration_from_nvs(const char *nvs_namespace = "calib");
+  void set_default_calibration();
   bool save_calibration_to_nvs(int version = CALIBRATION_VERSION,
                                const char *nvs_namespace = "calib");
   void
@@ -48,11 +49,19 @@ public:
   float read_voltage_trimmed_average(adc1_channel_t channel, int samples,
                                      float trim_percent = 10.0f);
 
+  // Public getters for calibration parameters
+  float get_v_gpio() const { return v_gpio; }
+  float get_r1_eff() const { return r1_eff; }
+  float get_r3_eff() const { return r3_eff; }
+  float get_r1_Ax_eff() const { return r1_Ax_eff; }
+  int get_CalVersion() const { return CalVersion; }
+
 private:
-  float v_gpio = 3.3f;
-  float r1_eff = -1;
-  float r1_Ax_eff = -1;
-  float r3_eff = -1;
+  float v_gpio = 3.3643f;
+  float r1_eff = 495.6;
+  float r1_Ax_eff = 87.94;
+  float r3_eff = 503.79;
+  int CalVersion = 6;
   esp_adc_cal_characteristics_t adc_chars;
   adc1_channel_t channel_top;
   adc1_channel_t channel_bottom;
@@ -68,5 +77,4 @@ private:
   float sdev_v_top = 0;
   float sdev_v_bottom = 0;
   float sdev_adc_threshold = 0;
-  int CalVersion = 0;
 };

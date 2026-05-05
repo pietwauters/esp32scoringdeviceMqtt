@@ -18,6 +18,46 @@
 static const char *NETWORK_TAG = "Network";
 
 AsyncWebServer server(80);
+
+// Forward declaration for calibration HTML handler
+String getCalibrationHtml();
+
+// Register endpoints and start server
+void startCalibrationWebServer() {
+  server.reset();
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Hi! I am ESP32.");
+  });
+  server.on("/calibration", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String html = getCalibrationHtml();
+    request->send(200, "text/html", html);
+  });
+  server.begin();
+}
+// Forward declaration for calibration HTML handler
+#include "adc_calibrator.h"
+
+String getCalibrationHtml() {
+  // Read calibration from NVS using ResistorDividerCalibrator
+  ResistorDividerCalibrator calibrator;
+  calibrator.load_calibration_from_nvs();
+  String html = "<html><head><title>ADC Calibration</title></head><body>";
+  html += "<h2>ADC Calibration Parameters</h2>";
+  html += "<ul>";
+  html +=
+      "<li><b>v_gpio:</b> " + String(calibrator.get_v_gpio(), 4) + " V</li>";
+  html +=
+      "<li><b>r1_eff:</b> " + String(calibrator.get_r1_eff(), 2) + " Ω</li>";
+  html +=
+      "<li><b>r3_eff:</b> " + String(calibrator.get_r3_eff(), 2) + " Ω</li>";
+  html += "<li><b>r1_Ax_eff:</b> " + String(calibrator.get_r1_Ax_eff(), 2) +
+          " Ω</li>";
+  html +=
+      "<li><b>CalVersion:</b> " + String(calibrator.get_CalVersion()) + "</li>";
+  html += "</ul>";
+  html += "</body></html>";
+  return html;
+}
 // WiFiManager wm;
 /**
    Sets all the channels back to 0.
@@ -317,9 +357,7 @@ void NetWork::GlobalStartWiFi() {
   // Start mDNS
   MDNSResolver::getInstance().begin(soft_ap_ssid.c_str());
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hi! I am ESP32.");
-  });
+  startCalibrationWebServer();
   // esp_wifi_set_max_tx_power(20);
 }
 
@@ -408,13 +446,13 @@ WiFiManagerParameter TryGlobalWiFi("TryGlobalWiFi", "Look for external network",
                                    "N", 1);
 
 WiFiManagerParameter CyranoPort("CyranoPort", "Cyrano Port", "50100", 16);
-WiFiManagerParameter CyranoBroadcastPort("CyranoBroadcastPort",
-                                         "Cyrano Broadcast Port", "50101", 16);
+WiFiManagerParameter CyranoBcPort("CyranoBcPort", "Cyrano Broadcast Port",
+                                  "50101", 16);
 WiFiManagerParameter UseDHCP("UseDHCP", "Use DHCP", "N", 1);
 WiFiManagerParameter FixedIPAddress("IPAddressing", "IP Addressing mode",
                                     "172.20.255.1", 16);
-WiFiManagerParameter MqttBrokerIPAddress("MQTTIPAddress", "mqtt broker IP",
-                                         "10.154.1.130", 16);
+WiFiManagerParameter MqttBrokerIP("MQTTBrokerIP", "mqtt broker IP",
+                                  "10.154.1.130", 16);
 
 WiFiManagerParameter StartUpWeapon("StartUpWeapon",
                                    "Default Weapon at start_up", "F", 8);
@@ -425,7 +463,7 @@ WiFiManagerParameter MasterPisteId("MasterPiste", "Piste to repeat", "500", 3);
 WiFiManagerParameter MirrorLights("MirrorLights", "Mirror lights", "N", 1);
 WiFiManagerParameter DisableBrownout("DisableBrownOut",
                                      "Disable Brownout detecton", "Y", 1);
-
+WiFiManagerParameter ForceCal("ForceCal", "Force Calibration", "N", 1);
 bool ToBool(const char *input) {
   bool result = false;
   switch (input[0]) {
@@ -487,13 +525,13 @@ void saveParamsCallback() {
   networkpreferences.putUShort("CyranoPort", ThePort);
 
   uint16_t TheBroadcastPort = 0;
-  sscanf(CyranoBroadcastPort.getValue(), "%d", &TheBroadcastPort);
+  sscanf(CyranoBcPort.getValue(), "%d", &TheBroadcastPort);
   networkpreferences.putUShort("CyranoBcPort", TheBroadcastPort);
 
   networkpreferences.putBool("TryGlobalWiFi", ToBool(TryGlobalWiFi.getValue()));
   networkpreferences.putBool("UseDHCP", ToBool(UseDHCP.getValue()));
   networkpreferences.putString("BaseAddress", FixedIPAddress.getValue());
-  networkpreferences.putString("MqttBroker", MqttBrokerIPAddress.getValue());
+  networkpreferences.putString("MqttBroker", MqttBrokerIP.getValue());
 
   networkpreferences.end();
   Preferences mypreferences;
@@ -522,6 +560,7 @@ void saveParamsCallback() {
   mypreferences.putBool("Powersave", ToBool(PowerMode.getValue()));
   mypreferences.putBool("MirrorLights", ToBool(MirrorLights.getValue()));
   mypreferences.putBool("DisableBrownout", ToBool(DisableBrownout.getValue()));
+  mypreferences.putBool("ForceCal", ToBool(ForceCal.getValue()));
 
   int MasterId = -1;
   sscanf(MasterPisteId.getValue(), "%d", &MasterId);
@@ -564,10 +603,9 @@ void NetWork::WaitForNewSettingsViaPortal() {
   sprintf(temp, "%d", CyranoPortNr);
   CyranoPort.setValue(temp, 8);
 
-  uint16_t CyranoBroadcastPortNr =
-      networkpreferences.getUShort("CyranoBcPort", 50100);
-  sprintf(temp, "%d", CyranoBroadcastPortNr);
-  CyranoBroadcastPort.setValue(temp, 8);
+  uint16_t CyranoBcPortNr = networkpreferences.getUShort("CyranoBcPort", 50100);
+  sprintf(temp, "%d", CyranoBcPortNr);
+  CyranoBcPort.setValue(temp, 8);
 
   TryGlobalWiFi.setValue(
       BoolToStr(networkpreferences.getBool("TryGlobalWiFi", false)), 1);
@@ -575,7 +613,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
   FixedIPAddress.setValue(
       (networkpreferences.getString("BaseAddress", "172.20.255.1")).c_str(),
       16);
-  MqttBrokerIPAddress.setValue(
+  MqttBrokerIP.setValue(
       (networkpreferences.getString("MqttBroker", "10.154.1.130")).c_str(), 16);
 
   networkpreferences.end();
@@ -611,7 +649,8 @@ void NetWork::WaitForNewSettingsViaPortal() {
   MirrorLights.setValue(BoolToStr(mypreferences.getBool("MirrorLights", false)),
                         1);
   DisableBrownout.setValue(
-      BoolToStr(mypreferences.getBool("DisableBrownout", false)), 1);
+      BoolToStr(mypreferences.getBool("DisableBrownout", true)), 1);
+  ForceCal.setValue(BoolToStr(mypreferences.getBool("ForceCal", false)), 1);
 
   int32_t MasterNr = mypreferences.getInt("MasterPiste", -1);
   sprintf(temp, "%d", MasterNr);
@@ -626,10 +665,10 @@ void NetWork::WaitForNewSettingsViaPortal() {
 
   wm.addParameter(&TryGlobalWiFi);
   wm.addParameter(&CyranoPort);
-  wm.addParameter(&CyranoBroadcastPort);
+  wm.addParameter(&CyranoBcPort);
   wm.addParameter(&UseDHCP);
   wm.addParameter(&FixedIPAddress);
-  wm.addParameter(&MqttBrokerIPAddress);
+  wm.addParameter(&MqttBrokerIP);
   wm.addParameter(&StartUpWeapon);
   wm.addParameter(&SmallDE);
   wm.addParameter(&MuteBuzzer);
@@ -638,6 +677,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
   wm.addParameter(&MasterPisteId);
   wm.addParameter(&MirrorLights);
   wm.addParameter(&DisableBrownout);
+  wm.addParameter(&ForceCal);
 
   wm.setEnableConfigPortal(true);
   wm.setConfigPortalBlocking(true);
