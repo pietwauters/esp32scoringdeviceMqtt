@@ -98,6 +98,8 @@ void MultiWeaponSensor::DoFoil(void) {
     NotConnectedLeft = bl;
     Debounce_b1.update(bl);
     DebounceLong_al_cr.update(Valid_l && !bl);
+  } else {
+    Debounce_b1.update(false);
   }
 
   // Always measure right contact so LongHitDetector_ tracks uninterrupted
@@ -110,6 +112,8 @@ void MultiWeaponSensor::DoFoil(void) {
     NotConnectedRight = br;
     Debounce_b2.update(br);
     DebounceLong_ar_cl.update(Valid_r && !br);
+  } else {
+    Debounce_b2.update(false);
   }
 
   // validL/R = tip contact on lame; invalidL/R = tip contact but off-target
