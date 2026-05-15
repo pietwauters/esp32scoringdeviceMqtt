@@ -4,6 +4,7 @@
 #include "MDNSResolver.h"
 #include "esp_log.h"
 #include <sstream>
+#include <string>
 
 extern const char ca_cert_pem[];
 extern const size_t ca_cert_pem_len;
@@ -650,4 +651,16 @@ void CyranoHandler::PeriodicallyBroadcastStatus() {
   NextPeriodicalUpdate = millis() + 17000;
   SendInfoMessage();
   return;
+}
+
+// Publish a minimal parry event JSON to MQTT
+void CyranoHandler::publishParryEvent(bool state, uint32_t timestamp_ms) {
+  if (!mqttClient.isConnected())
+    return;
+  std::ostringstream oss;
+  oss << "{\"event\":\"parry\",\"ts\":" << timestamp_ms
+      << ",\"state\":" << (state ? 1 : 0) << "}";
+  // Use a dedicated topic for parry events
+  std::string topic = std::string(mqttPublishTopic) + "/Parry";
+  mqttClient.publish(topic.c_str(), 0, false, oss.str().c_str());
 }

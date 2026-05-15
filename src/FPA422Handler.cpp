@@ -483,10 +483,16 @@ void FPA422Handler::ProcessLightsChange(uint32_t eventtype) {
   Message1.SetGreen(event_data & MASK_GREEN);
   Message1.SetWhiteLeft(event_data & MASK_WHITE_L);
   Message1.SetWhiteRight(event_data & MASK_WHITE_R);
-  Message11.SetContact(event_data & MASK_PARRY);
+  bool parryState = (event_data & MASK_PARRY) != 0;
+  static bool lastParryState = false;
+  Message11.SetContact(parryState);
   AllProtocolsTransmitMessage(1);
   AllProtocolsTransmitMessage(11);
-
+  // Publish parry event only on change
+  if (parryState != lastParryState) {
+    CyranoHandler::getInstance().publishParryEvent(parryState, millis());
+    lastParryState = parryState;
+  }
   // Message1.Print();
 }
 
