@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "network.h"
+#include "AbsoluteTime.h"
 #include "AsyncUDP.h"
 #include "FlashWriteGuard.h"
 #include "MDNSResolver.h"
@@ -14,6 +15,7 @@
 #include <ESPAsyncWebServer.h>
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include <ElegantOTA.h>
 static const char *NETWORK_TAG = "Network";
 

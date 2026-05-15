@@ -1,5 +1,6 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "FPA422Handler.h"
+#include "AbsoluteTime.h"
 #include "RS422_FPA_Message.h"
 #include "RS422_FPA_Type1_Message.h"
 #include "RS422_FPA_Type2_Message.h"
@@ -490,7 +491,9 @@ void FPA422Handler::ProcessLightsChange(uint32_t eventtype) {
   AllProtocolsTransmitMessage(11);
   // Publish parry event only on change
   if (parryState != lastParryState) {
-    CyranoHandler::getInstance().publishParryEvent(parryState, millis());
+
+    CyranoHandler::getInstance().publishParryEvent(
+        parryState, AbsoluteTime::getInstance().getTimestamp());
     lastParryState = parryState;
   }
   // Message1.Print();

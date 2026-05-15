@@ -39,7 +39,7 @@ public:
   void ProcessUIEvents(uint32_t const event);
   void SetPisteID(const std::string &ID) { m_MachineStatus[PisteId] = ID; };
   // Publish a minimal parry event JSON to MQTT
-  void publishParryEvent(bool state, uint32_t timestamp_ms);
+  void publishParryEvent(bool state, uint64_t timestamp_ms);
   void update(FencingStateMachine *subject, uint32_t eventtype);
   void update(UDPIOHandler *subject, uint32_t eventtype) {
     ProcessUIEvents(eventtype);

@@ -1,8 +1,9 @@
 #include "CyranoHandler.h"
+#include "AbsoluteTime.h"
 #include "CyranoConverter.h"
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
-#include "esp_log.h"
+#include <esp_log.h>
 #include <sstream>
 #include <string>
 
@@ -118,6 +119,12 @@ void CyranoHandler::Begin() {
       (char *)malloc(sizeof("MQTT_Cyrano/Piste_001/Connection") + 1);
   sprintf(mqttLastWillTopic, "MQTT_Cyrano/Piste_%.3d/Connection", PisteNr);
   mqttClient.setWill(mqttLastWillTopic, "offline", 1, true);
+
+  if (true) {
+    printf("Starting the Absolute Time functionality\n");
+    // Start the time service (optional: set server/interval before begin)
+    AbsoluteTime::getInstance().begin(mdnsName, 10, mqttServer);
+  }
 }
 
 CyranoHandler::~CyranoHandler() {
@@ -654,7 +661,7 @@ void CyranoHandler::PeriodicallyBroadcastStatus() {
 }
 
 // Publish a minimal parry event JSON to MQTT
-void CyranoHandler::publishParryEvent(bool state, uint32_t timestamp_ms) {
+void CyranoHandler::publishParryEvent(bool state, uint64_t timestamp_ms) {
   if (!mqttClient.isConnected())
     return;
   std::ostringstream oss;
