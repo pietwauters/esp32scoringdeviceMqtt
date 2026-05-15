@@ -12,7 +12,7 @@ public:
   static AbsoluteTime &getInstance();
 
   // Initialize and start synchronization
-  void begin(const std::string &serverAddress = "CyranoBroker",
+  void begin(const std::string &serverAddress = "openpiste",
              uint32_t syncIntervalSecs = 10,
              const std::string &fallbackIp = "");
 

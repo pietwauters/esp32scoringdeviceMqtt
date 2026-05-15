@@ -11,7 +11,7 @@ extern const char ca_cert_pem[];
 extern const size_t ca_cert_pem_len;
 
 static const char *CYRANO_TAG = "Cyrano";
-const char *mdnsName = "CyranoBroker";
+const char *mdnsName = "openpiste";
 CyranoHandler::CyranoHandler() {
   // ctor
   m_MachineStatus[PisteId] = "1";
