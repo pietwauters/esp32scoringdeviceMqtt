@@ -89,6 +89,63 @@ Core 1 (APP_CPU):   Sensor (ESP_TIMER_TASK only)
 - It will re-apply the patch before the next build
 - No action required
 
+### Troubleshooting: Patch Fails to Apply
+
+If you see "❌ Could not find xTaskCreatePinnedToCore call to patch":
+
+The automatic patch script tries multiple patterns to handle different ESP-IDF versions, but if your version has significantly different code structure, you'll need to manually patch:
+
+#### Step 1: Locate the file
+
+**Windows:** `C:\Users\<YourUser>\.platformio\packages\framework-espidf\components\esp_timer\src\esp_timer.c`
+**Linux/Mac:** `~/.platformio/packages/framework-espidf/components/esp_timer/src/esp_timer.c`
+
+#### Step 2: Find the xTaskCreatePinnedToCore call
+
+Search for the function that creates the timer task. Look for:
+- `xTaskCreatePinnedToCore` AND
+- `s_timer_task` (the task handle variable)
+
+Example (the exact format varies by version):
+```c
+int ret = xTaskCreatePinnedToCore(&timer_task, "esp_timer",
+        ESP_TASK_TIMER_STACK, NULL, ESP_TASK_TIMER_PRIO, &s_timer_task, 0);
+```
+
+#### Step 3: Apply the manual patch
+
+1. **Add the compile guard** (near the top of the file, after includes):
+```c
+#ifndef ESP_TIMER_TASK_CORE
+#error "ESP_TIMER_TASK_CORE is not defined. Add -DESP_TIMER_TASK_CORE=0 or 1 to build_flags in platformio.ini"
+#endif
+```
+
+2. **Replace the last parameter** (the core number) with `ESP_TIMER_TASK_CORE`:
+
+Before:
+```c
+xTaskCreatePinnedToCore(&timer_task, "esp_timer",
+        ESP_TASK_TIMER_STACK, NULL, ESP_TASK_TIMER_PRIO, &s_timer_task, 0);
+                                                                        ^^^
+```
+
+After:
+```c
+xTaskCreatePinnedToCore(&timer_task, "esp_timer",
+        ESP_TASK_TIMER_STACK, NULL, ESP_TASK_TIMER_PRIO, &s_timer_task, ESP_TIMER_TASK_CORE);
+                                                                        ^^^^^^^^^^^^^^^^^^^
+```
+
+#### Step 4: Report the issue
+
+If you needed to manually patch, please:
+1. Note your ESP-IDF version (`pio pkg list` or check the package directory name)
+2. Copy the **original** xTaskCreatePinnedToCore line you found
+3. Open an issue or submit a PR to add a new pattern to `patch_esp_timer.py`
+
+This helps improve the auto-patcher for future users!
+
 ### Why Not a Framework Fork?
 
 Alternative approaches considered:

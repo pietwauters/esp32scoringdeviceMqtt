@@ -65,26 +65,79 @@ def apply_patch(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Find the xTaskCreatePinnedToCore call for the timer task
-    # Pattern: xTaskCreatePinnedToCore(&timer_task, ... , 0 or 1);
-    pattern = r'([ \t]*)(int ret = xTaskCreatePinnedToCore\(&timer_task,\s*"esp_timer",\s*\n\s*ESP_TASK_TIMER_STACK,\s*NULL,\s*ESP_TASK_TIMER_PRIO,\s*&s_timer_task,\s*)([01])(\);)'
+    # Try multiple patterns to handle different ESP-IDF versions
+    patterns = [
+        # Pattern 1: Multi-line format with explicit variable assignment
+        # int ret = xTaskCreatePinnedToCore(&timer_task, "esp_timer",
+        #         ESP_TASK_TIMER_STACK, NULL, ESP_TASK_TIMER_PRIO, &s_timer_task, 0);
+        (r'([ \t]*(?:int|BaseType_t)\s+\w+\s*=\s*xTaskCreatePinnedToCore\s*\(\s*&timer_task\s*,\s*"esp_timer"\s*,\s*\n?\s*ESP_TASK_TIMER_STACK\s*,\s*NULL\s*,\s*ESP_TASK_TIMER_PRIO\s*,\s*&s_timer_task\s*,\s*)([01]|tskNO_AFFINITY|CONFIG_\w+)(\s*\)\s*;)',
+         'multiline_explicit'),
+        
+        # Pattern 2: Single line format
+        # xTaskCreatePinnedToCore(&timer_task, "esp_timer", ESP_TASK_TIMER_STACK, NULL, ESP_TASK_TIMER_PRIO, &s_timer_task, 0);
+        (r'(xTaskCreatePinnedToCore\s*\(\s*&timer_task\s*,\s*"esp_timer"\s*,\s*ESP_TASK_TIMER_STACK\s*,\s*NULL\s*,\s*ESP_TASK_TIMER_PRIO\s*,\s*&s_timer_task\s*,\s*)([01]|tskNO_AFFINITY|CONFIG_\w+)(\s*\)\s*;)',
+         'singleline'),
+        
+        # Pattern 3: More flexible - just look for s_timer_task with a core parameter
+        # Matches any xTaskCreatePinnedToCore with s_timer_task and a simple core value
+        (r'(xTaskCreatePinnedToCore\s*\([^)]*&s_timer_task\s*,\s*)([01]|tskNO_AFFINITY|CONFIG_\w+)(\s*\)\s*;)',
+         'flexible'),
+        
+        # Pattern 4: Even more flexible - capture everything between function name and last parameter
+        (r'(xTaskCreatePinnedToCore\s*\([^,]+,\s*[^,]+,\s*[^,]+,\s*[^,]+,\s*[^,]+,\s*&s_timer_task\s*,\s*)([01]|tskNO_AFFINITY|CONFIG_\w+)(\s*\))',
+         'very_flexible'),
+    ]
     
-    match = re.search(pattern, content)
+    match = None
+    pattern_name = None
+    
+    # Try each pattern
+    for pattern, name in patterns:
+        match = re.search(pattern, content, re.MULTILINE)
+        if match:
+            pattern_name = name
+            print(f"   Found match using pattern: {name}")
+            break
     
     if not match:
         print("❌ Could not find xTaskCreatePinnedToCore call to patch")
         print("   The ESP-IDF version may have changed. Manual patching required.")
+        print("")
+        print("   Diagnostic information:")
+        # Show if xTaskCreatePinnedToCore exists at all
+        if 'xTaskCreatePinnedToCore' in content:
+            print("   ✓ xTaskCreatePinnedToCore found in file")
+        else:
+            print("   ✗ xTaskCreatePinnedToCore NOT found in file")
+        
+        if 's_timer_task' in content:
+            print("   ✓ s_timer_task variable found in file")
+        else:
+            print("   ✗ s_timer_task variable NOT found in file")
+        
+        # Try to extract the actual line for user inspection
+        task_create_pattern = re.search(r'xTaskCreatePinnedToCore[^\;]{0,200};', content, re.DOTALL)
+        if task_create_pattern:
+            print("\n   Found xTaskCreatePinnedToCore call:")
+            print("   " + task_create_pattern.group(0)[:150].replace('\n', '\n   '))
+        
         return False
     
-    # Build the patched version
-    indent = match.group(1)
-    before_core = match.group(2)
-    old_core = match.group(3)
-    after_core = match.group(4)
+    # Extract matched groups
+    before_core = match.group(1)
+    old_core_value = match.group(2)
+    after_core = match.group(3)
+    
+    # Find appropriate indentation
+    line_start = content.rfind('\n', 0, match.start()) + 1
+    indent = content[line_start:match.start()]
+    if not indent.strip():  # It's all whitespace
+        pass
+    else:
+        indent = '    '  # Default to 4 spaces
     
     # Add the #ifndef check before the xTaskCreatePinnedToCore call
-    patch_check = f'''{indent}
-{indent}#ifndef ESP_TIMER_TASK_CORE
+    patch_check = f'''{indent}#ifndef ESP_TIMER_TASK_CORE
 {indent}#error "ESP_TIMER_TASK_CORE is not defined. Add -DESP_TIMER_TASK_CORE=0 or 1 to build_flags in platformio.ini"
 {indent}#endif
 {indent}'''
@@ -105,7 +158,7 @@ def apply_patch(file_path):
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content_patched)
-        print(f"✅ Patched esp_timer.c: core {old_core} → ESP_TIMER_TASK_CORE")
+        print(f"✅ Patched esp_timer.c: {old_core_value} → ESP_TIMER_TASK_CORE")
         return True
     except Exception as e:
         print(f"❌ Failed to write patched file: {e}")

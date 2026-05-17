@@ -166,7 +166,7 @@ cd esp32scoringdeviceMqtt
 # Select your environment and click Upload
 ```
 
-**Note for developers:** The build process automatically patches ESP-IDF's `esp_timer.c` to allow configurable core assignment for the timer task. This happens transparently via `patch_esp_timer.py` during the pre-build phase — no manual intervention required. The patch enables optimal sensor performance by isolating the high-frequency timer task to a dedicated core, separate from WiFi and network processing.
+**Note for developers:** The build process automatically patches ESP-IDF's `esp_timer.c` to allow configurable core assignment for the timer task. This happens transparently via `patch_esp_timer.py` during the pre-build phase — no manual intervention required. The patch enables optimal sensor performance by isolating the high-frequency timer task to a dedicated core, separate from WiFi and network processing. If the patch fails (rare, usually due to ESP-IDF version differences), see [TECHNICAL_NOTES.md](TECHNICAL_NOTES.md#troubleshooting-patch-fails-to-apply) for manual patching instructions.
 
 ### First use
 
