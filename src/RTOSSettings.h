@@ -9,17 +9,16 @@
 //   Core 1 (APP_CPU): sensor (ESP_TIMER_TASK) + all application tasks
 //
 // NOTE: ESP_TIMER_TASK core affinity is NOT configurable via sdkconfig in
-// ESP-IDF 4.4. esp_timer.c has been patched to use the macro
-// ESP_TIMER_TASK_CORE instead of a hardcoded value. This macro is injected via
-// build_flags in platformio.ini — change it there to move the sensor task
-// between cores.
+// ESP-IDF 4.4. esp_timer.c is automatically patched by patch_esp_timer.py
+// (executed as a pre-build script) to use the macro ESP_TIMER_TASK_CORE
+// instead of a hardcoded value. This macro is injected via build_flags in
+// platformio.ini — change it there to move the sensor task between cores.
 //
 // Patched file:
-//   ~/.platformio/packages/framework-espidf@3.40406.240122/components/esp_timer/src/esp_timer.c
+//   ~/.platformio/packages/framework-espidf/components/esp_timer/src/esp_timer.c
 //   xTaskCreatePinnedToCore(..., &s_timer_task, ESP_TIMER_TASK_CORE);
-// If the patch is lost (package update), the build will fail with:
-//   #error "ESP_TIMER_TASK_CORE is not defined"
-// Re-apply the patch and the #error/#endif guard (see esp_timer.c).
+// The patch is applied automatically on first build. If the ESP-IDF package
+// is updated, the patch will be re-applied automatically on the next build.
 
 #ifndef RTOS_SETTINGS_H
 #define RTOS_SETTINGS_H
