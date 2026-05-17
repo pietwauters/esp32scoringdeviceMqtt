@@ -151,6 +151,8 @@ void WS2812B_LedStrip::SetBrightness(uint8_t val) {
   m_Orange = NeoPixelRMT::Color(160, 60, 0, m_Brightness);
   m_Yellow = NeoPixelRMT::Color(204, 168, 0, m_Brightness);
   m_Blue = NeoPixelRMT::Color(0, 0, 255, m_Brightness);
+  m_NumberColor = NeoPixelRMT::Color(170, 70, 0, m_Brightness);
+
   m_Off = NeoPixelRMT::Color(0, 0, 0, m_Brightness);
 }
 
@@ -400,10 +402,14 @@ void WS2812B_LedStrip::updateHelper(uint32_t eventtype) {
     break;
   case EVENT_SCORE_LEFT:
     SetLeftScore(event_data);
+    // Flash left score
+    startAnimation(EVENT_WS2812_FLASH_SCORE | 0x0001);
     break;
 
   case EVENT_SCORE_RIGHT:
     SetRightScore(event_data);
+    // Flash right score
+    startAnimation(EVENT_WS2812_FLASH_SCORE | 0x0002);
     break;
 
   case EVENT_PRIO:
@@ -841,11 +847,11 @@ void WS2812B_LedStrip::showNumber(uint8_t panelOffset, uint8_t number,
 }
 
 void WS2812B_LedStrip::showNumberLeft(uint8_t number) {
-  showNumber(0, number, m_Red, 0);
+  showNumber(0, number, m_NumberColor, 0);
 }
 
 void WS2812B_LedStrip::showNumberRight(uint8_t number) {
-  showNumber(64, number, m_Green, 1);
+  showNumber(64, number, m_NumberColor, 1);
 }
 
 void WS2812B_LedStrip::setYellowPCardRight(bool Value) {
@@ -1059,6 +1065,11 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     AnimateUndoHit((type & 0xffff) == 0x0001);
     SetLedStatus(0xff);
     break;
+
+  case EVENT_WS2812_FLASH_SCORE:
+    AnimateFlashScore((type & 0xffff) == 0x0001);
+    SetLedStatus(0xff);
+    break;
   }
   m_animationRunning = false;
 }
@@ -1077,6 +1088,47 @@ void WS2812B_LedStrip::AnimateUndoHit(bool leftSide) {
   }
   m_pixels->show();
   vTaskDelay(1200 / portTICK_PERIOD_MS);
+  // DoAnimation() calls SetLedStatus(0xff) for final clean render
+}
+
+void WS2812B_LedStrip::AnimateFlashScore(bool leftSide) {
+  uint32_t panelOffset = leftSide ? 0 : 64;
+  uint32_t color = leftSide ? m_Red : m_Green;
+  uint8_t score = leftSide ? m_LeftScore : m_RightScore;
+  uint8_t startCol =
+      leftSide ? 0 : 1; // Left uses column 0, right uses column 1
+
+  // Flash the score on the selected side for ~4 seconds
+  // Pattern: ON for 250ms, OFF for 100ms (350ms per cycle)
+  // 11 cycles = ~3.85 seconds
+  const int cycles = 8;
+  const int onTime = 180;
+  const int offTime = 60;
+
+  for (int i = 0; i < cycles; i++) {
+    // ON phase - clear only the affected panel and show the score
+    for (int led = panelOffset; led < panelOffset + 64; led++) {
+      m_pixels->setPixelColor(led, m_Off);
+    }
+    showNumber(panelOffset, score, color, startCol);
+    m_pixels->show();
+    vTaskDelay(onTime / portTICK_PERIOD_MS);
+
+    // OFF phase - clear the panel
+    for (int led = panelOffset; led < panelOffset + 64; led++) {
+      m_pixels->setPixelColor(led, m_Off);
+    }
+    m_pixels->show();
+    vTaskDelay(offTime / portTICK_PERIOD_MS);
+  }
+
+  // End with score visible
+  for (int led = panelOffset; led < panelOffset + 64; led++) {
+    m_pixels->setPixelColor(led, m_Off);
+  }
+  showNumber(panelOffset, score, color, startCol);
+  m_pixels->show();
+  vTaskDelay(250 / portTICK_PERIOD_MS);
   // DoAnimation() calls SetLedStatus(0xff) for final clean render
 }
 

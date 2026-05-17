@@ -89,6 +89,7 @@ public:
   void AnimateWarning();
   void AnimateAutoRefMode();
   void AnimateUndoHit(bool leftSide);
+  void AnimateFlashScore(bool leftSide);
   void StartWarning(uint32_t prio);
   void AnimateEngardePretsAllez();
   void StartEngardePretsAllezSequence();
@@ -152,6 +153,7 @@ private:
   uint32_t m_Orange;
   uint32_t m_Yellow;
   uint32_t m_Blue;
+  uint32_t m_NumberColor;
   uint32_t m_Off;
   uint32_t m_LastEvent = 0;
   bool m_ReverseColors = false;
