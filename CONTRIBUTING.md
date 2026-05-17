@@ -73,6 +73,20 @@ Once your issue is submitted, the maintainer will confirm receipt and your signa
 - Keep changes focused — one logical change per pull request
 - Comment non-obvious logic, especially anything related to timing, resistance thresholds, or hardware behaviour
 
+## Technical notes
+
+### ESP-IDF timer task patching
+
+This project requires a patch to ESP-IDF's `esp_timer.c` to allow the timer task to run on a configurable core (controlled via `-DESP_TIMER_TASK_CORE` in `platformio.ini`). This is necessary for optimal sensor performance.
+
+The patch is **applied automatically** via `patch_esp_timer.py` during the pre-build phase — you don't need to do anything manually. The script:
+- Runs before every build
+- Checks if ESP-IDF's `esp_timer.c` is already patched
+- If unpatched, applies the patch automatically
+- Is idempotent (safe to run multiple times)
+
+If you see build errors related to `ESP_TIMER_TASK_CORE`, the patch may have failed. Check the build output for diagnostic messages from the patch script.
+
 ---
 
 ## Licence
