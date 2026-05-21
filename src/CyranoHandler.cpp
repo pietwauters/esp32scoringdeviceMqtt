@@ -82,31 +82,14 @@ void CyranoHandler::Begin() {
   mqttListenTopic =
       (char *)malloc(sizeof("MQTT_Cyrano/Piste_001/FromSoftware") + 1);
   sprintf(mqttListenTopic, "MQTT_Cyrano/Piste_%.3d/FromSoftware", PisteNr);
-  // mqttClient.setSecure(true);
-  // mqttClient.setMaxTopicLength(256);
-  mqttClient.onConnect(onMqttConnect);
-  mqttClient.onDisconnect(onMqttDisconnect);
-  /*
-    mqttClient.onMessage([](char* topic, char* payload,
-    AsyncMqttClientMessageProperties properties, size_t len, size_t index,
-    size_t total) { Serial.print("Message received on topic: ");
-      Serial.println(topic);
-      Serial.print("Payload: ");
-      Serial.println(payload);
-      CyranoHandler &MyCyranoHandler = CyranoHandler::getInstance();
 
-      MyCyranoHandler.ProcessMessageFromSoftware((EFP1Message((char*)payload)));
-
-    });*/
+  // NOTE: MQTT callbacks, connection, and NTP now managed by Opp2Handler
+  // CyranoHandler still uses the shared mqttClient for publishing
 
   IPAddress theBroker;
   uint16_t resolvedPort = mqttPort; // Default port
 
   theBroker.fromString(mqttServer);
-  mqttClient.onMessage(onMqttMessage);
-
-  /*IPAddress resolvedBroker = MDNSResolver::getInstance().lookupService(
-      "mqtt", "tcp", theBroker, mdnsName);*/
 
   IPAddress resolvedBroker =
       MDNSResolver::getInstance().resolveHostname(mdnsName, theBroker);
@@ -118,13 +101,8 @@ void CyranoHandler::Begin() {
   mqttLastWillTopic =
       (char *)malloc(sizeof("MQTT_Cyrano/Piste_001/Connection") + 1);
   sprintf(mqttLastWillTopic, "MQTT_Cyrano/Piste_%.3d/Connection", PisteNr);
-  mqttClient.setWill(mqttLastWillTopic, "offline", 1, true);
-
-  if (true) {
-    printf("Starting the Absolute Time functionality\n");
-    // Start the time service (optional: set server/interval before begin)
-    AbsoluteTime::getInstance().begin(mdnsName, 10, mqttServer);
-  }
+  // NOTE: LWT now set by Opp2Handler (OPP2 is primary protocol)
+  // CyranoHandler publishes online/offline via Cyrano topics if needed
 }
 
 CyranoHandler::~CyranoHandler() {
@@ -621,8 +599,9 @@ void CyranoHandler::CheckConnection() {
     if (!bWifiConnected) {
       bWifiConnected = true;
     }
-    if (!bCyranoConnected) {
-      mqttClient.begin();
+    // NOTE: MQTT connection now managed by Opp2Handler
+    // CyranoHandler just checks if MQTT is available
+    if (!bCyranoConnected && mqttClient.isConnected()) {
       bSoftwareIsLive = true;
       bmqttCyranoConnected = true;
       bCyranoConnected = true;
@@ -639,10 +618,7 @@ void CyranoHandler::CheckConnection() {
             [](AsyncUDPPacket packet) { ProcessCyranoPacket(packet); });
       }
 
-      // Insert the MQTT connect code here
-      if (!bCyranoConnected) {
-        mqttClient.begin();
-      }
+      // NOTE: MQTT connection now started by Opp2Handler
 
       budpCyranoConnected = true;
       bCyranoConnected = true;

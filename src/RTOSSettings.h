@@ -66,7 +66,7 @@
 #define STACK_LED_HANDLER 16384  // was 16384 — not yet measured, conservative
 #define STACK_STATE_MACHINE 32768 // was 32768 — verified headroom OK
 #define STACK_STARTUP_DISPLAY 2048
-#define STACK_ARDUINO_TASK 8192 // setup() + loop() — conservative
+#define STACK_ARDUINO_TASK 16384 // setup() + loop() — conservative
 
 // ---------------------------------------------------------------------------
 // Stack high-water mark logging — set to 1 to enable, 0 to disable

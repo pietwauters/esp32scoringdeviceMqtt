@@ -39,7 +39,7 @@ public:
   //       void update (BlynkIOHandler *subject, uint32_t eventtype);
   void update(UDPIOHandler *subject, uint32_t eventtype);
   void update(CyranoHandler *subject, uint32_t eventtype);
-  void update(CyranoHandler *subject, std::string eventtype);
+  void update(CyranoHandler *subject, const std::string &eventtype);
   void TransmitFullStateToDisplay(class RepeaterSender *TheRepeater);
   void StateChanged(uint32_t eventtype) { notify(eventtype); }
   void ProcessDisplayMessage(const EFP1Message &input);

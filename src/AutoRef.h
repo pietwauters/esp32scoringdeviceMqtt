@@ -50,9 +50,13 @@ public:
   void begin();
   void update(FencingStateMachine *subject, uint32_t eventtype);
   void update(LongHitDetector *subject, uint32_t eventtype);
-  void update(LongHitDetector *subject, std::string eventtype) { return; };
+  void update(LongHitDetector *subject, const std::string &eventtype) {
+    return;
+  };
   void update(DoubleHitDetector *subject, uint32_t eventtype);
-  void update(DoubleHitDetector *subject, std::string eventtype) { return; };
+  void update(DoubleHitDetector *subject, const std::string &eventtype) {
+    return;
+  };
   void setEnabled(bool enabled) { m_enabled = enabled; }
   bool isEnabled() const { return m_enabled; }
 
@@ -73,7 +77,7 @@ private:
   void checkTimeouts(uint32_t now);
   void award(int deltaLeft, int deltaRight, uint32_t now);
   void continueMatch(uint32_t now);
-  void GoImmediatelyToArmed(uint32_t now) ;
+  void GoImmediatelyToArmed(uint32_t now);
   bool isMatchOver();
   int getMaxScore();
   void sendToFSM(uint32_t cmd);

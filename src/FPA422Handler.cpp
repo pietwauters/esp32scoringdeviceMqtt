@@ -662,7 +662,8 @@ void FPA422Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 /*void SetName(const char* name, size_t len = 20);
 void SetNOC(const char* NOC);*/
 
-void FPA422Handler::update(CyranoHandler *subject, std::string strEFP1Message) {
+void FPA422Handler::update(CyranoHandler *subject,
+                           const std::string &strEFP1Message) {
   EFP1Message EFP1Input(strEFP1Message);
   if (EFP1Input[Command] == "NAK") {
     Message10.SetMachineStatus('5');

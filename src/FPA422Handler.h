@@ -31,7 +31,7 @@ public:
   /** Default destructor */
   virtual ~FPA422Handler();
   void update(FencingStateMachine *subject, uint32_t eventtype);
-  void update(CyranoHandler *subject, std::string strEFP1Message);
+  void update(CyranoHandler *subject, const std::string &strEFP1Message);
   void update(CyranoHandler *subject, uint32_t eventtype);
   void ProcessLightsChange(uint32_t eventtype);
 #ifdef ALLOW_BLUETOOTH

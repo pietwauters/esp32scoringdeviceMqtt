@@ -24,6 +24,7 @@
 #include "FastADC1.h"
 #include "FencingStateMachine.h"
 #include "FlashWriteGuard.h"
+#include "Opp2Handler.h"
 #include "RTOSSettings.h"
 #include "RepeaterReceiver.h"
 #include "RepeaterSender.h"
@@ -68,6 +69,7 @@ FencingStateMachine *MyStatemachine;
 FPA422Handler *MyFPA422Handler;
 UDPIOHandler *MyUDPIOHandler;
 CyranoHandler *MyCyranoHandler;
+Opp2Handler *MyOpp2Handler;
 RepeaterReceiver *MyRepeaterReiver;
 RepeaterSender *MyRepeaterSender;
 
@@ -137,12 +139,12 @@ void setup() {
     MyStatemachine->ResetAll();
     MyFPA422Handler->StartWiFi();
     MyStatemachine->attach(*MyFPA422Handler);
+    MyCyranoHandler->attach(*MyFPA422Handler);
     MyUDPIOHandler->attach(*MyStatemachine);
     MyStatemachine->attach(*MyUDPIOHandler);
     MyStatemachine->attach(*MyCyranoHandler);
     MyUDPIOHandler->attach(*MyCyranoHandler);
     MyCyranoHandler->attach(*MyStatemachine);
-    MyCyranoHandler->attach(*MyFPA422Handler);
     MySensor->attach(*MyStatemachine);
     MyStatemachine->RegisterMultiWeaponSensor(MySensor);
     MyStatemachine->begin();
@@ -150,6 +152,14 @@ void setup() {
 
     MyStatemachine->attach(*MyTimeScoreDisplay);
     MyCyranoHandler->Begin();
+
+    // Initialize OPP2 Handler (parallel with CyranoHandler)
+    MyOpp2Handler = &Opp2Handler::getInstance();
+    MyStatemachine->attach(*MyOpp2Handler);
+    MyUDPIOHandler->attach(*MyOpp2Handler);
+    MyCyranoHandler->attach(*MyOpp2Handler);
+    MyOpp2Handler->Begin();
+
     MyRepeaterSender = &RepeaterSender::getInstance();
     MyRepeaterSender->begin();
     MyStatemachine->attach(*MyRepeaterSender);
@@ -240,8 +250,10 @@ void loop() {
       esp_task_wdt_reset();
       vTaskDelay(1 / portTICK_PERIOD_MS);
       MyCyranoHandler->CheckConnection();
-      // MyFPA422Handler->WifiPeriodicalUpdate();  // Not really needed because
-      // already done above
+      MyOpp2Handler->CheckConnection();
+      // MyOpp2Handler->PeriodicallyBroadcastStatus();
+      //  MyFPA422Handler->WifiPeriodicalUpdate();  // Not really needed because
+      //  already done above
     }
     esp_task_wdt_reset();
     vTaskDelay(1 / portTICK_PERIOD_MS);

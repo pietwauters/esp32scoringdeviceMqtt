@@ -101,7 +101,7 @@ void FencingStateMachine::update(MultiWeaponSensor *subject,
 }
 
 void FencingStateMachine::update(CyranoHandler *subject,
-                                 std::string eventtype) {
+                                 const std::string &eventtype) {
 
   EFP1Message input(eventtype);
   ProcessDisplayMessage(input);
