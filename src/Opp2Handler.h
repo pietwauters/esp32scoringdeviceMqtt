@@ -9,12 +9,30 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <opp2.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 class UDPIOHandler;
 
 /**
+ * @brief Protocol selection for canonical state source
+ * 
+ * When in OPP2 mode: only OPP2 messages can update external state (fencers/match)
+ * When in CYRANO mode: only Cyrano messages can update external state
+ * Remote control commands are always accepted (conceptually part of apparatus)
+ */
+enum class InputProtocol { OPP2, CYRANO };
+
+/**
  * @brief OPP2 (OpenPiste Protocol Level 2) handler
  *
+ * CANONICAL STATE HOLDER: This class contains the single source of truth
+ * for all piste state (m_State). All other components read from this state.
+ * 
+ * Thread Safety: m_State is protected by m_StateMutex for dual-core access.
+ * - Core 0 (PRO_CPU): All protocol handlers, FSM, remote control
+ * - Core 1 (APP_CPU): 3WeaponSensor (high-frequency hit detection)
+ * 
  * Observes FencingStateMachine events and publishes OPP2-formatted messages
  * to MQTT. Maintains complete piste state using OPP2::SystemState.
  *
@@ -73,6 +91,68 @@ public:
    */
   void SetPisteID(const char *pisteId);
 
+  // ── Thread-Safe State Access ──────────────────────────────────────────
+
+  /**
+   * Get a thread-safe copy of the complete system state.
+   * Uses mutex protection for dual-core safety.
+   * @return Copy of OPP2::SystemState
+   */
+  OPP2::SystemState getStateCopy();
+
+  // ── Internal State Updates (from FSM/Sensor - bypass guards) ─────────
+
+  /**
+   * Update lights from internal events (FSM/Sensor).
+   * Bypasses all guards - internal events are authoritative.
+   * Thread-safe with mutex protection.
+   */
+  void updateLightsInternal(const OPP2::Lights &lights);
+
+  /**
+   * Update score from internal events (FSM).
+   * Bypasses all guards - internal events are authoritative.
+   * Thread-safe with mutex protection.
+   */
+  void updateScoreInternal(const OPP2::Score &score);
+
+  /**
+   * Update clock from internal events (FSM).
+   * Bypasses all guards - internal events are authoritative.
+   * Thread-safe with mutex protection.
+   */
+  void updateClockInternal(const OPP2::Clock &clock);
+
+  /**
+   * Update apparatus state from internal events (FSM).
+   * Bypasses all guards - internal events are authoritative.
+   * Thread-safe with mutex protection.
+   */
+  void updateApparatusStateInternal(const OPP2::ApparatusStateMsg &state);
+
+  // ── External State Updates (from software - with guards) ─────────────
+
+  /**
+   * Update fencers from external source (software).
+   * Only accepted when: active protocol matches AND apparatus in WAITING state.
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool updateFencersExternal(const OPP2::Fencers &fencers, InputProtocol source);
+
+  /**
+   * Update match from external source (software).
+   * Only accepted when: active protocol matches AND apparatus in WAITING state.
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool updateMatchExternal(const OPP2::Match &match, InputProtocol source);
+
+  /**
+   * Update clock from external source (software).
+   * Only accepted when: active protocol matches AND clock not running.
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool updateClockExternal(const OPP2::Clock &clock, InputProtocol source);
+
   // ── MQTT Callbacks (static for C-style callback registration) ────────
 
   /**
@@ -101,10 +181,15 @@ protected:
 private:
   // ── State management ──────────────────────────────────────────────────
 
-  OPP2::SystemState m_State; ///< Complete OPP2 piste state
+  OPP2::SystemState m_State; ///< Complete OPP2 piste state (CANONICAL - protected by mutex)
+  SemaphoreHandle_t m_StateMutex; ///< Mutex for thread-safe access to m_State
   OPP2::Dispatcher
       m_Dispatcher;      ///< OPP2 message dispatcher for incoming messages
   uint32_t m_SeqCounter; ///< Global sequence counter for all QoS 1 messages
+
+  // Protocol selection (for external state updates only)
+  InputProtocol m_ActiveInputProtocol; ///< Which protocol can update external state
+  bool m_AutoDetectProtocol; ///< Auto-switch to OPP2 on first OPP2 message
 
   // Timing and throttling
   uint32_t m_NextPeriodicUpdate;
@@ -201,6 +286,38 @@ private:
    * Notify observers of state changes.
    */
   void StateChanged(uint32_t eventtype) { notify(eventtype); }
+
+  // ── Equality Helpers (for change detection) ───────────────────────────
+
+  /**
+   * Compare two Lights messages for equality.
+   */
+  static bool lightsEqual(const OPP2::Lights &a, const OPP2::Lights &b);
+
+  /**
+   * Compare two Clock messages for equality.
+   */
+  static bool clockEqual(const OPP2::Clock &a, const OPP2::Clock &b);
+
+  /**
+   * Compare two Score messages for equality.
+   */
+  static bool scoreEqual(const OPP2::Score &a, const OPP2::Score &b);
+
+  /**
+   * Compare two Fencers messages for equality.
+   */
+  static bool fencersEqual(const OPP2::Fencers &a, const OPP2::Fencers &b);
+
+  /**
+   * Compare two Match messages for equality.
+   */
+  static bool matchEqual(const OPP2::Match &a, const OPP2::Match &b);
+
+  /**
+   * Compare two ApparatusStateMsg messages for equality.
+   */
+  static bool apparatusStateEqual(const OPP2::ApparatusStateMsg &a, const OPP2::ApparatusStateMsg &b);
 
   // ── MQTT configuration ────────────────────────────────────────────────
 

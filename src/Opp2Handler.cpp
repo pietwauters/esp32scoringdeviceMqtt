@@ -18,7 +18,8 @@ extern AtlasAsyncMqttClient &mqttClient; // Shared MQTT client singleton
 Opp2Handler::Opp2Handler()
     : m_SeqCounter(0), m_NextPeriodicUpdate(0), m_TimeToShowClock(0),
       m_bConnected(false), m_bWifiConnected(false),
-      m_bConnectionAttempted(false) {
+      m_bConnectionAttempted(false), m_StateMutex(nullptr),
+      m_ActiveInputProtocol(InputProtocol::OPP2), m_AutoDetectProtocol(true) {
   // Initialize state with defaults
   strncpy(m_State.piste_id, "1", sizeof(m_State.piste_id) - 1);
   m_State.apparatus_state.state = OPP2::ApparatusState::WAITING;
@@ -39,12 +40,26 @@ Opp2Handler::~Opp2Handler() {
   // Publish offline status on graceful shutdown
   // Note: LWT handles ungraceful disconnects (power loss, crash)
   PublishConnection(false);
+  
+  // Clean up mutex
+  if (m_StateMutex != nullptr) {
+    vSemaphoreDelete(m_StateMutex);
+    m_StateMutex = nullptr;
+  }
 }
 
 // ── Initialization ──────────────────────────────────────────────────────────
 
 void Opp2Handler::Begin() {
   ESP_LOGI(OPP2_TAG, "[OPP2] Begin() called - taking MQTT ownership");
+
+  // ── Create mutex for thread-safe state access ────────────────────────
+  m_StateMutex = xSemaphoreCreateMutex();
+  if (m_StateMutex == nullptr) {
+    ESP_LOGE(OPP2_TAG, "[OPP2] FATAL: Failed to create state mutex!");
+    return;
+  }
+  ESP_LOGI(OPP2_TAG, "[OPP2] State mutex created successfully");
 
   m_Preferences.begin("credentials", false);
   uint32_t pisteNr = m_Preferences.getInt("pisteNr", 304);
@@ -1131,4 +1146,319 @@ void Opp2Handler::update(CyranoHandler *subject,
       // No specific OPP2 action needed
     }
       */
+}  // End of update(CyranoHandler*, const std::string&)
+
+// ════════════════════════════════════════════════════════════════════════════
+// Thread-Safe State Access (Phase 1)
+// ════════════════════════════════════════════════════════════════════════════
+
+OPP2::SystemState Opp2Handler::getStateCopy() {
+  OPP2::SystemState copy;
+  
+  // Acquire mutex with timeout
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    copy = m_State;
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] getStateCopy() timeout - returning default state");
+    // Return default-initialized state on timeout
+  }
+  
+  return copy;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Internal State Updates (from FSM/Sensor - bypass all guards)
+// ════════════════════════════════════════════════════════════════════════════
+
+void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights) {
+  bool changed = false;
+  
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!lightsEqual(m_State.lights, lights)) {
+      m_State.lights = lights;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateLightsInternal() timeout");
+    return;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[Internal] Lights updated: L=%d/%d R=%d/%d",
+             lights.left.on_target, lights.left.white,
+             lights.right.on_target, lights.right.white);
+    PublishLights();
+  }
+}
+
+void Opp2Handler::updateScoreInternal(const OPP2::Score &score) {
+  bool changed = false;
+  
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!scoreEqual(m_State.score, score)) {
+      m_State.score = score;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateScoreInternal() timeout");
+    return;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[Internal] Score updated: L=%u R=%u priority=%d",
+             score.left.score, score.right.score, static_cast<int>(score.priority));
+    PublishScore();
+  }
+}
+
+void Opp2Handler::updateClockInternal(const OPP2::Clock &clock) {
+  bool changed = false;
+  
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!clockEqual(m_State.clock, clock)) {
+      m_State.clock = clock;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateClockInternal() timeout");
+    return;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[Internal] Clock updated: time=%u running=%d",
+             clock.time_ms, clock.running);
+    PublishClock();
+  }
+}
+
+void Opp2Handler::updateApparatusStateInternal(const OPP2::ApparatusStateMsg &apparatusState) {
+  bool changed = false;
+  
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!apparatusStateEqual(m_State.apparatus_state, apparatusState)) {
+      m_State.apparatus_state = apparatusState;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateApparatusStateInternal() timeout");
+    return;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[Internal] ApparatusState updated: state=%d",
+             static_cast<int>(apparatusState.state));
+    PublishApparatusState();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// External State Updates (from software - with protocol guards)
+// ════════════════════════════════════════════════════════════════════════════
+
+bool Opp2Handler::updateFencersExternal(const OPP2::Fencers &fencers, InputProtocol source) {
+  // Guard 1: Auto-detect protocol switch (OPP2 takes precedence)
+  if (m_AutoDetectProtocol && source == InputProtocol::OPP2) {
+    if (m_ActiveInputProtocol != InputProtocol::OPP2) {
+      ESP_LOGI(OPP2_TAG, "[Protocol] Auto-switching to OPP2 mode");
+      m_ActiveInputProtocol = InputProtocol::OPP2;
+    }
+  }
+  
+  // Guard 2: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Fencers update rejected: protocol mismatch (active=%d, source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+  
+  // Guard 3: Only accept when apparatus is in WAITING state
+  bool canUpdate = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    canUpdate = (m_State.apparatus_state.state == OPP2::ApparatusState::WAITING);
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateFencersExternal() guard check timeout");
+    return false;
+  }
+  
+  if (!canUpdate) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Fencers update rejected: apparatus not in WAITING");
+    return false;
+  }
+  
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!fencersEqual(m_State.fencers, fencers)) {
+      m_State.fencers = fencers;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateFencersExternal() update timeout");
+    return false;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[External] Fencers updated from %s",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
+    PublishFencers();
+  }
+  
+  return true;
+}
+
+bool Opp2Handler::updateMatchExternal(const OPP2::Match &match, InputProtocol source) {
+  // Guard 1: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Match update rejected: protocol mismatch (active=%d, source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+  
+  // Guard 2: Only accept when apparatus is in WAITING state
+  bool canUpdate = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    canUpdate = (m_State.apparatus_state.state == OPP2::ApparatusState::WAITING);
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateMatchExternal() guard check timeout");
+    return false;
+  }
+  
+  if (!canUpdate) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Match update rejected: apparatus not in WAITING");
+    return false;
+  }
+  
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!matchEqual(m_State.match, match)) {
+      m_State.match = match;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateMatchExternal() update timeout");
+    return false;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[External] Match updated from %s",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
+    PublishMatch();
+  }
+  
+  return true;
+}
+
+bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock, InputProtocol source) {
+  // Guard 1: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Clock update rejected: protocol mismatch (active=%d, source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+  
+  // Guard 2: Only accept when clock is not running
+  bool canUpdate = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    canUpdate = !m_State.clock.running;
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateClockExternal() guard check timeout");
+    return false;
+  }
+  
+  if (!canUpdate) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Clock update rejected: clock is running");
+    return false;
+  }
+  
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!clockEqual(m_State.clock, clock)) {
+      m_State.clock = clock;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateClockExternal() update timeout");
+    return false;
+  }
+  
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[External] Clock updated from %s",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
+    PublishClock();
+  }
+  
+  return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Equality Helpers (for change detection)
+// ════════════════════════════════════════════════════════════════════════════
+
+bool Opp2Handler::lightsEqual(const OPP2::Lights &a, const OPP2::Lights &b) {
+  return (a.left.on_target == b.left.on_target &&
+          a.left.white == b.left.white &&
+          a.right.on_target == b.right.on_target &&
+          a.right.white == b.right.white);
+}
+
+bool Opp2Handler::clockEqual(const OPP2::Clock &a, const OPP2::Clock &b) {
+  return (a.time_ms == b.time_ms && a.running == b.running);
+}
+
+bool Opp2Handler::scoreEqual(const OPP2::Score &a, const OPP2::Score &b) {
+  return (a.left.score == b.left.score &&
+          a.left.red_cards == b.left.red_cards &&
+          a.left.yellow_card == b.left.yellow_card &&
+          a.right.score == b.right.score &&
+          a.right.red_cards == b.right.red_cards &&
+          a.right.yellow_card == b.right.yellow_card &&
+          a.priority == b.priority);
+}
+
+bool Opp2Handler::fencersEqual(const OPP2::Fencers &a, const OPP2::Fencers &b) {
+  // Compare left fencer
+  bool leftEqual = true;
+  if (a.left.fencer.present && b.left.fencer.present) {
+    leftEqual = (strcmp(a.left.fencer.name, b.left.fencer.name) == 0 &&
+                 strcmp(a.left.fencer.id, b.left.fencer.id) == 0 &&
+                 strcmp(a.left.fencer.nation, b.left.fencer.nation) == 0);
+  } else if (a.left.fencer.present != b.left.fencer.present) {
+    leftEqual = false;
+  }
+  
+  // Compare right fencer
+  bool rightEqual = true;
+  if (a.right.fencer.present && b.right.fencer.present) {
+    rightEqual = (strcmp(a.right.fencer.name, b.right.fencer.name) == 0 &&
+                  strcmp(a.right.fencer.id, b.right.fencer.id) == 0 &&
+                  strcmp(a.right.fencer.nation, b.right.fencer.nation) == 0);
+  } else if (a.right.fencer.present != b.right.fencer.present) {
+    rightEqual = false;
+  }
+  
+  return leftEqual && rightEqual;
+}
+
+bool Opp2Handler::matchEqual(const OPP2::Match &a, const OPP2::Match &b) {
+  return (a.weapon == b.weapon &&
+          a.type == b.type &&
+          a.phase_type == b.phase_type &&
+          a.round == b.round);
+}
+
+bool Opp2Handler::apparatusStateEqual(const OPP2::ApparatusStateMsg &a, const OPP2::ApparatusStateMsg &b) {
+  return (a.state == b.state);
 }
