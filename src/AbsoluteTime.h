@@ -62,6 +62,8 @@ private:
   int64_t lastDriftMs_ = 0;
   double driftSum_ = 0;
   uint32_t driftCount_ = 0;
+  double smoothedDriftRate_ =
+      0.0; // Exponential moving average of drift rate (ms/ms)
 };
 
 #endif // ABSOLUTE_TIME_H

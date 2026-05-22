@@ -18,7 +18,7 @@ AbsoluteTime &AbsoluteTime::getInstance() {
 AbsoluteTime::AbsoluteTime()
     : serverAddress_("cyranbroker"), syncIntervalSecs_(10), synced_(false),
       lastTimestamp_(0), lastMillis_(0), fallbackMode_(false),
-      syncThreadHandle_(nullptr) {}
+      syncThreadHandle_(nullptr), smoothedDriftRate_(0.0) {}
 
 AbsoluteTime::~AbsoluteTime() { stopSyncThread(); }
 
@@ -123,8 +123,8 @@ void AbsoluteTime::updateTimeFromServer() {
   sntp_setoperatingmode(SNTP_OPMODE_POLL);
   sntp_setservername(0, serverAddress_.c_str());
   sntp_init();
-  // Wait for sync (max 2s)
-  for (int i = 0; i < 20; ++i) {
+  // Wait for sync (max 20s, check every 200ms)
+  for (int i = 0; i < 100; ++i) {
     time_t now = 0;
     time(&now);
     // Reduced logging in tight loop - only log failures
@@ -133,7 +133,7 @@ void AbsoluteTime::updateTimeFromServer() {
       uint64_t ts = (uint64_t)now * 1000;
       if (ts < lastTimestamp_)
         ts = lastTimestamp_; // Clamp backward jumps
-      // Drift statistics
+      // Drift statistics with EMA smoothing
       uint64_t nowMillis = esp_timer_get_time() / 1000;
       if (lastNtpSyncMillis_ != 0 && lastNtpSyncTime_ != 0) {
         int64_t deltaMillis = nowMillis - lastNtpSyncMillis_;
@@ -141,8 +141,25 @@ void AbsoluteTime::updateTimeFromServer() {
         lastDriftMs_ = deltaMillis - deltaNtp;
         driftSum_ += lastDriftMs_;
         driftCount_++;
-        // Drift logging disabled for performance
-        // Enable by changing to ESP_LOGW if needed for debugging
+
+        // Calculate instantaneous drift rate (ms drift per ms elapsed)
+        double instantDriftRate = (double)lastDriftMs_ / (double)deltaMillis;
+
+        // Apply exponential moving average (α = 0.3)
+        // Higher α = faster adaptation, lower α = more smoothing
+        const double alpha = 0.3;
+        if (driftCount_ == 1) {
+          smoothedDriftRate_ = instantDriftRate;
+        } else {
+          smoothedDriftRate_ =
+              alpha * instantDriftRate + (1.0 - alpha) * smoothedDriftRate_;
+        }
+
+        ESP_LOGD(TAG,
+                 "Drift: %lld ms over %lld ms (rate: %.6f ppm), smoothed rate: "
+                 "%.6f ppm",
+                 lastDriftMs_, deltaMillis, instantDriftRate * 1e6,
+                 smoothedDriftRate_ * 1e6);
       }
       lastNtpSyncMillis_ = nowMillis;
       lastNtpSyncTime_ = ts;
@@ -154,9 +171,9 @@ void AbsoluteTime::updateTimeFromServer() {
 
       return;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
-  ESP_LOGE(TAG, "NTP sync failed, falling back to millis()");
+  ESP_LOGE(TAG, "NTP sync timeout after 20 seconds, falling back to millis()");
   fallbackToMillis();
 }
 
@@ -178,11 +195,33 @@ uint64_t AbsoluteTime::getTimestamp() {
     lastTimestamp_ = ts;
     return ts;
   } else {
-    time_t now = 0;
-    time(&now);
-    uint64_t ts = (uint64_t)now * 1000;
+    // ── Drift-compensated timestamp interpolation ───────────────────────
+    uint64_t nowMillis = esp_timer_get_time() / 1000;
+
+    if (lastNtpSyncMillis_ == 0 || driftCount_ == 0) {
+      // No drift data yet, fall back to system time
+      time_t now = 0;
+      time(&now);
+      uint64_t ts = (uint64_t)now * 1000;
+      if (ts < lastTimestamp_)
+        ts = lastTimestamp_;
+      lastTimestamp_ = ts;
+      return ts;
+    }
+
+    // Time elapsed since last NTP sync (using local esp_timer)
+    int64_t elapsedMillis = nowMillis - lastNtpSyncMillis_;
+
+    // Apply drift compensation using smoothed drift rate
+    // Positive drift = local clock runs fast, negative = runs slow
+    int64_t driftCompensation = (int64_t)(elapsedMillis * smoothedDriftRate_);
+
+    // Interpolated timestamp = last NTP time + elapsed time + drift correction
+    uint64_t ts = lastNtpSyncTime_ + elapsedMillis + driftCompensation;
+
+    // Clamp backward jumps (safety)
     if (ts < lastTimestamp_)
-      ts = lastTimestamp_; // Clamp backward
+      ts = lastTimestamp_;
     lastTimestamp_ = ts;
     return ts;
   }
