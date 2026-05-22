@@ -213,11 +213,12 @@ uint64_t AbsoluteTime::getTimestamp() {
     int64_t elapsedMillis = nowMillis - lastNtpSyncMillis_;
 
     // Apply drift compensation using smoothed drift rate
-    // Positive drift = local clock runs fast, negative = runs slow
+    // Positive drift = local clock runs fast → SUBTRACT to correct
+    // Negative drift = local clock runs slow → ADD (subtract negative)
     int64_t driftCompensation = (int64_t)(elapsedMillis * smoothedDriftRate_);
 
-    // Interpolated timestamp = last NTP time + elapsed time + drift correction
-    uint64_t ts = lastNtpSyncTime_ + elapsedMillis + driftCompensation;
+    // Interpolated timestamp = last NTP time + elapsed time - drift correction
+    uint64_t ts = lastNtpSyncTime_ + elapsedMillis - driftCompensation;
 
     // Clamp backward jumps (safety)
     if (ts < lastTimestamp_)
