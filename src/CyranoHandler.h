@@ -76,12 +76,16 @@ private:
   // ── Cached strings for UDP callback stack safety ──────────────────────
   // Phase 6 lesson: String building (ToString(), JSON conversion) in
   // UDP callbacks causes stack overflow in async_udp task (~4KB stack).
-  // Solution: Pre-build and cache the final Cyrano and JSON strings.
+  // Solution: Pre-build and cache ALL final strings (INFO, NEXT, PREV).
   // Rebuild only when state or CompetitionId changes.
-  // SendInfoMessage() just copies cached strings - NO stack allocations.
+  // SendInfoMessage() and ProcessUIEvents() use cached strings - NO stack.
   EFP1Message m_CachedStatus;       //!< Updated when Opp2Handler state changes
-  std::string m_CachedCyranoString; //!< Pre-built Cyrano protocol string
-  std::string m_CachedJsonString;   //!< Pre-built JSON string for MQTT
+  std::string m_CachedCyranoString; //!< Pre-built INFO Cyrano string
+  std::string m_CachedJsonString;   //!< Pre-built INFO JSON for MQTT
+  std::string m_CachedNextCyrano;   //!< Pre-built NEXT Cyrano string
+  std::string m_CachedNextJson;     //!< Pre-built NEXT JSON for MQTT
+  std::string m_CachedPrevCyrano;   //!< Pre-built PREV Cyrano string
+  std::string m_CachedPrevJson;     //!< Pre-built PREV JSON for MQTT
   bool m_CachedStatusValid;         //!< True when cache is synchronized
 
   /**

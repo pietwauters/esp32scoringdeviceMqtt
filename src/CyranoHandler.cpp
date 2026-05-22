@@ -71,11 +71,19 @@ void CyranoHandler::RebuildCachedStrings() {
   msg[Command] = "INFO";
   msg[CompetitionId] = m_CompetitionId;
 
-  // Build and cache the Cyrano protocol string
+  // Build and cache the INFO Cyrano protocol string and JSON
   msg.ToString(m_CachedCyranoString);
-
-  // Build and cache the JSON string for MQTT
   m_CachedJsonString = convert_cyrano_to_json_string(m_CachedCyranoString);
+
+  // Build and cache NEXT message strings
+  // CRITICAL: MakeNextMessageString() uses msg[CompetitionId], so msg must have it set
+  m_CachedNextCyrano = msg.MakeNextMessageString();
+  m_CachedNextJson = convert_cyrano_to_json_string(m_CachedNextCyrano);
+
+  // Build and cache PREV message strings
+  // CRITICAL: MakePrevMessageString() uses msg[CompetitionId], so msg must have it set  
+  m_CachedPrevCyrano = msg.MakePrevMessageString();
+  m_CachedPrevJson = convert_cyrano_to_json_string(m_CachedPrevCyrano);
 
   // Mark cache as valid
   m_CachedStatusValid = true;
@@ -277,27 +285,24 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
   case UI_INPUT_CYRANO_NEXT:
     bOKToSend = true;
     if (WAITING == m_State) {
-      // Use cached status (avoid stack allocation)
+      // Use cached NEXT strings - NO stack allocations
       if (!m_CachedStatusValid) {
         return; // Cache not initialized yet
       }
-      std::string TheMessage = m_CachedStatus.MakeNextMessageString();
-      std::string TheJsonMessage;
-      TheJsonMessage = convert_cyrano_to_json_string(TheMessage);
-      // CyranoHandlerudpRcv.writeTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
-      // IPAddress(10,154,1,109),CYRANO_PORT,TCPIP_ADAPTER_IF_STA);
-      // CyranoHandlerudpRcv.broadcastTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
-      // CyranoBroadcastPort,TCPIP_ADAPTER_IF_STA);
+      const char *pCyranoMsg = m_CachedNextCyrano.c_str();
+      size_t cyranoLen = m_CachedNextCyrano.length();
+      const char *pJsonMsg = m_CachedNextJson.c_str();
+      size_t jsonLen = m_CachedNextJson.length();
+
       if (false)
         CyranoHandlerudpBroadcast.broadcastTo(
-            (uint8_t *)TheMessage.c_str(), TheMessage.length(),
+            (uint8_t *)pCyranoMsg, cyranoLen,
             CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
       else {
-        CyranoHandlerudpRcv.writeTo((uint8_t *)TheMessage.c_str(),
-                                    TheMessage.length(), SoftwareIPAddress(),
+        CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                    SoftwareIPAddress(),
                                     CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
-        mqttClient.publish(mqttPublishTopic, 0, true, TheJsonMessage.c_str(),
-                           TheJsonMessage.length());
+        mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
       }
       StateChanged(EVENT_CYRANO_STATE_W);
     }
@@ -306,27 +311,24 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
   case UI_INPUT_CYRANO_PREV:
     bOKToSend = true;
     if (WAITING == m_State) {
-      // Use cached status (avoid stack allocation)
+      // Use cached PREV strings - NO stack allocations
       if (!m_CachedStatusValid) {
         return; // Cache not initialized yet
       }
-      std::string TheMessage = m_CachedStatus.MakePrevMessageString();
-      std::string TheJsonMessage;
-      TheJsonMessage = convert_cyrano_to_json_string(TheMessage);
-      // CyranoHandlerudpRcv.writeTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
-      // IPAddress(10,154,1,109),CYRANO_PORT,TCPIP_ADAPTER_IF_STA);
-      // CyranoHandlerudpRcv.broadcastTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
-      // CyranoBroadcastPort,TCPIP_ADAPTER_IF_STA);
+      const char *pCyranoMsg = m_CachedPrevCyrano.c_str();
+      size_t cyranoLen = m_CachedPrevCyrano.length();
+      const char *pJsonMsg = m_CachedPrevJson.c_str();
+      size_t jsonLen = m_CachedPrevJson.length();
+
       if (false)
         CyranoHandlerudpBroadcast.broadcastTo(
-            (uint8_t *)TheMessage.c_str(), TheMessage.length(),
+            (uint8_t *)pCyranoMsg, cyranoLen,
             CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
       else {
-        CyranoHandlerudpRcv.writeTo((uint8_t *)TheMessage.c_str(),
-                                    TheMessage.length(), SoftwareIPAddress(),
+        CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                    SoftwareIPAddress(),
                                     CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
-        mqttClient.publish(mqttPublishTopic, 0, true, TheJsonMessage.c_str(),
-                           TheJsonMessage.length());
+        mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
       }
       StateChanged(EVENT_CYRANO_STATE_W);
     }
