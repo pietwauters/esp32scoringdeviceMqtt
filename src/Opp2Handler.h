@@ -8,18 +8,19 @@
 #include <AtlasAsyncMqttClient.h>
 #include <Preferences.h>
 #include <WiFi.h>
-#include <opp2.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <opp2.h>
 
 class UDPIOHandler;
 
 /**
  * @brief Protocol selection for canonical state source
- * 
- * When in OPP2 mode: only OPP2 messages can update external state (fencers/match)
- * When in CYRANO mode: only Cyrano messages can update external state
- * Remote control commands are always accepted (conceptually part of apparatus)
+ *
+ * When in OPP2 mode: only OPP2 messages can update external state
+ * (fencers/match) When in CYRANO mode: only Cyrano messages can update external
+ * state Remote control commands are always accepted (conceptually part of
+ * apparatus)
  */
 enum class InputProtocol { OPP2, CYRANO };
 
@@ -28,11 +29,11 @@ enum class InputProtocol { OPP2, CYRANO };
  *
  * CANONICAL STATE HOLDER: This class contains the single source of truth
  * for all piste state (m_State). All other components read from this state.
- * 
+ *
  * Thread Safety: m_State is protected by m_StateMutex for dual-core access.
  * - Core 0 (PRO_CPU): All protocol handlers, FSM, remote control
  * - Core 1 (APP_CPU): 3WeaponSensor (high-frequency hit detection)
- * 
+ *
  * Observes FencingStateMachine events and publishes OPP2-formatted messages
  * to MQTT. Maintains complete piste state using OPP2::SystemState.
  *
@@ -130,6 +131,20 @@ public:
    */
   void updateApparatusStateInternal(const OPP2::ApparatusStateMsg &state);
 
+  /**
+   * Update match configuration from internal events (FSM).
+   * Bypasses all guards - internal events are authoritative.
+   * Thread-safe with mutex protection.
+   */
+  void updateMatchInternal(const OPP2::Match &match);
+
+  /**
+   * Update UW2F (passivity timer) from internal events (FSM).
+   * Bypasses all guards - internal events are authoritative.
+   * Thread-safe with mutex protection.
+   */
+  void updateUW2FInternal(const OPP2::UW2F &uw2f);
+
   // ── External State Updates (from software - with guards) ─────────────
 
   /**
@@ -137,7 +152,8 @@ public:
    * Only accepted when: active protocol matches AND apparatus in WAITING state.
    * @return true if update was accepted, false if rejected by guards
    */
-  bool updateFencersExternal(const OPP2::Fencers &fencers, InputProtocol source);
+  bool updateFencersExternal(const OPP2::Fencers &fencers,
+                             InputProtocol source);
 
   /**
    * Update match from external source (software).
@@ -181,14 +197,16 @@ protected:
 private:
   // ── State management ──────────────────────────────────────────────────
 
-  OPP2::SystemState m_State; ///< Complete OPP2 piste state (CANONICAL - protected by mutex)
+  OPP2::SystemState
+      m_State; ///< Complete OPP2 piste state (CANONICAL - protected by mutex)
   SemaphoreHandle_t m_StateMutex; ///< Mutex for thread-safe access to m_State
   OPP2::Dispatcher
       m_Dispatcher;      ///< OPP2 message dispatcher for incoming messages
   uint32_t m_SeqCounter; ///< Global sequence counter for all QoS 1 messages
 
   // Protocol selection (for external state updates only)
-  InputProtocol m_ActiveInputProtocol; ///< Which protocol can update external state
+  InputProtocol
+      m_ActiveInputProtocol; ///< Which protocol can update external state
   bool m_AutoDetectProtocol; ///< Auto-switch to OPP2 on first OPP2 message
 
   // Timing and throttling
@@ -317,7 +335,13 @@ private:
   /**
    * Compare two ApparatusStateMsg messages for equality.
    */
-  static bool apparatusStateEqual(const OPP2::ApparatusStateMsg &a, const OPP2::ApparatusStateMsg &b);
+  static bool apparatusStateEqual(const OPP2::ApparatusStateMsg &a,
+                                  const OPP2::ApparatusStateMsg &b);
+
+  /**
+   * Compare two UW2F messages for equality.
+   */
+  static bool uw2fEqual(const OPP2::UW2F &a, const OPP2::UW2F &b);
 
   // ── MQTT configuration ────────────────────────────────────────────────
 
