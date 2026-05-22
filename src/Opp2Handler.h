@@ -321,8 +321,13 @@ private:
    */
   void PublishConnection(bool online);
 
-  /**
-   * Publish a match message.
+  /**   * Push cached Cyrano status to CyranoHandler (stack safety
+   * optimization). Called after internal state updates to keep CyranoHandler
+   * cache synchronized. Avoids mutex reads from UDP callback contexts.
+   */
+  void PushCachedStatusToCyrano();
+
+  /**   * Publish a match message.
    */
   void PublishMatch();
 

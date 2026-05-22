@@ -57,6 +57,13 @@ public:
   };
   void ClearOnACK();
 
+  /**
+   * Update cached Cyrano status message (push from Opp2Handler).
+   * Called when OPP2 state changes - avoids mutex reads in UDP callbacks.
+   * Thread-safe: only called from Core 0 contexts.
+   */
+  void updateCachedStatus(const EFP1Message &status);
+
 protected:
 private:
   friend class SingletonMixin<CyranoHandler>;
@@ -65,6 +72,15 @@ private:
 
   // Cyrano-specific fields not in OPP2::SystemState
   std::string m_CompetitionId; //!< Software-provided competition ID
+
+  // ── Cached state for UDP callback stack safety ────────────────────────
+  // Phase 6 lesson: getStateCopy() creates large stack allocations (~400-600
+  // bytes) In async_udp callback context (limited stack ~4KB), this causes
+  // overflow. Solution: Cache converted Cyrano message, update via observer
+  // when state changes. Trades heap memory (acceptable) for stack safety
+  // (critical).
+  EFP1Message m_CachedStatus; //!< Updated when Opp2Handler state changes
+  bool m_CachedStatusValid;   //!< True when cache is synchronized
 
   EFP1Message m_IncompleteMessage;
   CyranoState m_State = WAITING;

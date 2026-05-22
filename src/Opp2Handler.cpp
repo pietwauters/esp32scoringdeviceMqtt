@@ -215,6 +215,9 @@ void Opp2Handler::Begin() {
   };
 
   ESP_LOGI(OPP2_TAG, "[OPP2] Dispatcher callbacks registered");
+
+  // ── Initialize CyranoHandler cache ─────────────────────────────────────
+  PushCachedStatusToCyrano();
 }
 
 // ── MQTT Callback Implementations ───────────────────────────────────────────
@@ -923,6 +926,9 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 
   // For any unhandled events that set bTransmit = true, we would publish here
   // (Currently all events handle their own publishing)
+
+  // ── Update CyranoHandler cache after FSM state changes ─────────────────
+  PushCachedStatusToCyrano();
 }
 
 // ── Connection Management ───────────────────────────────────────────────────
@@ -1236,6 +1242,28 @@ void Opp2Handler::getPisteId(char *buffer) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Cache Synchronization (Phase 6 stack safety)
+// ════════════════════════════════════════════════════════════════════════════
+
+void Opp2Handler::PushCachedStatusToCyrano() {
+  // Called after state updates (mutex already released)
+  // Safe to take mutex again for read-only copy
+  OPP2::SystemState stateCopy;
+
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    stateCopy = m_State;
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PushCachedStatusToCyrano() timeout");
+    return;
+  }
+
+  // Convert to Cyrano format and push to CyranoHandler
+  EFP1Message cyranoStatus = convertOpp2ToCyrano(stateCopy, stateCopy.piste_id);
+  CyranoHandler::getInstance().updateCachedStatus(cyranoStatus);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Internal State Updates (from FSM/Sensor - bypass all guards)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1258,6 +1286,7 @@ void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights) {
              lights.left.on_target, lights.left.white, lights.right.on_target,
              lights.right.white);
     PublishLights();
+    PushCachedStatusToCyrano(); // Update CyranoHandler cache
   }
 }
 

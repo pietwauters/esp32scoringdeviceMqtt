@@ -13,9 +13,10 @@ extern const size_t ca_cert_pem_len;
 
 static const char *CYRANO_TAG = "Cyrano";
 const char *mdnsName = "openpiste";
-CyranoHandler::CyranoHandler() {
+CyranoHandler::CyranoHandler() : m_CachedStatusValid(false) {
   // ctor
   // Note: State now managed by OPP2::SystemState in Opp2Handler
+  // Cached status will be populated on first state update
 }
 
 auto &mqttClient = AtlasAsyncMqttClient::getInstance();
@@ -50,6 +51,17 @@ void onMqttMessage(const char *topic, const char *payload,
     MyCyranoHandler.ProcessMessageFromSoftware((EFP1Message(CyranoStr)), false);
     // std::cout << "Reveiced mqtt message: " << CyranoStr << std::endl;
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Cache Management (Phase 6 stack safety fix)
+// ════════════════════════════════════════════════════════════════════════════
+
+void CyranoHandler::updateCachedStatus(const EFP1Message &status) {
+  // Push-based update from Opp2Handler when state changes
+  // No mutex needed - updates happen on Core 0 only
+  m_CachedStatus = status;
+  m_CachedStatusValid = true;
 }
 
 void CyranoHandler::Begin() {
@@ -117,12 +129,15 @@ void CyranoHandler::SendInfoMessage() {
   if (!bOKToSend)
     return;
 
-  // ── Get canonical state from OPP2 (Phase 6) ──────────────────────────
-  OPP2::SystemState opp2State = Opp2Handler::getInstance().getStateCopy();
+  // ── Use cached status to avoid stack allocations in UDP callback ──────
+  // Cache is push-updated by Opp2Handler, no mutex reads needed here
+  if (!m_CachedStatusValid) {
+    // Cache not yet initialized - skip this send
+    return;
+  }
 
-  // ── Convert OPP2 to Cyrano format ─────────────────────────────────────
-  EFP1Message statusMessage =
-      Opp2Handler::convertOpp2ToCyrano(opp2State, opp2State.piste_id);
+  // Use cached EFP1Message (heap-allocated member, not stack)
+  EFP1Message statusMessage = m_CachedStatus;
 
   // Set command and preserve Cyrano-specific fields not in OPP2
   statusMessage[Command] = "INFO";
@@ -235,6 +250,7 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
     break;
     ESP_LOGE(CYRANO_TAG, "%s", "Interesting, I should never ever get here");
   }
+  // Note: Cache is push-updated by Opp2Handler when state changes
 }
 
 void CyranoHandler::ProcessUIEvents(uint32_t const event) {
@@ -244,11 +260,11 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
   case UI_INPUT_CYRANO_NEXT:
     bOKToSend = true;
     if (WAITING == m_State) {
-      // Get current state from OPP2
-      OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
-      EFP1Message statusMsg =
-          Opp2Handler::convertOpp2ToCyrano(state, state.piste_id);
-      std::string TheMessage = statusMsg.MakeNextMessageString();
+      // Use cached status (avoid stack allocation)
+      if (!m_CachedStatusValid) {
+        return; // Cache not initialized yet
+      }
+      std::string TheMessage = m_CachedStatus.MakeNextMessageString();
       std::string TheJsonMessage;
       TheJsonMessage = convert_cyrano_to_json_string(TheMessage);
       // CyranoHandlerudpRcv.writeTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
@@ -273,11 +289,11 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
   case UI_INPUT_CYRANO_PREV:
     bOKToSend = true;
     if (WAITING == m_State) {
-      // Get current state from OPP2
-      OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
-      EFP1Message statusMsg =
-          Opp2Handler::convertOpp2ToCyrano(state, state.piste_id);
-      std::string TheMessage = statusMsg.MakePrevMessageString();
+      // Use cached status (avoid stack allocation)
+      if (!m_CachedStatusValid) {
+        return; // Cache not initialized yet
+      }
+      std::string TheMessage = m_CachedStatus.MakePrevMessageString();
       std::string TheJsonMessage;
       TheJsonMessage = convert_cyrano_to_json_string(TheMessage);
       // CyranoHandlerudpRcv.writeTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
@@ -368,9 +384,9 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
 #define MASK_ANY_ORANGE (MASK_ORANGE_L | MASK_ORANGE_R)
 
 void CyranoHandler::ProcessLightsChange(uint32_t eventtype) {
-  // Note: Lights already updated in Opp2Handler via updateLightsInternal (Phase
-  // 2) No need to duplicate state here - just trigger Cyrano message send
-  // (Handled in update() method which calls SendInfoMessage())
+  // Note: Lights already updated in Opp2Handler via updateLightsInternal
+  // (Phase 2) No need to duplicate state here - just trigger Cyrano message
+  // send (Handled in update() method which calls SendInfoMessage())
 }
 
 void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
@@ -379,8 +395,8 @@ void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
   bool bTransmit = true;
 
   // ── Phase 6: State now managed by Opp2Handler ──────────────────────────
-  // FSM events already update OPP2::SystemState via updateXxxInternal (Phase 2)
-  // This method only needs to:
+  // FSM events already update OPP2::SystemState via updateXxxInternal (Phase
+  // 2) This method only needs to:
   // 1. Trigger Cyrano message sends via SendInfoMessage()
   // 2. Update local Cyrano-specific state (m_State)
   // 3. Emit state change notifications
@@ -408,12 +424,12 @@ void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_TIMER_STATE: {
-    // Get current state to check if we should process this
-    OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
-    EFP1Message cyranoState =
-        Opp2Handler::convertOpp2ToCyrano(state, state.piste_id);
+    // Check current state using cached status (avoid stack allocation)
+    if (!m_CachedStatusValid) {
+      break; // Cache not initialized yet
+    }
 
-    if ((cyranoState[State] == "E") || (cyranoState[State] == "W"))
+    if ((m_CachedStatus[State] == "E") || (m_CachedStatus[State] == "W"))
       break;
 
     if (eventtype & DATA_24BIT_MASK) {
@@ -443,9 +459,10 @@ void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
     // Unknown to Cyrano -> build UW2F_Timer JSON and publish directly
     bTransmit = false;
     {
-      OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
+      char pisteId[OPP2::PISTE_ID_MAX];
+      Opp2Handler::getInstance().getPisteId(pisteId);
       std::string uw2f_json = make_uw2f_timer_from_event_string(
-          eventtype, state.piste_id, (long long)millis());
+          eventtype, pisteId, (long long)millis());
       if (!uw2f_json.empty()) {
         mqttClient.publish(mqttPublishTopic, 0, true, uw2f_json.c_str(),
                            uw2f_json.length());
@@ -460,6 +477,7 @@ void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
   if (bTransmit) {
     SendInfoMessage();
   }
+  // Note: Cache is push-updated by Opp2Handler when state changes
 }
 
 void ProcessCyranoPacket(AsyncUDPPacket packet) {
