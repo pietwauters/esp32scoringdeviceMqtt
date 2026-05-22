@@ -139,7 +139,6 @@ void setup() {
     MyStatemachine->ResetAll();
     MyFPA422Handler->StartWiFi();
     MyStatemachine->attach(*MyFPA422Handler);
-    MyOpp2Handler->attach(*MyFPA422Handler);
     MyUDPIOHandler->attach(*MyStatemachine);
     MyStatemachine->attach(*MyUDPIOHandler);
     MyStatemachine->attach(*MyCyranoHandler);
@@ -158,6 +157,8 @@ void setup() {
     MyStatemachine->attach(*MyOpp2Handler);
     MyUDPIOHandler->attach(*MyOpp2Handler);
     MyCyranoHandler->attach(*MyOpp2Handler);
+    MyOpp2Handler->attach(
+        *MyFPA422Handler); // Attach FPA422Handler AFTER getInstance()
     MyOpp2Handler->Begin();
 
     MyRepeaterSender = &RepeaterSender::getInstance();

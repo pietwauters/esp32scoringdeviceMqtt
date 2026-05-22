@@ -220,36 +220,21 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
     break;
 
   case DISP:
-
     if (WAITING == m_State) {
       // ── Phase 6: Route Cyrano input through OPP2 canonical state ───────
-      // Convert and update fencers if present
-      if (!input[RightFencerId].empty() || !input[RightFencerName].empty() ||
-          !input[LeftFencerId].empty() || !input[LeftFencerName].empty()) {
-        OPP2::Fencers fencers = Opp2Handler::convertCyranoToOpp2Fencers(input);
-        Opp2Handler::getInstance().updateFencersExternal(fencers,
-                                                         InputProtocol::CYRANO);
-      }
-
-      // Convert and update match if weapon or round present
-      if (!input[Weapon].empty() || !input[RoundNumber].empty()) {
-        OPP2::Match match = Opp2Handler::convertCyranoToOpp2Match(input);
-        Opp2Handler::getInstance().updateMatchExternal(match,
-                                                       InputProtocol::CYRANO);
-      }
-
-      // Convert and update clock if stopwatch present
-      if (!input[StopWatch].empty()) {
-        OPP2::Clock clock = Opp2Handler::convertCyranoToOpp2Clock(input);
-        Opp2Handler::getInstance().updateClockExternal(clock,
-                                                       InputProtocol::CYRANO);
-      }
+      // Notify Opp2Handler with the full message to parse ALL fields
+      // (scores, fencers, match, clock, cards, priority, state, etc.)
+      std::string msg;
+      EFP1Message temp = input; // Copy needed for non-const ToString()
+      temp.ToString(msg);
+      StateChanged(msg); // → Opp2Handler::update(CyranoHandler*, string)
       // ────────────────────────────────────────────────────────────────────
 
+      // Per Cyrano state transition table: DISP in WAITING → stay WAITING
       m_State = WAITING;
       StateChanged(EVENT_CYRANO_STATE_W);
 
-      // Lock Machine
+      // Lock Machine (only BEGIN button can unlock)
       StateChanged(EVENT_CYRANO_STATE_LOCKED);
     }
 
