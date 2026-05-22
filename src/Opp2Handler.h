@@ -207,6 +207,37 @@ public:
    */
   bool updateClockExternal(const OPP2::Clock &clock, InputProtocol source);
 
+  /**
+   * Update score from external source (software).
+   * Only accepted when: active protocol matches.
+   * Can be updated anytime (e.g., match transfers, manual corrections).
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool updateScoreExternal(const OPP2::Score &score, InputProtocol source);
+
+  /**
+   * Update lights from external source (OPP2 or Cyrano).
+   * Can be updated anytime (e.g., for testing, simulation).
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool updateLightsExternal(const OPP2::Lights &lights, InputProtocol source);
+
+  /**
+   * Update apparatus state from external source (OPP2 or Cyrano).
+   * Can be updated anytime (software-driven START/STOP/RESET).
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool
+  updateApparatusStateExternal(const OPP2::ApparatusStateMsg &apparatusState,
+                               InputProtocol source);
+
+  /**
+   * Update UW2F (blade contact warnings/penalty cards) from external source.
+   * Can be updated anytime during matches.
+   * @return true if update was accepted, false if rejected by guards
+   */
+  bool updateUW2FExternal(const OPP2::UW2F &uw2f, InputProtocol source);
+
   // ── MQTT Callbacks (static for C-style callback registration) ────────
 
   /**

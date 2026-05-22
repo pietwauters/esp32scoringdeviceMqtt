@@ -122,8 +122,12 @@ void Opp2Handler::Begin() {
 
   m_Dispatcher.onControl = [this](const OPP2::Topic &topic,
                                   const OPP2::Control &msg) {
-    ESP_LOGI(OPP2_TAG, "[OPP2] Received Control command: %d",
+    ESP_LOGI(OPP2_TAG, "[OPP2] Received Control command from %s: %d",
+             topic.publisher == OPP2::Publisher::SOFTWARE ? "software"
+                                                          : "remote",
              static_cast<int>(msg.command));
+    // Control commands (ACK/NAK/BEGIN/HALT/RESET) trigger actions, not state
+    // updates They're allowed from OPP2 regardless of active input protocol
     ProcessIncomingControl(msg);
   };
 
@@ -144,9 +148,8 @@ void Opp2Handler::Begin() {
                msg.right.fencer.name, msg.right.fencer.id);
     }
 
-    // Copy fencers data into our state
-    m_State.fencers = msg;
-    // TODO: Update local state and notify observers if needed
+    // Route through external update with protocol tracking
+    updateFencersExternal(msg, InputProtocol::OPP2);
   };
 
   m_Dispatcher.onMatch = [this](const OPP2::Topic &topic,
@@ -157,9 +160,8 @@ void Opp2Handler::Begin() {
              static_cast<int>(msg.weapon), static_cast<int>(msg.type),
              static_cast<int>(msg.phase_type), msg.round);
 
-    // Copy match data into our state
-    m_State.match = msg;
-    // TODO: Update local state and notify observers if needed
+    // Route through external update with protocol tracking
+    updateMatchExternal(msg, InputProtocol::OPP2);
   };
 
   m_Dispatcher.onClock = [this](const OPP2::Topic &topic,
@@ -168,9 +170,8 @@ void Opp2Handler::Begin() {
         OPP2_TAG, "[OPP2] Received Clock update from %s: time=%u running=%d",
         topic.publisher == OPP2::Publisher::SOFTWARE ? "software" : "remote",
         msg.time_ms, msg.running);
-    // Copy clock data into our state
-    m_State.clock = msg;
-    // TODO: Sync with local timer if needed
+    // Route through external update with protocol tracking
+    updateClockExternal(msg, InputProtocol::OPP2);
   };
 
   m_Dispatcher.onScore = [this](const OPP2::Topic &topic,
@@ -179,9 +180,38 @@ void Opp2Handler::Begin() {
              topic.publisher == OPP2::Publisher::SOFTWARE ? "software"
                                                           : "remote",
              msg.left.score, msg.right.score);
-    // Copy score data into our state
-    m_State.score = msg;
-    // TODO: Update displays if needed
+    // Route through external update with protocol tracking
+    updateScoreExternal(msg, InputProtocol::OPP2);
+  };
+
+  m_Dispatcher.onLights = [this](const OPP2::Topic &topic,
+                                 const OPP2::Lights &msg) {
+    ESP_LOGI(OPP2_TAG, "[OPP2] Received Lights update from %s",
+             topic.publisher == OPP2::Publisher::SOFTWARE ? "software"
+                                                          : "remote");
+    // Route through external update with protocol tracking
+    updateLightsExternal(msg, InputProtocol::OPP2);
+  };
+
+  m_Dispatcher.onApparatusState = [this](const OPP2::Topic &topic,
+                                         const OPP2::ApparatusStateMsg &msg) {
+    ESP_LOGI(
+        OPP2_TAG, "[OPP2] Received ApparatusState update from %s: state=%d",
+        topic.publisher == OPP2::Publisher::SOFTWARE ? "software" : "remote",
+        static_cast<int>(msg.state));
+    // Route through external update with protocol tracking
+    updateApparatusStateExternal(msg, InputProtocol::OPP2);
+  };
+
+  m_Dispatcher.onUW2F = [this](const OPP2::Topic &topic,
+                               const OPP2::UW2F &msg) {
+    ESP_LOGI(OPP2_TAG,
+             "[OPP2] Received UW2F update from %s: time=%ums L_P=%d R_P=%d",
+             topic.publisher == OPP2::Publisher::SOFTWARE ? "software"
+                                                          : "remote",
+             msg.time_ms, msg.left.p_card, msg.right.p_card);
+    // Route through external update with protocol tracking
+    updateUW2FExternal(msg, InputProtocol::OPP2);
   };
 
   ESP_LOGI(OPP2_TAG, "[OPP2] Dispatcher callbacks registered");
@@ -1483,6 +1513,154 @@ bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock,
     ESP_LOGI(OPP2_TAG, "[External] Clock updated from %s",
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
     PublishClock();
+  }
+
+  return true;
+}
+
+bool Opp2Handler::updateScoreExternal(const OPP2::Score &score,
+                                      InputProtocol source) {
+  // Guard 1: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG,
+             "[Guard] Score update rejected: protocol mismatch (active=%d, "
+             "source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+
+  // Note: Score can be updated anytime (e.g., transferred matches, corrections)
+  // No state guard needed - unlike fencers/match which require WAITING
+
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!scoreEqual(m_State.score, score)) {
+      m_State.score = score;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateScoreExternal() update timeout");
+    return false;
+  }
+
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[External] Score updated from %s: L=%u R=%u",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano",
+             score.left.score, score.right.score);
+    PublishScore();
+  }
+
+  return true;
+}
+
+bool Opp2Handler::updateLightsExternal(const OPP2::Lights &lights,
+                                       InputProtocol source) {
+  // Guard 1: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG,
+             "[Guard] Lights update rejected: protocol mismatch (active=%d, "
+             "source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+
+  // Note: Lights can be updated anytime (e.g., for testing, simulation)
+  // No state guard needed
+
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!lightsEqual(m_State.lights, lights)) {
+      m_State.lights = lights;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateLightsExternal() update timeout");
+    return false;
+  }
+
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[External] Lights updated from %s",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
+    PublishLights();
+  }
+
+  return true;
+}
+
+bool Opp2Handler::updateApparatusStateExternal(
+    const OPP2::ApparatusStateMsg &apparatusState, InputProtocol source) {
+  // Guard 1: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG,
+             "[Guard] ApparatusState update rejected: protocol mismatch "
+             "(active=%d, source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+
+  // Note: ApparatusState can be changed anytime by software (START/STOP/RESET)
+  // No additional guard needed - software control is valid
+
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!apparatusStateEqual(m_State.apparatus_state, apparatusState)) {
+      m_State.apparatus_state = apparatusState;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateApparatusStateExternal() update timeout");
+    return false;
+  }
+
+  if (changed) {
+    ESP_LOGI(OPP2_TAG, "[External] ApparatusState updated from %s: state=%d",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano",
+             static_cast<int>(apparatusState.state));
+    PublishApparatusState();
+  }
+
+  return true;
+}
+
+bool Opp2Handler::updateUW2FExternal(const OPP2::UW2F &uw2f,
+                                     InputProtocol source) {
+  // Guard 1: Check if source matches active protocol
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG,
+             "[Guard] UW2F update rejected: protocol mismatch (active=%d, "
+             "source=%d)",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+
+  // Note: UW2F (blade contact warnings) can be updated anytime
+  // Used for penalty card tracking during matches
+
+  // Update state
+  bool changed = false;
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (!uw2fEqual(m_State.uw2f, uw2f)) {
+      m_State.uw2f = uw2f;
+      changed = true;
+    }
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] updateUW2FExternal() update timeout");
+    return false;
+  }
+
+  if (changed) {
+    ESP_LOGI(OPP2_TAG,
+             "[External] UW2F updated from %s: time=%ums L_P=%d R_P=%d",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano", uw2f.time_ms,
+             uw2f.left.p_card, uw2f.right.p_card);
+    PublishUW2F();
   }
 
   return true;
