@@ -156,9 +156,10 @@ void CyranoHandler::SendInfoMessage() {
 void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
                                                bool bVerifyPisteID) {
   if (bVerifyPisteID) {
-    // Get piste ID from canonical OPP2 state
-    OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
-    if (input[PisteId] != std::string(state.piste_id))
+    // Get piste ID from canonical OPP2 state (stack-efficient)
+    char pisteId[OPP2::PISTE_ID_MAX];
+    Opp2Handler::getInstance().getPisteId(pisteId);
+    if (input[PisteId] != std::string(pisteId))
       return; // wrong Piste
   }
   switch (input.GetType()) {
@@ -180,17 +181,9 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
 
     if (WAITING == m_State) {
       // ── Phase 6: Route Cyrano input through OPP2 canonical state ───────
-      // Get current state for change detection
-      OPP2::SystemState oldState = Opp2Handler::getInstance().getStateCopy();
-      EFP1Message oldCyrano =
-          Opp2Handler::convertOpp2ToCyrano(oldState, oldState.piste_id);
-
-      // Prune to detect changes
-      EFP1Message temp = oldCyrano;
-      temp.Prune(input);
-      std::string msg;
-      temp.ToString(msg);
-      StateChanged(msg);
+      // NOTE: Skip change detection to minimize stack usage in UDP callback
+      // StateChanged notification with DISP command type
+      StateChanged(EVENT_CYRANO_STATE_W);
 
       // Convert and update fencers if present
       if (!input[RightFencerId].empty() || !input[RightFencerName].empty() ||

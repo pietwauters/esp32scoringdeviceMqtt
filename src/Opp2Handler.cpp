@@ -1223,6 +1223,18 @@ OPP2::SystemState Opp2Handler::getStateCopy() {
   return copy;
 }
 
+void Opp2Handler::getPisteId(char *buffer) {
+  // Acquire mutex with timeout
+  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    strncpy(buffer, m_State.piste_id, OPP2::PISTE_ID_MAX - 1);
+    buffer[OPP2::PISTE_ID_MAX - 1] = '\0';
+    xSemaphoreGive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] getPisteId() timeout - returning empty");
+    buffer[0] = '\0';
+  }
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Internal State Updates (from FSM/Sensor - bypass all guards)
 // ════════════════════════════════════════════════════════════════════════════

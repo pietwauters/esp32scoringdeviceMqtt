@@ -101,6 +101,13 @@ public:
    */
   OPP2::SystemState getStateCopy();
 
+  /**
+   * Get piste ID without copying entire state (stack-efficient).
+   * Thread-safe with mutex protection.
+   * @param buffer Output buffer (must be at least PISTE_ID_MAX bytes)
+   */
+  void getPisteId(char *buffer);
+
   // ── OPP2 to Cyrano Conversion ─────────────────────────────────────────
 
   /**
