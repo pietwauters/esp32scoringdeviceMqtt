@@ -129,45 +129,59 @@ void AbsoluteTime::updateTimeFromServer() {
     time(&now);
     // Reduced logging in tight loop - only log failures
     if (now > 100000) {
+      uint64_t newNtpTime = (uint64_t)now * 1000;
+
+      // ── Calculate drift: compare our compensated prediction vs actual NTP ──
       std::lock_guard<std::mutex> lock(mutex_);
-      uint64_t ts = (uint64_t)now * 1000;
-      if (ts < lastTimestamp_)
-        ts = lastTimestamp_; // Clamp backward jumps
-      // Drift statistics with EMA smoothing
+
+      if (newNtpTime < lastTimestamp_)
+        newNtpTime = lastTimestamp_; // Clamp backward jumps
+
       uint64_t nowMillis = esp_timer_get_time() / 1000;
+
       if (lastNtpSyncMillis_ != 0 && lastNtpSyncTime_ != 0) {
-        int64_t deltaMillis = nowMillis - lastNtpSyncMillis_;
-        int64_t deltaNtp = (int64_t)(ts - lastNtpSyncTime_);
-        lastDriftMs_ = deltaMillis - deltaNtp;
+        // What would our compensated timestamp have predicted?
+        int64_t elapsedMillis = nowMillis - lastNtpSyncMillis_;
+        int64_t driftCompensation =
+            (int64_t)(elapsedMillis * smoothedDriftRate_);
+        uint64_t predictedTime =
+            lastNtpSyncTime_ + elapsedMillis - driftCompensation;
+
+        // How far off was our prediction from actual NTP?
+        lastDriftMs_ = (int64_t)(predictedTime - newNtpTime);
         driftSum_ += lastDriftMs_;
         driftCount_++;
 
         // Calculate instantaneous drift rate (ms drift per ms elapsed)
-        double instantDriftRate = (double)lastDriftMs_ / (double)deltaMillis;
+        double instantDriftRate = (double)lastDriftMs_ / (double)elapsedMillis;
 
         // Apply exponential moving average (α = 0.3)
         // Higher α = faster adaptation, lower α = more smoothing
         const double alpha = 0.3;
         if (driftCount_ == 1) {
-          smoothedDriftRate_ = instantDriftRate;
+          // First measurement: use raw hardware drift
+          int64_t rawDrift =
+              elapsedMillis - (int64_t)(newNtpTime - lastNtpSyncTime_);
+          smoothedDriftRate_ = (double)rawDrift / (double)elapsedMillis;
         } else {
           smoothedDriftRate_ =
               alpha * instantDriftRate + (1.0 - alpha) * smoothedDriftRate_;
         }
 
         ESP_LOGD(TAG,
-                 "Drift: %lld ms over %lld ms (rate: %.6f ppm), smoothed rate: "
+                 "Prediction error: %lld ms over %lld ms (rate: %.6f ppm), "
+                 "smoothed rate: "
                  "%.6f ppm",
-                 lastDriftMs_, deltaMillis, instantDriftRate * 1e6,
+                 lastDriftMs_, elapsedMillis, instantDriftRate * 1e6,
                  smoothedDriftRate_ * 1e6);
       }
       lastNtpSyncMillis_ = nowMillis;
-      lastNtpSyncTime_ = ts;
-      lastTimestamp_ = ts;
+      lastNtpSyncTime_ = newNtpTime;
+      lastTimestamp_ = newNtpTime;
       lastMillis_ = nowMillis;
       synced_ = true;
-      ESP_LOGI(TAG, "Time synced: %llu", ts);
-      ESP_LOGI(TAG, "Average Drift: %f", this->getAverageDriftMs());
+      ESP_LOGI(TAG, "Time synced: %llu", newNtpTime);
+      ESP_LOGI(TAG, "Average Drift: %f ms", this->getAverageDriftMs());
 
       return;
     }
