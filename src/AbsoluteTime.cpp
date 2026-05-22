@@ -1,12 +1,10 @@
 #include "AbsoluteTime.h"
 
-#include <chrono>
 #include <esp_log.h>
 #include <esp_sntp.h>
 #include <mdns.h>
 #include <string.h>
 #include <sys/time.h>
-#include <thread>
 
 #define TAG "AbsoluteTime"
 
@@ -17,10 +15,14 @@ AbsoluteTime &AbsoluteTime::getInstance() {
 
 AbsoluteTime::AbsoluteTime()
     : serverAddress_("cyranbroker"), syncIntervalSecs_(10), synced_(false),
-      lastTimestamp_(0), lastMillis_(0), fallbackMode_(false),
-      syncThreadHandle_(nullptr), smoothedDriftRate_(0.0) {}
+      lastTimestamp_(0), fallbackMode_(false) {}
 
-AbsoluteTime::~AbsoluteTime() { stopSyncThread(); }
+AbsoluteTime::~AbsoluteTime() {
+  // Stop SNTP if running
+  if (esp_sntp_enabled()) {
+    esp_sntp_stop();
+  }
+}
 
 void AbsoluteTime::setServerAddress(const std::string &address) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -41,8 +43,50 @@ void AbsoluteTime::begin(const std::string &serverAddress,
     syncIntervalSecs_ = syncIntervalSecs;
     fallbackIp_ = fallbackIp;
   }
+
   resolveServerAddress();
-  startSyncThread();
+
+  // Don't proceed if we're in fallback mode
+  if (fallbackMode_) {
+    return;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // Initialize SNTP using the STANDARD ESP-IDF approach
+  // ══════════════════════════════════════════════════════════════
+
+  ESP_LOGI(TAG, "Initializing SNTP with server: %s, interval: %u seconds",
+           serverAddress_.c_str(), syncIntervalSecs_);
+
+  // Stop any existing SNTP instance
+  if (esp_sntp_enabled()) {
+    esp_sntp_stop();
+  }
+
+  // Configure SNTP operating mode
+  esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+
+  // Configure server
+  esp_sntp_setservername(0, serverAddress_.c_str());
+
+  // Set sync mode to SMOOTH (uses adjtime() to gradually adjust clock)
+  sntp_set_sync_mode(SNTP_SYNC_MODE_SMOOTH);
+
+#if LOG_LOCAL_LEVEL >= ESP_LOG_INFO
+  // Set callback to monitor sync events (debug/info builds only)
+  sntp_set_time_sync_notification_cb(sntpSyncNotificationCallback);
+#endif
+
+  // Start SNTP - it will run continuously in the background!
+  esp_sntp_init();
+
+  // Set sync interval AFTER init (in milliseconds)
+  // Must be set after init for it to take effect properly
+  sntp_set_sync_interval(syncIntervalSecs_ * 1000);
+  uint32_t actualInterval = sntp_get_sync_interval();
+
+  ESP_LOGI(TAG, "SNTP started - requested %u seconds, actual interval: %u ms",
+           syncIntervalSecs_, actualInterval);
 }
 
 void AbsoluteTime::resolveServerAddress() {
@@ -88,178 +132,105 @@ void AbsoluteTime::resolveServerAddress() {
   }
 }
 
-void AbsoluteTime::startSyncThread() {
-  stopSyncThread();
-  fallbackMode_ = false;
-  synced_ = false;
-  // Start a new thread for periodic sync
-  syncThreadHandle_ = new std::thread([this]() { this->syncTask(); });
-}
+#if LOG_LOCAL_LEVEL >= ESP_LOG_INFO
+// ══════════════════════════════════════════════════════════════
+// SNTP Sync Callback - called by ESP-IDF when time is synchronized
+// Only compiled in debug/info builds for monitoring
+// ══════════════════════════════════════════════════════════════
+void AbsoluteTime::sntpSyncNotificationCallback(struct timeval *tv) {
+  AbsoluteTime &instance = getInstance();
+  std::lock_guard<std::mutex> lock(instance.mutex_);
 
-void AbsoluteTime::stopSyncThread() {
-  if (syncThreadHandle_) {
-    std::thread *t = static_cast<std::thread *>(syncThreadHandle_);
-    if (t->joinable())
-      t->join();
-    delete t;
-    syncThreadHandle_ = nullptr;
+  // Get current NTP time (system clock, already adjusted by SNTP)
+  uint64_t ntpTimeMs = (uint64_t)tv->tv_sec * 1000 + tv->tv_usec / 1000;
+
+  // Get current hardware timer value (monotonic, never adjusted)
+  uint64_t hwTimerMs = esp_timer_get_time() / 1000;
+
+  // Mark as synced - this persists between sync events!
+  instance.synced_ = true;
+  instance.lastTimestamp_ = ntpTimeMs;
+
+  // Calculate hardware drift if we have a previous sync
+  if (instance.syncCount_ > 0) {
+    // How much time passed according to NTP
+    int64_t ntpDelta = ntpTimeMs - instance.lastSyncNtpMillis_;
+
+    // How much time passed according to hardware timer
+    int64_t hwDelta = hwTimerMs - instance.lastSyncHwMillis_;
+
+    // Difference = hardware drift
+    instance.lastHwDriftMs_ = hwDelta - ntpDelta;
+
+    ESP_LOGI(TAG, "Sync #%u: HW drift=%lld ms over %lld ms (%.1f ppm)",
+             instance.syncCount_, instance.lastHwDriftMs_, ntpDelta,
+             instance.lastHwDriftMs_ * 1e6 / (double)ntpDelta);
+  } else {
+    ESP_LOGI(TAG, "Initial SNTP sync complete");
   }
+
+  // Update references for next sync
+  instance.lastSyncNtpMillis_ = ntpTimeMs;
+  instance.lastSyncHwMillis_ = hwTimerMs;
+  instance.syncCount_++;
+
+  ESP_LOGI(TAG, "Time synced: %llu (SNTP smooth mode)", ntpTimeMs);
 }
-
-void AbsoluteTime::syncTask() {
-  while (!fallbackMode_) {
-    updateTimeFromServer();
-
-    // ── Wait for next sync using HARDWARE timer (not system clock) ────────
-    // Record when we synced using esp_timer (monotonic, not affected by SNTP)
-    uint64_t syncStartMicros = esp_timer_get_time();
-    uint64_t nextSyncMicros =
-        syncStartMicros + (syncIntervalSecs_ * 1000000ULL);
-
-    // Poll hardware timer until interval elapses
-    while (!fallbackMode_) {
-      uint64_t nowMicros = esp_timer_get_time();
-      if (nowMicros >= nextSyncMicros) {
-        break; // Time for next sync
-      }
-      // Sleep 100ms, but timing is based on hardware timer, not sleep accuracy
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-  }
-}
-
-void AbsoluteTime::updateTimeFromServer() {
-  ESP_LOGI(TAG, "Setting up SNTP with server: %s", serverAddress_.c_str());
-  sntp_stop();
-  sntp_setoperatingmode(SNTP_OPMODE_POLL);
-  sntp_setservername(0, serverAddress_.c_str());
-  sntp_init();
-  // Wait for sync (max 20s, check every 200ms)
-  for (int i = 0; i < 100; ++i) {
-    time_t now = 0;
-    time(&now);
-    // Reduced logging in tight loop - only log failures
-    if (now > 100000) {
-      uint64_t newNtpTime = (uint64_t)now * 1000;
-
-      // ── Calculate drift: compare our compensated prediction vs actual NTP ──
-      std::lock_guard<std::mutex> lock(mutex_);
-
-      if (newNtpTime < lastTimestamp_)
-        newNtpTime = lastTimestamp_; // Clamp backward jumps
-
-      uint64_t nowMillis = esp_timer_get_time() / 1000;
-
-      if (lastNtpSyncMillis_ != 0 && lastNtpSyncTime_ != 0) {
-        // ── What does our compensated system think the time is RIGHT NOW? ──
-        int64_t elapsedMillis = nowMillis - lastNtpSyncMillis_;
-        int64_t driftCompensation =
-            (int64_t)(elapsedMillis * smoothedDriftRate_);
-        uint64_t ourTime = lastNtpSyncTime_ + elapsedMillis - driftCompensation;
-
-        // ── Error = how far off we are from actual NTP ──
-        int64_t error = (int64_t)(ourTime - newNtpTime);
-        lastDriftMs_ = error;
-        driftSum_ += error;
-        driftCount_++;
-
-        if (driftCount_ == 1) {
-          // First sync: use raw hardware drift as initial rate
-          int64_t rawDrift =
-              elapsedMillis - (int64_t)(newNtpTime - lastNtpSyncTime_);
-          smoothedDriftRate_ = (double)rawDrift / (double)elapsedMillis;
-          lastError_ = error;
-          ESP_LOGI(TAG, "Initial drift: error=%lld ms, rate=%.3f ppm", error,
-                   smoothedDriftRate_ * 1e6);
-        } else {
-          // ── PD Controller for stable, fast convergence ──
-          // P (proportional): responds to current error
-          // D (derivative): dampens oscillations
-
-          const double Kp =
-              0.8; // Proportional gain (0.7-1.0 for fast convergence)
-          const double Kd = 0.4; // Derivative gain (0.3-0.5 for damping)
-
-          // Proportional term: error / elapsed
-          double proportional = (double)error / (double)elapsedMillis;
-
-          // Derivative term: (error - lastError) / elapsed
-          double derivative =
-              (double)(error - lastError_) / (double)elapsedMillis;
-
-          // PD control: rate adjustment
-          double rateAdjustment = Kp * proportional + Kd * derivative;
-
-          smoothedDriftRate_ = smoothedDriftRate_ + rateAdjustment;
-          lastError_ = error;
-
-          ESP_LOGI(TAG, "Error: %lld ms, P=%.3f, D=%.3f, rate=%.3f ppm", error,
-                   proportional * 1e6, derivative * 1e6,
-                   smoothedDriftRate_ * 1e6);
-        }
-      }
-      lastNtpSyncMillis_ = nowMillis;
-      lastNtpSyncTime_ = newNtpTime;
-      lastTimestamp_ = newNtpTime;
-      lastMillis_ = nowMillis;
-      synced_ = true;
-      ESP_LOGI(TAG, "Time synced: %llu", newNtpTime);
-      // Note: Current error shown above in PD controller log
-
-      return;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  }
-  ESP_LOGE(TAG, "NTP sync timeout after 20 seconds, falling back to millis()");
-  fallbackToMillis();
-}
+#endif // LOG_LOCAL_LEVEL >= ESP_LOG_INFO
 
 void AbsoluteTime::fallbackToMillis() {
   std::lock_guard<std::mutex> lock(mutex_);
   fallbackMode_ = true;
   synced_ = false;
-  lastMillis_ = esp_timer_get_time() / 1000;
-  lastTimestamp_ = ((uint64_t)0x01 << 56) | (uint64_t)lastMillis_;
+  uint64_t hwMillis = esp_timer_get_time() / 1000;
+  lastTimestamp_ = ((uint64_t)0x01 << 56) | hwMillis;
+  ESP_LOGW(TAG, "Using fallback mode (hardware timer only)");
 }
 
 uint64_t AbsoluteTime::getTimestamp() {
   std::lock_guard<std::mutex> lock(mutex_);
+
   if (fallbackMode_) {
+    // Fallback: use hardware timer
     uint64_t nowMillis = esp_timer_get_time() / 1000;
-    uint64_t ts = ((uint64_t)0x01 << 56) | (uint64_t)nowMillis;
-    if (ts < lastTimestamp_)
-      ts = lastTimestamp_; // Clamp backward
+    uint64_t ts = ((uint64_t)0x01 << 56) | nowMillis;
+
+    // Only clamp if last timestamp was also in fallback mode
+    if ((lastTimestamp_ & ((uint64_t)0x01 << 56)) && ts < lastTimestamp_)
+      ts = lastTimestamp_;
+
     lastTimestamp_ = ts;
     return ts;
   } else {
-    // ── Drift-compensated timestamp interpolation ───────────────────────
-    uint64_t nowMillis = esp_timer_get_time() / 1000;
+    // ══════════════════════════════════════════════════════════════
+    // Standard approach: Just read the SNTP-adjusted system clock!
+    // SNTP continuously adjusts it via adjtime() in smooth mode
+    // ══════════════════════════════════════════════════════════════
+    time_t now = 0;
+    time(&now);
+    uint64_t ts = (uint64_t)now * 1000;
 
-    if (lastNtpSyncMillis_ == 0 || driftCount_ == 0) {
-      // No drift data yet, fall back to system time
-      time_t now = 0;
-      time(&now);
-      uint64_t ts = (uint64_t)now * 1000;
-      if (ts < lastTimestamp_)
-        ts = lastTimestamp_;
-      lastTimestamp_ = ts;
-      return ts;
+    // Validate: time() should return > year 2020 (1577836800 seconds)
+    // If invalid, return last valid timestamp (must stay in NTP format)
+    const uint64_t MIN_VALID_TIME_MS = 1577836800000ULL; // Jan 1, 2020
+    if (ts < MIN_VALID_TIME_MS) {
+      ESP_LOGW(TAG, "Invalid system time (%llu), using last timestamp", ts);
+      // If we have a valid cached timestamp, use it
+      if (lastTimestamp_ > MIN_VALID_TIME_MS &&
+          !(lastTimestamp_ & ((uint64_t)0x01 << 56))) {
+        return lastTimestamp_;
+      }
+      // Otherwise, keep trying - return current invalid value and let SNTP fix
+      // it DO NOT switch to fallback format - that would corrupt the timestamp
+      // stream
+      ESP_LOGE(TAG, "No valid cached timestamp, returning invalid time");
+      return ts; // Will be clamped below if needed
     }
 
-    // Time elapsed since last NTP sync (using local esp_timer)
-    int64_t elapsedMillis = nowMillis - lastNtpSyncMillis_;
-
-    // Apply drift compensation using smoothed drift rate
-    // Positive drift = local clock runs fast → SUBTRACT to correct
-    // Negative drift = local clock runs slow → ADD (subtract negative)
-    int64_t driftCompensation = (int64_t)(elapsedMillis * smoothedDriftRate_);
-
-    // Interpolated timestamp = last NTP time + elapsed time - drift correction
-    uint64_t ts = lastNtpSyncTime_ + elapsedMillis - driftCompensation;
-
-    // Clamp backward jumps (safety)
-    if (ts < lastTimestamp_)
+    // Only clamp if last timestamp was also in NTP mode (no high bit set)
+    if (!(lastTimestamp_ & ((uint64_t)0x01 << 56)) && ts < lastTimestamp_)
       ts = lastTimestamp_;
+
     lastTimestamp_ = ts;
     return ts;
   }
@@ -267,14 +238,28 @@ uint64_t AbsoluteTime::getTimestamp() {
 
 bool AbsoluteTime::isSynced() {
   std::lock_guard<std::mutex> lock(mutex_);
+
+  if (fallbackMode_) {
+    return false;
+  }
+
+  // Return cached sync status - set to true by SNTP callback
+  // Once synced, we stay synced (SNTP maintains time automatically)
   return synced_;
 }
 
-int64_t AbsoluteTime::getLastDriftMs() const { return lastDriftMs_; }
+int64_t AbsoluteTime::getLastDriftMs() const {
+#if LOG_LOCAL_LEVEL >= ESP_LOG_INFO
+  return lastHwDriftMs_;
+#else
+  return 0; // Drift monitoring not available in release builds
+#endif
+}
 
 double AbsoluteTime::getAverageDriftMs() const {
-  if (driftCount_ == 0) {
-    return 0.0;
-  }
-  return driftSum_ / driftCount_;
+#if LOG_LOCAL_LEVEL >= ESP_LOG_INFO
+  return (double)lastHwDriftMs_;
+#else
+  return 0.0; // Drift monitoring not available in release builds
+#endif
 }

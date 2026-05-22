@@ -38,33 +38,29 @@ private:
   AbsoluteTime(const AbsoluteTime &) = delete;
   AbsoluteTime &operator=(const AbsoluteTime &) = delete;
 
-  void syncTask();
-  void startSyncThread();
-  void stopSyncThread();
-  void updateTimeFromServer();
   void fallbackToMillis();
   void resolveServerAddress();
 
-  std::string fallbackIp_;
+#if LOG_LOCAL_LEVEL >= ESP_LOG_INFO
+  // Debug/Info builds only: callback and statistics for monitoring
+  static void sntpSyncNotificationCallback(struct timeval *tv);
+#endif
 
+  std::string fallbackIp_;
   std::string serverAddress_;
   uint32_t syncIntervalSecs_;
   bool synced_;
   uint64_t lastTimestamp_;
-  uint64_t lastMillis_;
   bool fallbackMode_;
   std::mutex mutex_;
-  void *syncThreadHandle_; // Opaque handle for sync thread/task
 
-  // Drift statistics
-  uint64_t lastNtpSyncMillis_ = 0;
-  uint64_t lastNtpSyncTime_ = 0;
-  int64_t lastDriftMs_ = 0;
-  int64_t lastError_ = 0; // Previous error for derivative term
-  double driftSum_ = 0;
-  uint32_t driftCount_ = 0;
-  double smoothedDriftRate_ =
-      0.0; // Drift correction rate (ms/ms) updated by PD controller
+#if LOG_LOCAL_LEVEL >= ESP_LOG_INFO
+  // Sync statistics (debug/info builds only)
+  uint32_t syncCount_ = 0;
+  uint64_t lastSyncHwMillis_ = 0;  // Hardware timer at last sync
+  uint64_t lastSyncNtpMillis_ = 0; // NTP time at last sync
+  int64_t lastHwDriftMs_ = 0;      // Hardware crystal drift
+#endif
 };
 
 #endif // ABSOLUTE_TIME_H
