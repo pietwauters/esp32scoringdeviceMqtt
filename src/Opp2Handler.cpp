@@ -1614,7 +1614,7 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
   snprintf(round_buf, sizeof(round_buf), "%u", state.match.round);
   cyrano[RoundNumber] = round_buf;
 
-  // Priority: OPP2::Priority to Cyrano (L/R/"")
+  // Priority: OPP2::Priority to Cyrano (L/R/N)
   switch (state.score.priority) {
   case OPP2::Priority::LEFT:
     cyrano[Priority] = "L";
@@ -1623,7 +1623,7 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
     cyrano[Priority] = "R";
     break;
   default:
-    cyrano[Priority] = "";
+    cyrano[Priority] = "N";
     break;
   }
 
