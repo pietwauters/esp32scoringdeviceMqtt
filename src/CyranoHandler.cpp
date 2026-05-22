@@ -3,6 +3,7 @@
 #include "CyranoConverter.h"
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
+#include "Opp2Handler.h"
 #include <esp_log.h>
 #include <sstream>
 #include <string>
@@ -124,13 +125,24 @@ void CyranoHandler::ClearOnACK() {
 void CyranoHandler::SendInfoMessage() {
   if (!bOKToSend)
     return;
+
+  // ── Get canonical state from OPP2 (Phase 3) ──────────────────────────
+  OPP2::SystemState opp2State = Opp2Handler::getInstance().getStateCopy();
+
+  // ── Convert OPP2 to Cyrano format ─────────────────────────────────────
+  EFP1Message statusMessage = Opp2Handler::convertOpp2ToCyrano(
+      opp2State, m_MachineStatus[PisteId].c_str());
+
+  // Set command and preserve any Cyrano-specific fields not in OPP2
+  statusMessage[Command] = "INFO";
+  statusMessage[CompetitionId] =
+      m_MachineStatus[CompetitionId]; // Software-provided
+
+  // ── Send message ──────────────────────────────────────────────────────
   std::string TheMessage;
-  m_MachineStatus[Command] = "INFO";
-  TheMessage = m_MachineStatus.ToString(TheMessage);
+  TheMessage = statusMessage.ToString(TheMessage);
   std::string TheJsonMessage;
   TheJsonMessage = convert_cyrano_to_json_string(TheMessage);
-  // CyranoHandlerudpRcv.broadcastTo((uint8_t*)TheMessage.c_str(),TheMessage.length(),
-  // CyranoPort,TCPIP_ADAPTER_IF_STA);
 
   if (false)
     CyranoHandlerudpBroadcast.broadcastTo(

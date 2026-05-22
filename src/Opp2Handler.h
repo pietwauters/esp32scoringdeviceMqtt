@@ -101,6 +101,19 @@ public:
    */
   OPP2::SystemState getStateCopy();
 
+  // ── OPP2 to Cyrano Conversion ─────────────────────────────────────────
+
+  /**
+   * Convert OPP2::SystemState to Cyrano EFP1Message format.
+   * This allows CyranoHandler to read from OPP2 canonical state.
+   * Static method - no instance required.
+   * @param state OPP2 system state to convert
+   * @param pisteId Piste identifier string
+   * @return EFP1Message in Cyrano format
+   */
+  static class EFP1Message convertOpp2ToCyrano(const OPP2::SystemState &state,
+                                               const char *pisteId);
+
   // ── Internal State Updates (from FSM/Sensor - bypass guards) ─────────
 
   /**

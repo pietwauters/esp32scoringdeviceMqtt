@@ -673,21 +673,19 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     bTransmit = false;
     break;
 
-  case EVENT_SCORE_LEFT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.left.score = event_data;
-      updateScoreInternal(score);
-    }
+  case EVENT_SCORE_LEFT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.left.score = event_data;
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
-  case EVENT_SCORE_RIGHT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.right.score = event_data;
-      updateScoreInternal(score);
-    }
+  case EVENT_SCORE_RIGHT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.right.score = event_data;
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
@@ -748,8 +746,7 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     uint32_t centiseconds = TimeInfo.theBytes[0];
 
     OPP2::Clock clock = m_State.clock; // Copy current state
-    clock.time_ms =
-        (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
+    clock.time_ms = (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
 
     if (bTransmit) {
       updateClockInternal(clock);
@@ -789,67 +786,61 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
   }
 
-  case EVENT_YELLOW_CARD_LEFT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.left.yellow_card = (event_data > 0);
-      updateScoreInternal(score);
-    }
+  case EVENT_YELLOW_CARD_LEFT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.left.yellow_card = (event_data > 0);
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
-  case EVENT_YELLOW_CARD_RIGHT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.right.yellow_card = (event_data > 0);
-      updateScoreInternal(score);
-    }
+  case EVENT_YELLOW_CARD_RIGHT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.right.yellow_card = (event_data > 0);
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
-  case EVENT_RED_CARD_LEFT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.left.red_cards = event_data;
-      updateScoreInternal(score);
-    }
+  case EVENT_RED_CARD_LEFT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.left.red_cards = event_data;
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
-  case EVENT_RED_CARD_RIGHT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.right.red_cards = event_data;
-      updateScoreInternal(score);
-    }
+  case EVENT_RED_CARD_RIGHT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.right.red_cards = event_data;
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
-  case EVENT_BLACK_CARD_LEFT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.left.black_card = (event_data != 0);
-      if (event_data) {
-        score.right.status = OPP2::FencerStatus::EXCLUSION;
-      } else {
-        score.right.status = OPP2::FencerStatus::UNDEFINED;
-      }
-      updateScoreInternal(score);
+  case EVENT_BLACK_CARD_LEFT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.left.black_card = (event_data != 0);
+    if (event_data) {
+      score.right.status = OPP2::FencerStatus::EXCLUSION;
+    } else {
+      score.right.status = OPP2::FencerStatus::UNDEFINED;
     }
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
-  case EVENT_BLACK_CARD_RIGHT:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      score.right.black_card = (event_data != 0);
-      if (event_data) {
-        score.left.status = OPP2::FencerStatus::EXCLUSION;
-      } else {
-        score.left.status = OPP2::FencerStatus::UNDEFINED;
-      }
-      updateScoreInternal(score);
+  case EVENT_BLACK_CARD_RIGHT: {
+    OPP2::Score score = m_State.score; // Copy current state
+    score.right.black_card = (event_data != 0);
+    if (event_data) {
+      score.left.status = OPP2::FencerStatus::EXCLUSION;
+    } else {
+      score.left.status = OPP2::FencerStatus::UNDEFINED;
     }
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
@@ -864,21 +855,20 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
   }
 
-  case EVENT_PRIO:
-    {
-      OPP2::Score score = m_State.score; // Copy current state
-      switch (event_data) {
-      case 2:
-        score.priority = OPP2::Priority::RIGHT;
-        break;
-      case 1:
-        score.priority = OPP2::Priority::LEFT;
-        break;
-      default:
-        score.priority = OPP2::Priority::NONE;
-      }
-      updateScoreInternal(score);
+  case EVENT_PRIO: {
+    OPP2::Score score = m_State.score; // Copy current state
+    switch (event_data) {
+    case 2:
+      score.priority = OPP2::Priority::RIGHT;
+      break;
+    case 1:
+      score.priority = OPP2::Priority::LEFT;
+      break;
+    default:
+      score.priority = OPP2::Priority::NONE;
     }
+    updateScoreInternal(score);
+  }
     bTransmit = false;
     break;
 
@@ -1558,4 +1548,146 @@ bool Opp2Handler::apparatusStateEqual(const OPP2::ApparatusStateMsg &a,
 bool Opp2Handler::uw2fEqual(const OPP2::UW2F &a, const OPP2::UW2F &b) {
   return (a.time_ms == b.time_ms && a.left.p_card == b.left.p_card &&
           a.right.p_card == b.right.p_card);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// OPP2 to Cyrano Conversion (Phase 3)
+// ════════════════════════════════════════════════════════════════════════════
+
+EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
+                                             const char *pisteId) {
+  EFP1Message cyrano;
+
+  // ── Header fields ──────────────────────────────────────────────────────
+
+  cyrano[Protocol] = "OPP2"; // Indicate this came from OPP2 state
+  cyrano[PisteId] = pisteId ? pisteId : state.piste_id;
+
+  // Weapon: OPP2::Weapon to Cyrano (E/F/S)
+  switch (state.match.weapon) {
+  case OPP2::Weapon::EPEE:
+    cyrano[Weapon] = "E";
+    break;
+  case OPP2::Weapon::FOIL:
+    cyrano[Weapon] = "F";
+    break;
+  case OPP2::Weapon::SABRE:
+    cyrano[Weapon] = "S";
+    break;
+  default:
+    cyrano[Weapon] = "F"; // Default to foil
+    break;
+  }
+
+  // State: OPP2::ApparatusState to Cyrano (W/F/H/P/E)
+  switch (state.apparatus_state.state) {
+  case OPP2::ApparatusState::WAITING:
+    cyrano[State] = "W";
+    break;
+  case OPP2::ApparatusState::FENCING:
+    cyrano[State] = "F";
+    break;
+  case OPP2::ApparatusState::HALT:
+    cyrano[State] = "H";
+    break;
+  case OPP2::ApparatusState::PAUSE:
+    cyrano[State] = "P";
+    break;
+  case OPP2::ApparatusState::ENDING:
+    cyrano[State] = "E";
+    break;
+  default:
+    cyrano[State] = "W";
+    break;
+  }
+
+  // Clock time: convert milliseconds to MM:SS format
+  uint32_t total_seconds = state.clock.time_ms / 1000;
+  uint32_t minutes = total_seconds / 60;
+  uint32_t seconds = total_seconds % 60;
+  char time_buf[8];
+  snprintf(time_buf, sizeof(time_buf), "%02u:%02u", minutes, seconds);
+  cyrano[StopWatch] = time_buf;
+
+  // Round number
+  char round_buf[8];
+  snprintf(round_buf, sizeof(round_buf), "%u", state.match.round);
+  cyrano[RoundNumber] = round_buf;
+
+  // Priority: OPP2::Priority to Cyrano (L/R/"")
+  switch (state.score.priority) {
+  case OPP2::Priority::LEFT:
+    cyrano[Priority] = "L";
+    break;
+  case OPP2::Priority::RIGHT:
+    cyrano[Priority] = "R";
+    break;
+  default:
+    cyrano[Priority] = "";
+    break;
+  }
+
+  // ── Right fencer fields ────────────────────────────────────────────────
+
+  if (state.fencers.right.fencer.present) {
+    cyrano[RightFencerId] = state.fencers.right.fencer.id;
+    cyrano[RightFencerName] = state.fencers.right.fencer.name;
+    cyrano[RightFencerNation] = state.fencers.right.fencer.nation;
+  }
+
+  // Right score
+  char right_score_buf[8];
+  snprintf(right_score_buf, sizeof(right_score_buf), "%d",
+           state.score.right.score);
+  cyrano[RightScore] = right_score_buf;
+
+  // Right cards
+  cyrano[RightYCard] = state.score.right.yellow_card ? "1" : "0";
+  char right_red_buf[8];
+  snprintf(right_red_buf, sizeof(right_red_buf), "%u",
+           state.score.right.red_cards);
+  cyrano[RightRCard] = right_red_buf;
+
+  // Right lights
+  cyrano[RightLight] = state.lights.right.on_target ? "1" : "0";
+  cyrano[RightWhiteLight] = state.lights.right.white ? "1" : "0";
+
+  // Right P-cards
+  char right_pcard_buf[8];
+  snprintf(right_pcard_buf, sizeof(right_pcard_buf), "%u",
+           state.uw2f.right.p_card);
+  cyrano[RightPCards] = right_pcard_buf;
+
+  // ── Left fencer fields ─────────────────────────────────────────────────
+
+  if (state.fencers.left.fencer.present) {
+    cyrano[LeftFencerId] = state.fencers.left.fencer.id;
+    cyrano[LeftFencerName] = state.fencers.left.fencer.name;
+    cyrano[LeftFencerNation] = state.fencers.left.fencer.nation;
+  }
+
+  // Left score
+  char left_score_buf[8];
+  snprintf(left_score_buf, sizeof(left_score_buf), "%d",
+           state.score.left.score);
+  cyrano[LeftScore] = left_score_buf;
+
+  // Left cards
+  cyrano[LeftYCard] = state.score.left.yellow_card ? "1" : "0";
+  char left_red_buf[8];
+  snprintf(left_red_buf, sizeof(left_red_buf), "%u",
+           state.score.left.red_cards);
+  cyrano[LeftRCard] = left_red_buf;
+
+  // Left lights
+  cyrano[LeftLight] = state.lights.left.on_target ? "1" : "0";
+  cyrano[LeftWhiteLight] = state.lights.left.white ? "1" : "0";
+
+  // Left P-cards
+  char left_pcard_buf[8];
+  snprintf(left_pcard_buf, sizeof(left_pcard_buf), "%u",
+           state.uw2f.left.p_card);
+  cyrano[LeftPCards] = left_pcard_buf;
+
+  return cyrano;
 }
