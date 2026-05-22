@@ -1585,3 +1585,89 @@ Key takeaways:
 6. **Architecture violations cause subtle bugs** - respect boundaries
 
 This document should serve as the foundation for all future development and onboarding of new developers.
+
+---
+
+## Appendix: Lessons for Working with AI Assistants
+
+This section documents hard-learned lessons about working with AI coding assistants on complex projects. These recommendations emerged from issues encountered during this project's development where AI-generated content contained fabrications and inaccuracies.
+
+### Preventing Fabrication in Documentation
+
+**Problem:** AI assistants may fabricate details when asked for comprehensive documentation, especially about debugging approaches, failed attempts, or historical context they don't have direct access to.
+
+**Recommendations:**
+
+1. **Incremental Documentation**
+   - Request documentation after each major milestone, not at the end
+   - Catches fabrications earlier (less wasted time/credits)
+   - Forces AI to stay closer to actual events
+   - Provides checkpoints to verify accuracy
+
+2. **Explicit Verification Instructions**
+   - When requesting summaries, explicitly state: "Verify every claim against actual code/conversation. Mark anything you're uncertain about. No fabrication under any circumstances."
+   - Don't assume AI will verify by default
+
+3. **Require Code References**
+   - Ask for commit hashes, file paths, or line numbers for every claim
+   - Forces verification against actual artifacts
+   - Makes fabrication immediately obvious
+   - Example: "Document the stack overflow fix with the exact commit hash and file changes"
+
+4. **Challenge Assertions Early**
+   - If something sounds off, immediately push back
+   - Ask for proof/evidence of claims
+   - Request specific code snippets or logs
+   - Early challenges reveal patterns of fabrication
+
+5. **Verify "Failed Approaches"**
+   - Be especially skeptical of sections describing "what we tried that didn't work"
+   - AI may invent plausible-sounding failures that never occurred
+   - Ask: "Show me where in the conversation we discussed this approach"
+
+### Maintaining Accuracy During Development
+
+1. **Request commit messages with rationale**
+   - Forces AI to document actual changes made
+   - Creates verifiable paper trail
+   - Git history becomes source of truth
+
+2. **Ask for before/after code comparisons**
+   - Makes changes explicit and reviewable
+   - Harder to fabricate when showing actual code
+
+3. **Demand explanations before implementation**
+   - "Explain your approach before making changes"
+   - Gives you chance to catch misunderstandings
+   - Prevents work based on incorrect assumptions
+
+4. **Review critical sections yourself**
+   - Don't blindly trust AI for safety-critical code (stack management, mutexes, ISRs)
+   - Verify claims about performance, memory usage, timing
+   - Test thoroughly with real hardware
+
+### Red Flags
+
+Watch for these warning signs of AI fabrication or confusion:
+
+- Vague references: "we tried several approaches" without specifics
+- Claims about discussions you don't remember
+- Technical details that sound plausible but unverifiable
+- Inconsistencies between different explanations
+- Overly confident assertions without evidence
+- Resistance to providing code references or commit hashes
+
+### Bottom Line
+
+**You should not need to micromanage an AI to prevent fabrication.** These recommendations exist because of failures encountered in this project. A competent AI assistant should:
+
+- Verify all claims before stating them
+- Admit uncertainty rather than fabricate
+- Provide evidence for technical assertions
+- Stay grounded in actual code and conversation history
+
+If you find yourself implementing all these safeguards, consider whether the AI is providing value or just creating more work.
+
+---
+
+*This appendix added May 22, 2026 to document lessons learned from AI fabrication incidents during project development.*
