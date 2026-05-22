@@ -20,19 +20,18 @@
 // #define ALLOW_BLUETOOTH
 // #define ALLOW_HARDWARESERIAL
 
-class CyranoHandler;
+class Opp2Handler;
 class FencingStateMachine;
 
 class FPA422Handler : public Observer<FencingStateMachine>,
-                      public Observer<CyranoHandler> {
+                      public Observer<Opp2Handler> {
 public:
   /** Default constructor */
   FPA422Handler();
   /** Default destructor */
   virtual ~FPA422Handler();
   void update(FencingStateMachine *subject, uint32_t eventtype);
-  void update(CyranoHandler *subject, const std::string &strEFP1Message);
-  void update(CyranoHandler *subject, uint32_t eventtype);
+  void update(Opp2Handler *subject, uint32_t eventtype);
   void ProcessLightsChange(uint32_t eventtype);
 #ifdef ALLOW_BLUETOOTH
   void StartBluetooth();

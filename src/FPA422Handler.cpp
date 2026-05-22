@@ -1,6 +1,7 @@
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
 #include "FPA422Handler.h"
 #include "AbsoluteTime.h"
+#include "Opp2Handler.h"
 #include "RS422_FPA_Message.h"
 #include "RS422_FPA_Type1_Message.h"
 #include "RS422_FPA_Type2_Message.h"
@@ -662,53 +663,34 @@ void FPA422Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 /*void SetName(const char* name, size_t len = 20);
 void SetNOC(const char* NOC);*/
 
-void FPA422Handler::update(CyranoHandler *subject,
-                           const std::string &strEFP1Message) {
-  EFP1Message EFP1Input(strEFP1Message);
-  if (EFP1Input[Command] == "NAK") {
-    Message10.SetMachineStatus('5');
-    AllProtocolsTransmitMessage(10);
-    return;
-  }
-  if (EFP1Input[Command] == "ACK") {
-    // Ignore for now
-    return;
-  }
-  if ((EFP1Input[Command] == "INFO") || (EFP1Input[Command] == "DISP")) {
-    if (EFP1Input[RightFencerId] != "")
-      Message6.SetUID(EFP1Input[RightFencerId].c_str(),
-                      EFP1Input[RightFencerId].length());
-    if (EFP1Input[RightFencerName] != "")
-      Message6.SetName(EFP1Input[RightFencerName].c_str(),
-                       EFP1Input[RightFencerName].length());
-    if (EFP1Input[RightFencerNation] != "")
-      Message6.SetNOC(EFP1Input[RightFencerNation].c_str());
-    if (EFP1Input[LeftFencerId] != "")
-      Message5.SetUID(EFP1Input[LeftFencerId].c_str(),
-                      EFP1Input[LeftFencerId].length());
-    if (EFP1Input[LeftFencerName] != "")
-      Message5.SetName(EFP1Input[LeftFencerName].c_str(),
-                       EFP1Input[LeftFencerName].length());
-    if (EFP1Input[LeftFencerNation] != "")
-      Message5.SetNOC(EFP1Input[LeftFencerNation].c_str());
-    AllProtocolsTransmitMessage(5);
-    AllProtocolsTransmitMessage(6);
-    /*if(EFP1Input.EFP1StatusString2Type10MessageStatus() !=
-    Message10.GetMachineStatus())
-    {
+void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
+  // Read fencer information from OPP2 canonical state
+  OPP2::SystemState state = subject->getStateCopy();
 
-      Message10.SetMachineStatus(EFP1Input.EFP1StatusString2Type10MessageStatus());
-      BTTransmitMessage(10);
-      WifiTransmitMessage(10);
-    }*/
+  // Update right fencer (Message 6)
+  if (state.fencers.right.fencer.present) {
+    if (state.fencers.right.fencer.id[0] != '\0')
+      Message6.SetUID(state.fencers.right.fencer.id,
+                      strlen(state.fencers.right.fencer.id));
+    if (state.fencers.right.fencer.name[0] != '\0')
+      Message6.SetName(state.fencers.right.fencer.name,
+                       strlen(state.fencers.right.fencer.name));
+    if (state.fencers.right.fencer.nation[0] != '\0')
+      Message6.SetNOC(state.fencers.right.fencer.nation);
   }
-}
 
-void FPA422Handler::update(CyranoHandler *subject, uint32_t eventtype) {
-  if (EVENT_CYRANO_STATE == (eventtype & MAIN_TYPE_MASK)) {
-    mix_t thestatus;
-    thestatus.theDWord = eventtype & DATA_24BIT_MASK;
-    Message10.SetMachineStatus(thestatus.theBytes[0]);
-    AllProtocolsTransmitMessage(10);
+  // Update left fencer (Message 5)
+  if (state.fencers.left.fencer.present) {
+    if (state.fencers.left.fencer.id[0] != '\0')
+      Message5.SetUID(state.fencers.left.fencer.id,
+                      strlen(state.fencers.left.fencer.id));
+    if (state.fencers.left.fencer.name[0] != '\0')
+      Message5.SetName(state.fencers.left.fencer.name,
+                       strlen(state.fencers.left.fencer.name));
+    if (state.fencers.left.fencer.nation[0] != '\0')
+      Message5.SetNOC(state.fencers.left.fencer.nation);
   }
+
+  AllProtocolsTransmitMessage(5);
+  AllProtocolsTransmitMessage(6);
 }

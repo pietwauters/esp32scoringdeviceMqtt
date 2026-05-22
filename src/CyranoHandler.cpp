@@ -223,10 +223,6 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
 
     if (WAITING == m_State) {
       // ── Phase 6: Route Cyrano input through OPP2 canonical state ───────
-      // NOTE: Skip change detection to minimize stack usage in UDP callback
-      // StateChanged notification with DISP command type
-      StateChanged(EVENT_CYRANO_STATE_W);
-
       // Convert and update fencers if present
       if (!input[RightFencerId].empty() || !input[RightFencerName].empty() ||
           !input[LeftFencerId].empty() || !input[LeftFencerName].empty()) {

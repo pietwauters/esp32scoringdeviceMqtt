@@ -1008,6 +1008,12 @@ void Opp2Handler::update(CyranoHandler *subject,
     bool lightsChanged = false;
     bool uw2fChanged = false;
 
+    // ── Acquire mutex for state modification ──
+    if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] update(CyranoHandler*,string) timeout");
+      return;
+    }
+
     // ── Fencers information (goes to FENCERS message, not SCORE) ──
 
     // Right fencer
@@ -1165,6 +1171,9 @@ void Opp2Handler::update(CyranoHandler *subject,
       lightsChanged = true;
     }
 
+    // ── Release mutex before publishing ─────────────────────────────
+    xSemaphoreGive(m_StateMutex);
+
     // ── Publish updated state to OPP2 MQTT topics ─────────────────
 
     if (fencersChanged || scoreChanged || matchChanged ||
@@ -1184,7 +1193,18 @@ void Opp2Handler::update(CyranoHandler *subject,
         PublishLights();
       if (uw2fChanged)
         PublishUW2F();
+
+      // Notify observers (e.g., FPA422Handler) of state change
+      StateChanged(0); // Generic state change notification
+    } else {
+      // No changes but still notify if command was INFO
+      if (EFP1Input[Command] == "INFO") {
+        StateChanged(0);
+      }
     }
+  } else {
+    // Other commands - release mutex if we took it
+    // (currently we only take mutex for DISP/INFO)
   }
   /*
     // ── Handle ACK command ──────────────────────────────────────────────

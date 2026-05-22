@@ -139,7 +139,7 @@ void setup() {
     MyStatemachine->ResetAll();
     MyFPA422Handler->StartWiFi();
     MyStatemachine->attach(*MyFPA422Handler);
-    MyCyranoHandler->attach(*MyFPA422Handler);
+    MyOpp2Handler->attach(*MyFPA422Handler);
     MyUDPIOHandler->attach(*MyStatemachine);
     MyStatemachine->attach(*MyUDPIOHandler);
     MyStatemachine->attach(*MyCyranoHandler);
