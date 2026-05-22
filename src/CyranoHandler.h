@@ -37,7 +37,7 @@ public:
                                   bool bVerifyPisteID = true);
   void SendInfoMessage();
   void ProcessUIEvents(uint32_t const event);
-  void SetPisteID(const std::string &ID) { m_MachineStatus[PisteId] = ID; };
+  void SetPisteID(const std::string &ID);
   // Publish a minimal parry event JSON to MQTT
   void publishParryEvent(bool state, uint64_t timestamp_ms);
   void update(FencingStateMachine *subject, uint32_t eventtype);
@@ -62,7 +62,10 @@ private:
   friend class SingletonMixin<CyranoHandler>;
   /** Default constructor */
   CyranoHandler();
-  EFP1Message m_MachineStatus; //!< Member variable "m_Status"
+
+  // Cyrano-specific fields not in OPP2::SystemState
+  std::string m_CompetitionId; //!< Software-provided competition ID
+
   EFP1Message m_IncompleteMessage;
   CyranoState m_State = WAITING;
   int previous_seconds =
