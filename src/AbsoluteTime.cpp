@@ -151,40 +151,52 @@ void AbsoluteTime::updateTimeFromServer() {
       uint64_t nowMillis = esp_timer_get_time() / 1000;
 
       if (lastNtpSyncMillis_ != 0 && lastNtpSyncTime_ != 0) {
-        // What would our compensated timestamp have predicted?
+        // ── What does our compensated system think the time is RIGHT NOW? ──
         int64_t elapsedMillis = nowMillis - lastNtpSyncMillis_;
         int64_t driftCompensation =
             (int64_t)(elapsedMillis * smoothedDriftRate_);
-        uint64_t predictedTime =
-            lastNtpSyncTime_ + elapsedMillis - driftCompensation;
+        uint64_t ourTime = lastNtpSyncTime_ + elapsedMillis - driftCompensation;
 
-        // How far off was our prediction from actual NTP?
-        lastDriftMs_ = (int64_t)(predictedTime - newNtpTime);
-        driftSum_ += lastDriftMs_;
+        // ── Error = how far off we are from actual NTP ──
+        int64_t error = (int64_t)(ourTime - newNtpTime);
+        lastDriftMs_ = error;
+        driftSum_ += error;
         driftCount_++;
 
-        // Calculate instantaneous drift rate (ms drift per ms elapsed)
-        double instantDriftRate = (double)lastDriftMs_ / (double)elapsedMillis;
-
-        // Apply exponential moving average (α = 0.3)
-        // Higher α = faster adaptation, lower α = more smoothing
-        const double alpha = 0.3;
         if (driftCount_ == 1) {
-          // First measurement: use raw hardware drift
+          // First sync: use raw hardware drift as initial rate
           int64_t rawDrift =
               elapsedMillis - (int64_t)(newNtpTime - lastNtpSyncTime_);
           smoothedDriftRate_ = (double)rawDrift / (double)elapsedMillis;
+          lastError_ = error;
+          ESP_LOGI(TAG, "Initial drift: error=%lld ms, rate=%.3f ppm", error,
+                   smoothedDriftRate_ * 1e6);
         } else {
-          smoothedDriftRate_ =
-              alpha * instantDriftRate + (1.0 - alpha) * smoothedDriftRate_;
-        }
+          // ── PD Controller for stable, fast convergence ──
+          // P (proportional): responds to current error
+          // D (derivative): dampens oscillations
 
-        ESP_LOGD(TAG,
-                 "Prediction error: %lld ms over %lld ms (rate: %.6f ppm), "
-                 "smoothed rate: "
-                 "%.6f ppm",
-                 lastDriftMs_, elapsedMillis, instantDriftRate * 1e6,
-                 smoothedDriftRate_ * 1e6);
+          const double Kp =
+              0.8; // Proportional gain (0.7-1.0 for fast convergence)
+          const double Kd = 0.4; // Derivative gain (0.3-0.5 for damping)
+
+          // Proportional term: error / elapsed
+          double proportional = (double)error / (double)elapsedMillis;
+
+          // Derivative term: (error - lastError) / elapsed
+          double derivative =
+              (double)(error - lastError_) / (double)elapsedMillis;
+
+          // PD control: rate adjustment
+          double rateAdjustment = Kp * proportional + Kd * derivative;
+
+          smoothedDriftRate_ = smoothedDriftRate_ + rateAdjustment;
+          lastError_ = error;
+
+          ESP_LOGI(TAG, "Error: %lld ms, P=%.3f, D=%.3f, rate=%.3f ppm", error,
+                   proportional * 1e6, derivative * 1e6,
+                   smoothedDriftRate_ * 1e6);
+        }
       }
       lastNtpSyncMillis_ = nowMillis;
       lastNtpSyncTime_ = newNtpTime;
@@ -192,7 +204,7 @@ void AbsoluteTime::updateTimeFromServer() {
       lastMillis_ = nowMillis;
       synced_ = true;
       ESP_LOGI(TAG, "Time synced: %llu", newNtpTime);
-      ESP_LOGI(TAG, "Average Drift: %f ms", this->getAverageDriftMs());
+      // Note: Current error shown above in PD controller log
 
       return;
     }

@@ -60,10 +60,11 @@ private:
   uint64_t lastNtpSyncMillis_ = 0;
   uint64_t lastNtpSyncTime_ = 0;
   int64_t lastDriftMs_ = 0;
+  int64_t lastError_ = 0; // Previous error for derivative term
   double driftSum_ = 0;
   uint32_t driftCount_ = 0;
   double smoothedDriftRate_ =
-      0.0; // Exponential moving average of drift rate (ms/ms)
+      0.0; // Drift correction rate (ms/ms) updated by PD controller
 };
 
 #endif // ABSOLUTE_TIME_H
