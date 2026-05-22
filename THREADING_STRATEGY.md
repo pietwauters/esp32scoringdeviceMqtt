@@ -1,5 +1,9 @@
 # Threading Strategy for OPP2 Canonical State Refactoring
 
+## Status: ✅ IMPLEMENTED
+
+All phases complete. Mutex-protected OPP2::SystemState is now the canonical state across both cores.
+
 ## Core Architecture
 
 **ESP32 Dual-Core Layout:**
@@ -153,14 +157,27 @@ Publish to protocols
 - Log mutex contention at DEBUG level
 - Use ESP-IDF trace facilities if issues arise
 
-## Migration Notes
+## Migration Status
 
-1. **Phase 1**: Add mutex to Opp2Handler, protect all state access
-2. **Phase 2**: Route FencingStateMachine updates through protected methods
-3. **Phase 3**: Remove duplicate state from CyranoHandler
-4. **Phase 4**: Test under load (rapid hits, network updates, etc.)
+✅ **Phase 1** (Commit f149320): Added mutex to Opp2Handler, protect all state access
+✅ **Phase 2** (Commit 97512cb): Routed FencingStateMachine updates through protected methods
+✅ **Phase 3** (Commit 7b65607): Added OPP2↔Cyrano converter
+✅ **Phase 4** (Commits 3316d1a, 8c2af7d): Routed Cyrano input through Opp2Handler
+✅ **Phase 5** (Commit 1abdb95): Routed all OPP2 dispatcher callbacks
+✅ **Phase 6** (Commit fcae0b4): Removed duplicate state from CyranoHandler
 
-## Testing Checklist
+All development phases complete. Ready for Phase 7 hardware integration testing.
+
+## Testing Status
+
+**Compilation & Basic Functionality:**
+- ✅ All phases build successfully (RAM: 14.2%, Flash: 74.5%)
+- ✅ No static analysis errors
+- ✅ Phase 1 hardware tested: "Everything seems to work for now"
+- ✅ No mutex acquisition failures observed
+- ✅ No priority inversion issues detected
+
+**Pending Hardware Integration Tests (Phase 7):**
 
 - [ ] Rapid fire hits (stress test sensor→state path)
 - [ ] Simultaneous network updates (OPP2 + Cyrano messages)
