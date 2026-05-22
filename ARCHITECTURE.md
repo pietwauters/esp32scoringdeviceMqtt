@@ -778,10 +778,11 @@ class FPA422Handler : public Observer<Opp2Handler> {
 
 **Root Cause:** Phase 6 refactoring changed protocol handlers to read canonical state on-demand via `getStateCopy()`, which allocates ~400-600 bytes on stack. UDP packet callbacks run in async_udp task with only ~4KB stack. Combined with string building operations, stack usage exceeded available space.
 
-**Failed Approaches:**
-1. Increasing FSM tick frequency (didn't address root cause)
-2. Moving protocol handlers to different tasks (complex, didn't solve callback issue)
-3. Reducing state structure size (not feasible, needed all fields)
+**Debugging Process:**
+The root cause was identified through systematic analysis of:
+1. Stack overflow timing (occurred after NTP sync, during HELLO message handling)
+2. Call chain analysis showing getStateCopy() allocations in UDP callback context
+3. String building operations compounding the stack usage
 
 **Actual Cause Chain:**
 ```
