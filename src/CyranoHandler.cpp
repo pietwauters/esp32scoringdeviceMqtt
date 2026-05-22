@@ -76,12 +76,14 @@ void CyranoHandler::RebuildCachedStrings() {
   m_CachedJsonString = convert_cyrano_to_json_string(m_CachedCyranoString);
 
   // Build and cache NEXT message strings
-  // CRITICAL: MakeNextMessageString() uses msg[CompetitionId], so msg must have it set
+  // CRITICAL: MakeNextMessageString() uses msg[CompetitionId], so msg must have
+  // it set
   m_CachedNextCyrano = msg.MakeNextMessageString();
   m_CachedNextJson = convert_cyrano_to_json_string(m_CachedNextCyrano);
 
   // Build and cache PREV message strings
-  // CRITICAL: MakePrevMessageString() uses msg[CompetitionId], so msg must have it set  
+  // CRITICAL: MakePrevMessageString() uses msg[CompetitionId], so msg must have
+  // it set
   m_CachedPrevCyrano = msg.MakePrevMessageString();
   m_CachedPrevJson = convert_cyrano_to_json_string(m_CachedPrevCyrano);
 
@@ -283,10 +285,15 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
 
   switch (event_data) {
   case UI_INPUT_CYRANO_NEXT:
+    ESP_LOGI(CYRANO_TAG,
+             "[DEBUG] NEXT button pressed, m_State=%d, bOKToSend=%d, "
+             "m_CachedStatusValid=%d",
+             m_State, bOKToSend, m_CachedStatusValid);
     bOKToSend = true;
     if (WAITING == m_State) {
       // Use cached NEXT strings - NO stack allocations
       if (!m_CachedStatusValid) {
+        ESP_LOGW(CYRANO_TAG, "[DEBUG] NEXT: Cache not valid yet!");
         return; // Cache not initialized yet
       }
       const char *pCyranoMsg = m_CachedNextCyrano.c_str();
@@ -294,17 +301,23 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
       const char *pJsonMsg = m_CachedNextJson.c_str();
       size_t jsonLen = m_CachedNextJson.length();
 
+      ESP_LOGI(CYRANO_TAG, "[DEBUG] NEXT: Sending %d bytes: %s", cyranoLen,
+               pCyranoMsg);
+
       if (false)
-        CyranoHandlerudpBroadcast.broadcastTo(
-            (uint8_t *)pCyranoMsg, cyranoLen,
-            CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
+        CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                              CyranoBroadcastPort,
+                                              TCPIP_ADAPTER_IF_STA);
       else {
         CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
-                                    SoftwareIPAddress(),
-                                    CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
+                                    SoftwareIPAddress(), CyranoBroadcastPort,
+                                    TCPIP_ADAPTER_IF_STA);
         mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
       }
       StateChanged(EVENT_CYRANO_STATE_W);
+    } else {
+      ESP_LOGW(CYRANO_TAG, "[DEBUG] NEXT: Not in WAITING state (m_State=%d)",
+               m_State);
     }
     break;
 
@@ -321,13 +334,13 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
       size_t jsonLen = m_CachedPrevJson.length();
 
       if (false)
-        CyranoHandlerudpBroadcast.broadcastTo(
-            (uint8_t *)pCyranoMsg, cyranoLen,
-            CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
+        CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                              CyranoBroadcastPort,
+                                              TCPIP_ADAPTER_IF_STA);
       else {
         CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
-                                    SoftwareIPAddress(),
-                                    CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
+                                    SoftwareIPAddress(), CyranoBroadcastPort,
+                                    TCPIP_ADAPTER_IF_STA);
         mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
       }
       StateChanged(EVENT_CYRANO_STATE_W);

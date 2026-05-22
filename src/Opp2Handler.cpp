@@ -1779,7 +1779,8 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
 
   // ── Header fields ──────────────────────────────────────────────────────
 
-  cyrano[Protocol] = "OPP2"; // Indicate this came from OPP2 state
+  cyrano[Protocol] =
+      "EFP1.1"; // Cyrano protocol identifier (required by software!)
   cyrano[PisteId] = pisteId ? pisteId : state.piste_id;
 
   // Weapon: OPP2::Weapon to Cyrano (E/F/S)
