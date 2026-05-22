@@ -58,9 +58,26 @@ void onMqttMessage(const char *topic, const char *payload,
 // ════════════════════════════════════════════════════════════════════════════
 
 void CyranoHandler::updateCachedStatus(const EFP1Message &status) {
-  // Push-based update from Opp2Handler when state changes
-  // No mutex needed - updates happen on Core 0 only
+  // Store the base state from Opp2Handler
   m_CachedStatus = status;
+
+  // Rebuild the cached strings with current CompetitionId
+  RebuildCachedStrings();
+}
+
+void CyranoHandler::RebuildCachedStrings() {
+  // Build EFP1 message with Cyrano-specific fields
+  EFP1Message msg = m_CachedStatus;
+  msg[Command] = "INFO";
+  msg[CompetitionId] = m_CompetitionId;
+
+  // Build and cache the Cyrano protocol string
+  msg.ToString(m_CachedCyranoString);
+
+  // Build and cache the JSON string for MQTT
+  m_CachedJsonString = convert_cyrano_to_json_string(m_CachedCyranoString);
+
+  // Mark cache as valid
   m_CachedStatusValid = true;
 }
 
@@ -129,40 +146,34 @@ void CyranoHandler::SendInfoMessage() {
   if (!bOKToSend)
     return;
 
-  // ── Use cached status to avoid stack allocations in UDP callback ──────
-  // Cache is push-updated by Opp2Handler, no mutex reads needed here
+  // ── Use cached strings - NO string building in callback ───────────────
+  // Strings pre-built by RebuildCachedStrings() when state/CompetitionId
+  // changes
   if (!m_CachedStatusValid) {
     // Cache not yet initialized - skip this send
     return;
   }
 
-  // Use cached EFP1Message (heap-allocated member, not stack)
-  EFP1Message statusMessage = m_CachedStatus;
-
-  // Set command and preserve Cyrano-specific fields not in OPP2
-  statusMessage[Command] = "INFO";
-  statusMessage[CompetitionId] = m_CompetitionId; // Software-provided
+  // Use cached strings directly - zero stack allocations
+  const char *pCyranoMsg = m_CachedCyranoString.c_str();
+  size_t cyranoLen = m_CachedCyranoString.length();
+  const char *pJsonMsg = m_CachedJsonString.c_str();
+  size_t jsonLen = m_CachedJsonString.length();
 
   // ── Send message ──────────────────────────────────────────────────────
-  std::string TheMessage;
-  TheMessage = statusMessage.ToString(TheMessage);
-  std::string TheJsonMessage;
-  TheJsonMessage = convert_cyrano_to_json_string(TheMessage);
-
   if (false)
-    CyranoHandlerudpBroadcast.broadcastTo(
-        (uint8_t *)TheMessage.c_str(), TheMessage.length(), CyranoBroadcastPort,
-        TCPIP_ADAPTER_IF_STA);
+    CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                          CyranoBroadcastPort,
+                                          TCPIP_ADAPTER_IF_STA);
   else {
-    CyranoHandlerudpRcv.writeTo((uint8_t *)TheMessage.c_str(),
-                                TheMessage.length(), SoftwareIPAddress(),
-                                CyranoBroadcastPort, TCPIP_ADAPTER_IF_STA);
-    mqttClient.publish(mqttPublishTopic, 0, true, TheJsonMessage.c_str(),
-                       TheJsonMessage.length());
+    CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                SoftwareIPAddress(), CyranoBroadcastPort,
+                                TCPIP_ADAPTER_IF_STA);
+    mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
     // Do both mqtt and standard Cyrano
-    CyranoHandlerudpBroadcast.broadcastTo(
-        (uint8_t *)TheMessage.c_str(), TheMessage.length(), CyranoBroadcastPort,
-        TCPIP_ADAPTER_IF_STA);
+    CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                          CyranoBroadcastPort,
+                                          TCPIP_ADAPTER_IF_STA);
   }
 
   return;
@@ -188,6 +199,12 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
     bSoftwareIsLive = true;
     LastHelloReception = millis();
     m_CompetitionId = input[CompetitionId]; // Store Cyrano-specific field
+
+    // Rebuild cached strings since CompetitionId changed
+    if (m_CachedStatusValid) {
+      RebuildCachedStrings();
+    }
+
     SendInfoMessage();
 
     break;
