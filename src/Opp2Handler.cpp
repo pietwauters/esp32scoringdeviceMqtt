@@ -1691,3 +1691,100 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
 
   return cyrano;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Cyrano to OPP2 Conversion (Phase 4)
+// ════════════════════════════════════════════════════════════════════════════
+
+OPP2::Fencers
+Opp2Handler::convertCyranoToOpp2Fencers(const EFP1Message &cyrano) {
+  OPP2::Fencers fencers = {};
+
+  // ── Right fencer ──────────────────────────────────────────────────────
+  const std::string &rightId = cyrano[RightFencerId];
+  const std::string &rightName = cyrano[RightFencerName];
+  const std::string &rightNation = cyrano[RightFencerNation];
+
+  if (!rightId.empty() || !rightName.empty() || !rightNation.empty()) {
+    fencers.right.fencer.present = true;
+    strncpy(fencers.right.fencer.id, rightId.c_str(),
+            sizeof(fencers.right.fencer.id) - 1);
+    strncpy(fencers.right.fencer.name, rightName.c_str(),
+            sizeof(fencers.right.fencer.name) - 1);
+    strncpy(fencers.right.fencer.nation, rightNation.c_str(),
+            sizeof(fencers.right.fencer.nation) - 1);
+  } else {
+    fencers.right.fencer.present = false;
+  }
+
+  // ── Left fencer ───────────────────────────────────────────────────────
+  const std::string &leftId = cyrano[LeftFencerId];
+  const std::string &leftName = cyrano[LeftFencerName];
+  const std::string &leftNation = cyrano[LeftFencerNation];
+
+  if (!leftId.empty() || !leftName.empty() || !leftNation.empty()) {
+    fencers.left.fencer.present = true;
+    strncpy(fencers.left.fencer.id, leftId.c_str(),
+            sizeof(fencers.left.fencer.id) - 1);
+    strncpy(fencers.left.fencer.name, leftName.c_str(),
+            sizeof(fencers.left.fencer.name) - 1);
+    strncpy(fencers.left.fencer.nation, leftNation.c_str(),
+            sizeof(fencers.left.fencer.nation) - 1);
+  } else {
+    fencers.left.fencer.present = false;
+  }
+
+  return fencers;
+}
+
+OPP2::Match Opp2Handler::convertCyranoToOpp2Match(const EFP1Message &cyrano) {
+  OPP2::Match match = {};
+
+  // ── Weapon conversion: E/F/S → OPP2::Weapon ───────────────────────────
+  const std::string &weaponStr = cyrano[Weapon];
+  if (weaponStr == "E") {
+    match.weapon = OPP2::Weapon::EPEE;
+  } else if (weaponStr == "F") {
+    match.weapon = OPP2::Weapon::FOIL;
+  } else if (weaponStr == "S") {
+    match.weapon = OPP2::Weapon::SABRE;
+  } else {
+    match.weapon = OPP2::Weapon::EPEE; // Default
+  }
+
+  // ── Round number ──────────────────────────────────────────────────────
+  const std::string &roundStr = cyrano[RoundNumber];
+  if (!roundStr.empty()) {
+    match.round = static_cast<uint8_t>(std::stoi(roundStr));
+  } else {
+    match.round = 1; // Default
+  }
+
+  // Note: type and phase_type not present in Cyrano, leave as default
+  return match;
+}
+
+OPP2::Clock Opp2Handler::convertCyranoToOpp2Clock(const EFP1Message &cyrano) {
+  OPP2::Clock clock = {};
+  clock.running = false; // Cyrano doesn't indicate if clock is running
+
+  // ── Parse MM:SS format → milliseconds ─────────────────────────────────
+  const std::string &stopwatchStr = cyrano[StopWatch];
+  if (!stopwatchStr.empty()) {
+    size_t colonPos = stopwatchStr.find(':');
+    if (colonPos != std::string::npos) {
+      // Format is "MM:SS"
+      int minutes = std::stoi(stopwatchStr.substr(0, colonPos));
+      int seconds = std::stoi(stopwatchStr.substr(colonPos + 1));
+      clock.time_ms = (minutes * 60 + seconds) * 1000;
+    } else {
+      // If no colon, assume it's just seconds
+      int seconds = std::stoi(stopwatchStr);
+      clock.time_ms = seconds * 1000;
+    }
+  } else {
+    clock.time_ms = 0;
+  }
+
+  return clock;
+}

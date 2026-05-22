@@ -114,6 +114,31 @@ public:
   static class EFP1Message convertOpp2ToCyrano(const OPP2::SystemState &state,
                                                const char *pisteId);
 
+  /**
+   * Convert Cyrano fencer fields to OPP2::Fencers.
+   * Extracts fencer IDs, names, and nations from Cyrano message.
+   * @param cyrano Cyrano EFP1Message
+   * @return OPP2::Fencers struct
+   */
+  static OPP2::Fencers
+  convertCyranoToOpp2Fencers(const class EFP1Message &cyrano);
+
+  /**
+   * Convert Cyrano match fields to OPP2::Match.
+   * Extracts weapon and round number from Cyrano message.
+   * @param cyrano Cyrano EFP1Message
+   * @return OPP2::Match struct
+   */
+  static OPP2::Match convertCyranoToOpp2Match(const class EFP1Message &cyrano);
+
+  /**
+   * Convert Cyrano clock field to OPP2::Clock.
+   * Parses MM:SS format and converts to milliseconds.
+   * @param cyrano Cyrano EFP1Message
+   * @return OPP2::Clock struct
+   */
+  static OPP2::Clock convertCyranoToOpp2Clock(const class EFP1Message &cyrano);
+
   // ── Internal State Updates (from FSM/Sensor - bypass guards) ─────────
 
   /**

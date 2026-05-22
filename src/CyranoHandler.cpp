@@ -201,6 +201,30 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
 
       m_MachineStatus.CopyIfNotEmpty(input);
 
+      // ── Phase 4: Route Cyrano input through OPP2 canonical state ───────
+      // Convert and update fencers if present
+      if (!input[RightFencerId].empty() || !input[RightFencerName].empty() ||
+          !input[LeftFencerId].empty() || !input[LeftFencerName].empty()) {
+        OPP2::Fencers fencers = Opp2Handler::convertCyranoToOpp2Fencers(input);
+        Opp2Handler::getInstance().updateFencersExternal(fencers,
+                                                         InputProtocol::CYRANO);
+      }
+
+      // Convert and update match if weapon or round present
+      if (!input[Weapon].empty() || !input[RoundNumber].empty()) {
+        OPP2::Match match = Opp2Handler::convertCyranoToOpp2Match(input);
+        Opp2Handler::getInstance().updateMatchExternal(match,
+                                                       InputProtocol::CYRANO);
+      }
+
+      // Convert and update clock if stopwatch present
+      if (!input[StopWatch].empty()) {
+        OPP2::Clock clock = Opp2Handler::convertCyranoToOpp2Clock(input);
+        Opp2Handler::getInstance().updateClockExternal(clock,
+                                                       InputProtocol::CYRANO);
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       m_MachineStatus[State] = "W";
       m_State = WAITING;
       StateChanged(EVENT_CYRANO_STATE_W);
