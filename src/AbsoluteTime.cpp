@@ -109,10 +109,21 @@ void AbsoluteTime::stopSyncThread() {
 void AbsoluteTime::syncTask() {
   while (!fallbackMode_) {
     updateTimeFromServer();
-    for (uint32_t i = 0; i < syncIntervalSecs_; ++i) {
-      if (fallbackMode_)
-        return;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // ── Wait for next sync using HARDWARE timer (not system clock) ────────
+    // Record when we synced using esp_timer (monotonic, not affected by SNTP)
+    uint64_t syncStartMicros = esp_timer_get_time();
+    uint64_t nextSyncMicros =
+        syncStartMicros + (syncIntervalSecs_ * 1000000ULL);
+
+    // Poll hardware timer until interval elapses
+    while (!fallbackMode_) {
+      uint64_t nowMicros = esp_timer_get_time();
+      if (nowMicros >= nextSyncMicros) {
+        break; // Time for next sync
+      }
+      // Sleep 100ms, but timing is based on hardware timer, not sleep accuracy
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   }
 }
