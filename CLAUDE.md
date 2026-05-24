@@ -254,11 +254,14 @@ Piste ID and publisher are in the topic — **never duplicated in the payload**.
 
 ### QoS and retained rules
 
-| Message | QoS | Retained |
-|---------|-----|----------|
-| lights, score, connection, state, fencers, match, uw2f, medical, video_review, control | 1 | Yes (except control) |
-| clock, blade_contact | 0 | clock: Yes, blade_contact: No |
-| control | 1 | No |
+| Message | Publisher | QoS | Retained |
+|---------|-----------|-----|----------|
+| lights, score, connection, state, uw2f, medical, video_review | apparatus | 1 | Yes |
+| fencers, match | apparatus | 1 | Yes |
+| fencers, match | **software** | 1 | **No** — stale retained CMS data would replay on apparatus reconnect |
+| clock | apparatus | 0 | Yes |
+| blade_contact | apparatus | 0 | No |
+| control | software/remote | 1 | No |
 
 ### Mandatory common fields
 Every QoS 1 message: `protocol` ("OPP2"), `version` ("1.0"), `seq` (global counter).

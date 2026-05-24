@@ -155,9 +155,20 @@ See Section 22 for the timestamp encoding convention, including the fallback beh
 
 ### 4.5 Retained messages
 
-All topics use retained messages **except** blade_contact and control.
+Apparatus-published topics use retained messages. Software-published topics (`fencers`, `match`) do **not** use retained messages. `blade_contact` and `control` are also not retained.
 
-Retained messages mean the broker holds the last published value on each topic. A subscriber connecting after the apparatus is online immediately receives the current state of every retained topic. Combined with QoS 1 on all state-bearing topics, this eliminates the need for periodic heartbeat resends.
+Retained apparatus messages mean the broker holds the last published value for every apparatus topic. A subscriber connecting after the apparatus is online — a display app, a recorder, a second CMS — immediately receives the current state without waiting for the next publish cycle. Combined with QoS 1 on all state-bearing topics, this eliminates the need for periodic heartbeat resends.
+
+**fencers and match** (publisher: software) are **not retained**. The rationale is:
+
+The apparatus is the authoritative source of truth for what is happening on the piste. The CMS is a manager, not a state owner. If `software/fencers` and `software/match` were retained, a stale assignment from a previous competition or a previous session would be replayed to a newly connected apparatus even when no live CMS is present. The apparatus cannot distinguish a retained message from a live one, so it cannot know whether the assignment is current. Making these non-retained means the apparatus only accepts fencer and match data when a CMS is actively pushing it.
+
+Connection recovery follows this hierarchy (see also Section 4.7):
+1. If the apparatus retains its RAM state (network glitch, no power loss), it republishes its own apparatus topics on reconnect. No CMS action is needed.
+2. If the apparatus reboots, it first reloads state from its own non-volatile memory (NVS). Failing that, it reads its own last-known state from the retained apparatus topics on the broker — specifically `lights`, `score`, `state`, `clock`, `uw2f`.
+3. Only if neither local nor broker apparatus state is recoverable does the user press NEXT, prompting the CMS to republish `fencers` and `match`.
+
+A CMS that automatically republishes `fencers` and `match` on apparatus reconnect would violate recovery case 1 by pushing potentially stale CMS-side data over a valid apparatus state.
 
 **blade_contact** is not retained because it is a point-in-time event. A retained blade contact message would cause a late subscriber to receive a contact notification with no way to know it was already resolved.
 
@@ -230,8 +241,8 @@ openpiste/+/apparatus/connection      # connection status from all pistes
 | `score` | apparatus or software | 1 | Yes | On score, card, or priority change |
 | `connection` | apparatus | 1 | Yes | On connection or disconnection (including LWT) |
 | `state` | apparatus | 1 | Yes | On apparatus state change |
-| `fencers` | software | 1 | Yes | On fencer, coach, or referee identity change |
-| `match` | software | 1 | Yes | On match or competition metadata change |
+| `fencers` | software | 1 | No | On fencer, coach, or referee identity change |
+| `match` | software | 1 | No | On match or competition metadata change |
 | `uw2f` | apparatus | 1 | Yes | On UW2F timer or P-card change |
 | `medical` | apparatus | 1 | Yes | On medical timeout event or timer update |
 | `video_review` | apparatus or software | 1 | Yes | On video review request or resolution |
@@ -526,7 +537,7 @@ Indicates the current operational state of the scoring apparatus. Published on e
 
 **Topic:** `openpiste/{piste_id}/software/fencers`
 **QoS:** 1
-**Retained:** Yes
+**Retained:** No — see Section 4.5 for rationale.
 
 Published when any participant identity information changes. In team competitions, republished at the end of each round when fencer assignments change. The message is structured in three sections: `left`, `right`, and `common`.
 
@@ -610,7 +621,7 @@ Optional fields SHOULD be omitted when not available. Receivers MUST handle thei
 
 **Topic:** `openpiste/{piste_id}/software/match`
 **QoS:** 1
-**Retained:** Yes
+**Retained:** No — see Section 4.5 for rationale.
 
 Published when match or competition metadata changes, including round changes during team competitions.
 
