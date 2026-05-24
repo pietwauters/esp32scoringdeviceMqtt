@@ -1736,6 +1736,8 @@ bool Opp2Handler::updateFencersExternal(const OPP2::Fencers &fencers,
     ESP_LOGI(OPP2_TAG, "[External] Fencers updated from %s",
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
     PublishFencers();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 
   return true;
@@ -1779,6 +1781,18 @@ bool Opp2Handler::updateMatchExternal(const OPP2::Match &match,
     ESP_LOGI(OPP2_TAG, "[External] Match updated from %s",
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
     PublishMatch();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
+    if (m_pFSM) {
+      weapon_t w = UNKNOWN;
+      switch (match.weapon) {
+        case OPP2::Weapon::EPEE:  w = EPEE;  break;
+        case OPP2::Weapon::FOIL:  w = FOIL;  break;
+        case OPP2::Weapon::SABRE: w = SABRE; break;
+        default: break;
+      }
+      if (w != UNKNOWN) m_pFSM->SetMachineWeapon(w);
+    }
   }
 
   return true;
@@ -1820,6 +1834,9 @@ bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock,
     ESP_LOGI(OPP2_TAG, "[External] Clock updated from %s",
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
     PublishClock();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
+    if (m_pFSM) m_pFSM->SetClockFromMs(clock.time_ms);
   }
 
   return true;
@@ -1850,6 +1867,16 @@ bool Opp2Handler::updateScoreExternal(const OPP2::Score &score,
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano",
              score.left.score, score.right.score);
     PublishScore();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
+    if (m_pFSM) {
+      m_pFSM->SetScoreLeft(score.left.score);
+      m_pFSM->SetScoreRight(score.right.score);
+      m_pFSM->SetYellowCardLeft(score.left.yellow_card ? 1 : 0);
+      m_pFSM->SetYellowCardRight(score.right.yellow_card ? 1 : 0);
+      m_pFSM->SetRedCardLeft(score.left.red_cards);
+      m_pFSM->SetRedCardRight(score.right.red_cards);
+    }
   }
 
   return true;
@@ -1879,6 +1906,8 @@ bool Opp2Handler::updateLightsExternal(const OPP2::Lights &lights,
     ESP_LOGI(OPP2_TAG, "[External] Lights updated from %s",
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
     PublishLights();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 
   return true;
@@ -1918,6 +1947,9 @@ bool Opp2Handler::updateApparatusStateExternal(
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano",
              static_cast<int>(apparatusState.state));
     PublishApparatusState();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_STATE_W); // guard ensures only WAITING is accepted
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 
   return true;
@@ -1949,6 +1981,8 @@ bool Opp2Handler::updateUW2FExternal(const OPP2::UW2F &uw2f,
              source == InputProtocol::OPP2 ? "OPP2" : "Cyrano", uw2f.time_ms,
              uw2f.left.p_card, uw2f.right.p_card);
     PublishUW2F();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 
   return true;
