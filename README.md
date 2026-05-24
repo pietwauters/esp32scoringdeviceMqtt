@@ -5,6 +5,8 @@
 A complete, full-featured fencing scoring device — everything a club needs, built for less than €60, no proprietary remote control required.
 
 ---
+<img width="120" alt="image" src="https://github.com/user-attachments/assets/8ed49c12-bc16-465a-88e5-6785bea2f270" /> 
+<img width="150"  alt="image" align="right" src="https://github.com/user-attachments/assets/536ea065-0518-4cc6-9563-5b990931374f" />
 
 ## A real scoring device, not a simplified approximation
 
