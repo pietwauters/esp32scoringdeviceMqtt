@@ -344,6 +344,12 @@ private:
    */
   void PublishUW2F();
 
+  /**
+   * Publish a blade_contact message (QoS 0, not retained).
+   * Published on transition only — active=true on contact, false on release.
+   */
+  void PublishBladeContact(bool active);
+
   // ── Event processing ──────────────────────────────────────────────────
 
   /**
@@ -439,6 +445,7 @@ private:
   bool m_bConnected;
   bool m_bWifiConnected;
   bool m_bConnectionAttempted; ///< Track if we've called mqttClient.begin()
+  bool m_LastParryState = false; ///< Previous blade contact state for change detection
 };
 
 #endif // OPP2HANDLER_H

@@ -580,6 +580,22 @@ void Opp2Handler::PublishUW2F() {
 
 // ── Event Processing ────────────────────────────────────────────────────────
 
+void Opp2Handler::PublishBladeContact(bool active) {
+  if (!mqttClient.isConnected()) return;
+
+  OPP2::BladeContact msg;
+  msg.active = active;
+  msg.ts = CreateTimestamp();
+
+  char payloadBuf[96];
+  char topicBuf[64];
+  OPP2::Serializer::serialize(msg, payloadBuf, sizeof(payloadBuf));
+  BuildTopic(OPP2::MessageType::BLADE_CONTACT, topicBuf, sizeof(topicBuf));
+  mqttClient.publish(topicBuf, 0, false, payloadBuf); // QoS 0, not retained
+
+  ESP_LOGD(OPP2_TAG, "Published blade_contact: active=%d", active);
+}
+
 void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
   uint32_t event_data = eventtype & SUB_TYPE_MASK;
 
@@ -592,6 +608,13 @@ void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
 
   // Update through internal method (thread-safe, change detection, publish)
   updateLightsInternal(lights);
+
+  // Blade contact: publish on transition only (QoS 0, momentary event)
+  bool parry = (event_data & MASK_PARRY) != 0;
+  if (parry != m_LastParryState) {
+    m_LastParryState = parry;
+    PublishBladeContact(parry);
+  }
 }
 
 void Opp2Handler::ProcessUIEvents(uint32_t event) {

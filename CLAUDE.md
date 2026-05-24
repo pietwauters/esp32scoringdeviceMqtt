@@ -302,6 +302,7 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 - **OPP2 retained MQTT guard** — input protocol defaults to CYRANO; retained OPP2 messages at boot cannot overwrite state (fixed 2026-05-23)
 - **DISP→FSM sync** — DISP updates canonical state AND syncs FSM internal state (score, cards, clock, weapon) via m_pFSM pointer; weapon sync guarded — only applied when DISP contains a weapon field (fixed 2026-05-24)
 - **FPA422 full refresh from canonical state** — update(Opp2Handler*) now pushes all message types: score + cards (Y/R/B) + priority + round (Msg3), clock (Msg2), weapon (Msg4), fencers (Msg5/6), P-cards (Msg8) (fixed 2026-05-24)
+- **BladeContact publishing** — MASK_PARRY transitions in ProcessLightsChange publish blade_contact (QoS 0, not retained) on contact/release (2026-05-24)
 - **Clock 03:01 anomaly fixed** — FencingTimer's m_Hundredths=100 "top of second" sentinel was being treated as 1000 ms extra; clamped to 0 in Opp2Handler EVENT_TIMER handler (fixed 2026-05-24)
 
 ### 🚧 Partial / not tested
@@ -311,18 +312,17 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 
 ### ❌ Not started
 - Medical and VideoReview publishing
-- BladeContact event wiring
 - Team match support
 - Configuration web UI
 
 ### ⚠️ Known OPP2 spec gaps (do not fix until team competition is in scope)
 - **Medical intervention count**: Cyrano R10/L10 track a cumulative per-fencer count (0–9).
-  `OPP2::Medical` has only the active timer. Fix: add `uint8_t medical_count` per side to
-  `OPP2::Medical` and the spec.
+  Applies to BOTH individual and team competitions — a single fencer may have multiple
+  medical timeouts for different injuries. `OPP2::Medical` has only the active timer.
+  Fix: add `uint8_t medical_count` per side to `OPP2::Medical` and the spec.
 - **Reserve fencer flag**: Cyrano R11/L11 carry a persistent N/R flag per fencer per round.
   `OPP2::SystemState` has no equivalent field (only a one-shot Control command). Fix: add
   `bool reserve_active` to `OPP2::FencerSide` and the spec.
-- Both gaps affect team competitions only. Individual competition support is complete as a superset.
 
 ---
 
