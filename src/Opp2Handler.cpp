@@ -19,7 +19,7 @@ Opp2Handler::Opp2Handler()
     : m_SeqCounter(0), m_NextPeriodicUpdate(0), m_TimeToShowClock(0),
       m_bConnected(false), m_bWifiConnected(false),
       m_bConnectionAttempted(false), m_StateMutex(nullptr),
-      m_ActiveInputProtocol(InputProtocol::CYRANO), m_AutoDetectProtocol(false) {
+      m_ActiveInputProtocol(InputProtocol::NONE), m_AutoDetectProtocol(true) {
   // Initialize state with defaults
   strncpy(m_State.piste_id, "1", sizeof(m_State.piste_id) - 1);
   m_State.apparatus_state.state = OPP2::ApparatusState::WAITING;
@@ -295,6 +295,20 @@ void Opp2Handler::SetPisteID(const char *pisteId) {
 }
 
 // ── Topic Management ────────────────────────────────────────────────────────
+
+bool Opp2Handler::isProtocolAllowed(InputProtocol source) {
+  if (m_AutoDetectProtocol && m_ActiveInputProtocol == InputProtocol::NONE) {
+    ESP_LOGI(OPP2_TAG, "[Protocol] Auto-detected: locking to %s",
+             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
+    m_ActiveInputProtocol = source;
+  }
+  if (m_ActiveInputProtocol != source) {
+    ESP_LOGV(OPP2_TAG, "[Guard] Rejected: active=%d source=%d",
+             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
+    return false;
+  }
+  return true;
+}
 
 void Opp2Handler::BuildTopic(OPP2::MessageType msgType, char *topicBuf,
                              size_t topicBufSize) {
@@ -699,6 +713,12 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
     }
     break;
   }
+
+  case UI_INPUT_RESET:
+    // Full apparatus reset — release protocol lock so next session can auto-detect
+    ESP_LOGI(OPP2_TAG, "[Protocol] Reset: returning to auto-detect (NONE)");
+    m_ActiveInputProtocol = InputProtocol::NONE;
+    break;
 
   case UI_INPUT_CYRANO_NEXT:
     // NEXT button: Send NEXT message, do NOT change state
@@ -1680,24 +1700,9 @@ void Opp2Handler::updateUW2FInternal(const OPP2::UW2F &uw2f) {
 
 bool Opp2Handler::updateFencersExternal(const OPP2::Fencers &fencers,
                                         InputProtocol source) {
-  // Guard 1: Auto-detect protocol switch (OPP2 takes precedence)
-  if (m_AutoDetectProtocol && source == InputProtocol::OPP2) {
-    if (m_ActiveInputProtocol != InputProtocol::OPP2) {
-      ESP_LOGI(OPP2_TAG, "[Protocol] Auto-switching to OPP2 mode");
-      m_ActiveInputProtocol = InputProtocol::OPP2;
-    }
-  }
+  if (!isProtocolAllowed(source)) return false;
 
-  // Guard 2: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] Fencers update rejected: protocol mismatch (active=%d, "
-             "source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
-
-  // Guard 3: Only accept when apparatus is in WAITING state
+  // Guard: Only accept when apparatus is in WAITING state
   bool canUpdate = false;
   if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     canUpdate =
@@ -1738,14 +1743,7 @@ bool Opp2Handler::updateFencersExternal(const OPP2::Fencers &fencers,
 
 bool Opp2Handler::updateMatchExternal(const OPP2::Match &match,
                                       InputProtocol source) {
-  // Guard 1: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] Match update rejected: protocol mismatch (active=%d, "
-             "source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
+  if (!isProtocolAllowed(source)) return false;
 
   // Guard 2: Only accept when apparatus is in WAITING state
   bool canUpdate = false;
@@ -1788,14 +1786,7 @@ bool Opp2Handler::updateMatchExternal(const OPP2::Match &match,
 
 bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock,
                                       InputProtocol source) {
-  // Guard 1: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] Clock update rejected: protocol mismatch (active=%d, "
-             "source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
+  if (!isProtocolAllowed(source)) return false;
 
   // Guard 2: Only accept when clock is not running
   bool canUpdate = false;
@@ -1836,14 +1827,7 @@ bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock,
 
 bool Opp2Handler::updateScoreExternal(const OPP2::Score &score,
                                       InputProtocol source) {
-  // Guard 1: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] Score update rejected: protocol mismatch (active=%d, "
-             "source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
+  if (!isProtocolAllowed(source)) return false;
 
   // Note: Score can be updated anytime (e.g., transferred matches, corrections)
   // No state guard needed - unlike fencers/match which require WAITING
@@ -1873,14 +1857,7 @@ bool Opp2Handler::updateScoreExternal(const OPP2::Score &score,
 
 bool Opp2Handler::updateLightsExternal(const OPP2::Lights &lights,
                                        InputProtocol source) {
-  // Guard 1: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] Lights update rejected: protocol mismatch (active=%d, "
-             "source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
+  if (!isProtocolAllowed(source)) return false;
 
   // Note: Lights can be updated anytime (e.g., for testing, simulation)
   // No state guard needed
@@ -1909,14 +1886,7 @@ bool Opp2Handler::updateLightsExternal(const OPP2::Lights &lights,
 
 bool Opp2Handler::updateApparatusStateExternal(
     const OPP2::ApparatusStateMsg &apparatusState, InputProtocol source) {
-  // Guard 1: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] ApparatusState update rejected: protocol mismatch "
-             "(active=%d, source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
+  if (!isProtocolAllowed(source)) return false;
 
   // Guard 2: Software may only reset apparatus to WAITING.
   // FENCING/HALT/PAUSE/ENDING are driven by physical buttons and timer,
@@ -1955,14 +1925,7 @@ bool Opp2Handler::updateApparatusStateExternal(
 
 bool Opp2Handler::updateUW2FExternal(const OPP2::UW2F &uw2f,
                                      InputProtocol source) {
-  // Guard 1: Check if source matches active protocol
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG,
-             "[Guard] UW2F update rejected: protocol mismatch (active=%d, "
-             "source=%d)",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
-  }
+  if (!isProtocolAllowed(source)) return false;
 
   // Note: UW2F (blade contact warnings) can be updated anytime
   // Used for penalty card tracking during matches

@@ -306,8 +306,8 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 - **Clock 03:01 anomaly fixed** — FencingTimer's m_Hundredths=100 "top of second" sentinel was being treated as 1000 ms extra; clamped to 0 in Opp2Handler EVENT_TIMER handler (fixed 2026-05-24)
 
 ### 🚧 Partial / not tested
-- OPP2 software→apparatus control (Fencers, Match, Score, Clock from software) — receiving code exists but disabled by CYRANO default; not tested end-to-end
-- Protocol auto-detect logic — not implemented; deferred by design
+- OPP2 software→apparatus control (Fencers, Match, Score, Clock from software) — receiving code exists; auto-detect now enabled; not yet tested end-to-end
+- **Protocol auto-detect** — implemented: starts in NONE, first protocol to send a state-changing message wins; resets to NONE on UI_INPUT_RESET; `isProtocolAllowed()` shared by all six external update methods
 - UI_SWAP_FENCERS, UI_RESERVE, UI_ABANDON buttons
 
 ### ❌ Not started

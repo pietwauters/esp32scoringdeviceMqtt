@@ -22,7 +22,11 @@ class UDPIOHandler;
  * state Remote control commands are always accepted (conceptually part of
  * apparatus)
  */
-enum class InputProtocol { OPP2, CYRANO };
+enum class InputProtocol {
+  NONE,   ///< Auto-detect mode: no protocol decided yet; first to send wins
+  OPP2,
+  CYRANO
+};
 
 /**
  * @brief OPP2 (OpenPiste Protocol Level 2) handler
@@ -376,6 +380,13 @@ private:
   void ProcessIncomingControl(const OPP2::Control &msg);
 
   // ── Utility ───────────────────────────────────────────────────────────
+
+  /**
+   * Auto-detect helper for external update methods.
+   * If auto-detect is enabled and no protocol is active yet, locks onto source.
+   * Returns true if source is allowed to update, false if rejected.
+   */
+  bool isProtocolAllowed(InputProtocol source);
 
   /**
    * Generate next sequence number (QoS 1 messages only).
