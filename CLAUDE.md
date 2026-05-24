@@ -307,11 +307,13 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 - **FPA422 full refresh from canonical state** — update(Opp2Handler*) now pushes all message types: score + cards (Y/R/B) + priority + round (Msg3), clock (Msg2), weapon (Msg4), fencers (Msg5/6), P-cards (Msg8) (fixed 2026-05-24)
 - **BladeContact publishing** — MASK_PARRY transitions in ProcessLightsChange publish blade_contact (QoS 0, not retained) on contact/release (2026-05-24)
 - **Clock 03:01 anomaly fixed** — FencingTimer's m_Hundredths=100 "top of second" sentinel was being treated as 1000 ms extra; clamped to 0 in Opp2Handler EVENT_TIMER handler (fixed 2026-05-24)
+- **Protocol auto-detect** — starts in NONE, first protocol to send a state-changing message wins; resets to NONE on UI_INPUT_RESET; `isProtocolAllowed()` shared by all external update methods (2026-05-24)
+- **OPP2 CMS end-to-end** — inbound software/fencers+match+score+clock+uw2f accepted with guards; all external update methods now follow full mandatory sequence (publish → push cache → notify); FSM synced for weapon, score, clock corrections; tested (2026-05-24)
+- **UI_SWAP_FENCERS** — swaps fencers, score, lights, uw2f under mutex; flips priority; syncs FSM (2026-05-24)
+- **software/fencers and software/match retained=No** — spec and rationale documented in docs/level2.md §4.5; apparatus/fencers+match remain retained (recovery state) (2026-05-24)
 
 ### 🚧 Partial / not tested
-- OPP2 software→apparatus control (Fencers, Match, Score, Clock from software) — receiving code exists; auto-detect now enabled; not yet tested end-to-end
-- **Protocol auto-detect** — implemented: starts in NONE, first protocol to send a state-changing message wins; resets to NONE on UI_INPUT_RESET; `isProtocolAllowed()` shared by all six external update methods
-- UI_SWAP_FENCERS, UI_RESERVE, UI_ABANDON buttons
+- UI_RESERVE, UI_ABANDON buttons
 
 ### ❌ Not started
 - Medical and VideoReview publishing
