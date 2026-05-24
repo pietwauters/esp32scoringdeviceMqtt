@@ -32,7 +32,7 @@ char *mqttListenTopic;  // = "MQTTCyrano/Piste_001/FromSoftware";  // Topic to
 char *mqttLastWillTopic;
 
 void onMqttConnect(bool sessionPresent) {
-  Serial.println("Connected to MQTT broker");
+  ESP_LOGI(CYRANO_TAG, "Connected to MQTT broker");
   mqttClient.publish(mqttLastWillTopic, 1, true, "online");
 
   // Subscribe to the topic
@@ -166,6 +166,7 @@ void CyranoHandler::SendInfoMessage() {
 
   // Use cached strings directly - zero stack allocations
   const char *pCyranoMsg = m_CachedCyranoString.c_str();
+
   size_t cyranoLen = m_CachedCyranoString.length();
   const char *pJsonMsg = m_CachedJsonString.c_str();
   size_t jsonLen = m_CachedJsonString.length();
@@ -176,6 +177,7 @@ void CyranoHandler::SendInfoMessage() {
                                           CyranoBroadcastPort,
                                           TCPIP_ADAPTER_IF_STA);
   else {
+
     CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                                 SoftwareIPAddress(), CyranoBroadcastPort,
                                 TCPIP_ADAPTER_IF_STA);
@@ -200,54 +202,28 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
   }
   switch (input.GetType()) {
   case HELLO:
-    if (m_State != WAITING) {
-      m_State = WAITING;
-      StateChanged(EVENT_CYRANO_STATE_W);
-    }
-
     bOKToSend = true;
     bSoftwareIsLive = true;
     LastHelloReception = millis();
-    m_CompetitionId = input[CompetitionId]; // Store Cyrano-specific field
+    m_CompetitionId = input[CompetitionId];
 
-    // Rebuild cached strings since CompetitionId changed
     if (m_CachedStatusValid) {
       RebuildCachedStrings();
     }
-
     SendInfoMessage();
-
     break;
 
-  case DISP:
-    if (WAITING == m_State) {
-      // ── Phase 6: Route Cyrano input through OPP2 canonical state ───────
-      // Notify Opp2Handler with the full message to parse ALL fields
-      // (scores, fencers, match, clock, cards, priority, state, etc.)
-      std::string msg;
-      EFP1Message temp = input; // Copy needed for non-const ToString()
-      temp.ToString(msg);
-      StateChanged(msg); // → Opp2Handler::update(CyranoHandler*, string)
-      // ────────────────────────────────────────────────────────────────────
+  case DISP: {
 
-      // Per Cyrano state transition table: DISP in WAITING → stay WAITING
-      m_State = WAITING;
-      StateChanged(EVENT_CYRANO_STATE_W);
-
-      // Lock Machine (only BEGIN button can unlock)
-      StateChanged(EVENT_CYRANO_STATE_LOCKED);
-    }
-
-    break;
+    OPP2::ApparatusState apparatusState;
+    Opp2Handler::getInstance().updateFromCyranoMessage(input, apparatusState);
+    StateChanged(EVENT_CYRANO_STATE_LOCKED); // Lock FSM — only BEGIN can unlock
+    SendInfoMessage();                       // Reply to CMS with current state
+  } break;
 
   case ACK:
-    if (WAITING != m_State) {
-      m_State = WAITING;
-      ClearOnACK();
-      StateChanged(EVENT_CYRANO_STATE_W);
-      SendInfoMessage();
-    }
-
+    ClearOnACK();
+    Opp2Handler::getInstance().ProcessCyranoACK(); // ENDING → WAITING
     break;
 
   case NAK:
@@ -262,28 +238,34 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
 }
 
 void CyranoHandler::ProcessUIEvents(uint32_t const event) {
-  uint32_t event_data = event & SUB_TYPE_MASK;
+  // ────────────────────────────────────────────────────────────────────────
+  // Button handling moved to Opp2Handler (canonical state owner)
+  // Opp2Handler fires EVENT_CYRANO_SEND_XXX events to trigger message sends
+  // This method kept for compatibility but does nothing
+  // ────────────────────────────────────────────────────────────────────────
+}
 
-  switch (event_data) {
-  case UI_INPUT_CYRANO_NEXT:
-    ESP_LOGI(CYRANO_TAG,
-             "[DEBUG] NEXT button pressed, m_State=%d, bOKToSend=%d, "
-             "m_CachedStatusValid=%d",
-             m_State, bOKToSend, m_CachedStatusValid);
-    bOKToSend = true;
-    if (WAITING == m_State) {
-      // Use cached NEXT strings - NO stack allocations
-      if (!m_CachedStatusValid) {
-        ESP_LOGW(CYRANO_TAG, "[DEBUG] NEXT: Cache not valid yet!");
-        return; // Cache not initialized yet
-      }
+void CyranoHandler::update(Opp2Handler *subject, uint32_t eventtype) {
+  // Handle message send requests from Opp2Handler
+  switch (eventtype) {
+  case EVENT_CYRANO_SEND_INFO:
+    // Send INFO message with current state
+    ESP_LOGI(CYRANO_TAG, "[Opp2→Cyrano] Sending INFO message");
+    SendInfoMessage();
+    break;
+
+  case EVENT_CYRANO_SEND_NEXT:
+    // Send NEXT message (WAITING state only per Cyrano spec)
+    ESP_LOGI(CYRANO_TAG, "[Opp2→Cyrano] Sending NEXT message");
+    if (!m_CachedStatusValid) {
+      ESP_LOGW(CYRANO_TAG, "[Opp2→Cyrano] NEXT: Cache not valid yet");
+      return;
+    }
+    {
       const char *pCyranoMsg = m_CachedNextCyrano.c_str();
       size_t cyranoLen = m_CachedNextCyrano.length();
       const char *pJsonMsg = m_CachedNextJson.c_str();
       size_t jsonLen = m_CachedNextJson.length();
-
-      ESP_LOGI(CYRANO_TAG, "[DEBUG] NEXT: Sending %d bytes: %s", cyranoLen,
-               pCyranoMsg);
 
       if (false)
         CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
@@ -295,20 +277,17 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
                                     TCPIP_ADAPTER_IF_STA);
         mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
       }
-      StateChanged(EVENT_CYRANO_STATE_W);
-    } else {
-      ESP_LOGW(CYRANO_TAG, "[DEBUG] NEXT: Not in WAITING state (m_State=%d)",
-               m_State);
     }
     break;
 
-  case UI_INPUT_CYRANO_PREV:
-    bOKToSend = true;
-    if (WAITING == m_State) {
-      // Use cached PREV strings - NO stack allocations
-      if (!m_CachedStatusValid) {
-        return; // Cache not initialized yet
-      }
+  case EVENT_CYRANO_SEND_PREV:
+    // Send PREV message (WAITING state only per Cyrano spec)
+    ESP_LOGI(CYRANO_TAG, "[Opp2→Cyrano] Sending PREV message");
+    if (!m_CachedStatusValid) {
+      ESP_LOGW(CYRANO_TAG, "[Opp2→Cyrano] PREV: Cache not valid yet");
+      return;
+    }
+    {
       const char *pCyranoMsg = m_CachedPrevCyrano.c_str();
       size_t cyranoLen = m_CachedPrevCyrano.length();
       const char *pJsonMsg = m_CachedPrevJson.c_str();
@@ -324,73 +303,33 @@ void CyranoHandler::ProcessUIEvents(uint32_t const event) {
                                     TCPIP_ADAPTER_IF_STA);
         mqttClient.publish(mqttPublishTopic, 0, true, pJsonMsg, jsonLen);
       }
-      StateChanged(EVENT_CYRANO_STATE_W);
     }
     break;
 
-  case UI_INPUT_CYRANO_BEGIN:
-    bOKToSend = true;
-    if (WAITING == m_State) {
-      m_State = HALT;
-      StateChanged(EVENT_CYRANO_STATE_H);
-      SendInfoMessage();
-
-      // Unlock Machine
-      StateChanged(EVENT_CYRANO_STATE_UNLOCKED);
-    }
+  case EVENT_CYRANO_STATE_H:
+    m_State = HALT;
+    break;
+  case EVENT_CYRANO_STATE_W:
+    m_State = WAITING;
+    break;
+  case EVENT_CYRANO_STATE_F:
+    m_State = FENCING;
+    break;
+  case EVENT_CYRANO_STATE_P:
+    m_State = PAUSE;
+    break;
+  case EVENT_CYRANO_STATE_E:
+    m_State = ENDING;
     break;
 
-  case UI_INPUT_CYRANO_END:
-    bOKToSend = true;
-    if (WAITING != m_State) {
-      m_State = ENDING;
-      StateChanged(EVENT_CYRANO_STATE_E);
-      SendInfoMessage();
-    }
+  case EVENT_CYRANO_STATE_UNLOCKED:
+    // FSM observes CyranoHandler (not Opp2Handler), so relay unlock to FSM
+    StateChanged(EVENT_CYRANO_STATE_UNLOCKED);
     break;
 
-  case UI_SWAP_FENCERS:
-    bOKToSend = true;
-    {
-      // TODO Phase 7: Implement fencer swap via OPP2 state update
-      // For now, just send current state
-      SendInfoMessage();
-    }
-
+  default:
+    // Other events not handled
     break;
-
-  case UI_RESERVE_LEFT:
-    bOKToSend = true;
-    {
-      // TODO Phase 7: Check team match and handle reserve
-      // For now, just send current state
-      SendInfoMessage();
-    }
-    break;
-  case UI_RESERVE_RIGHT:
-    bOKToSend = true;
-    {
-      // TODO Phase 7: Check team match and handle reserve
-      // For now, just send current state
-      SendInfoMessage();
-    }
-    break;
-
-  case UI_ABANDON_LEFT:
-    bOKToSend = true;
-    {
-      // TODO Phase 7: Set left fencer abandoned status
-      // For now, just send current state
-      SendInfoMessage();
-    }
-
-  case UI_ABANDON_RIGHT:
-    bOKToSend = true;
-    {
-      // TODO Phase 7: Set right fencer abandoned status
-      // For now, just send current state
-      SendInfoMessage();
-    }
   }
 }
 
@@ -400,97 +339,6 @@ void CyranoHandler::ProcessLightsChange(uint32_t eventtype) {
   // Note: Lights already updated in Opp2Handler via updateLightsInternal
   // (Phase 2) No need to duplicate state here - just trigger Cyrano message
   // send (Handled in update() method which calls SendInfoMessage())
-}
-
-void CyranoHandler::update(FencingStateMachine *subject, uint32_t eventtype) {
-  uint32_t event_data = eventtype & SUB_TYPE_MASK;
-  uint32_t maineventtype = eventtype & MAIN_TYPE_MASK;
-  bool bTransmit = true;
-
-  // ── Phase 6: State now managed by Opp2Handler ──────────────────────────
-  // FSM events already update OPP2::SystemState via updateXxxInternal (Phase
-  // 2) This method only needs to:
-  // 1. Trigger Cyrano message sends via SendInfoMessage()
-  // 2. Update local Cyrano-specific state (m_State)
-  // 3. Emit state change notifications
-
-  switch (maineventtype) {
-
-  case EVENT_LIGHTS:
-    ProcessLightsChange(eventtype);
-    break;
-
-  case EVENT_WEAPON:
-  case EVENT_SCORE_LEFT:
-  case EVENT_SCORE_RIGHT:
-  case EVENT_ROUND:
-  case EVENT_YELLOW_CARD_LEFT:
-  case EVENT_YELLOW_CARD_RIGHT:
-  case EVENT_RED_CARD_LEFT:
-  case EVENT_RED_CARD_RIGHT:
-  case EVENT_BLACK_CARD_LEFT:
-  case EVENT_BLACK_CARD_RIGHT:
-  case EVENT_P_CARD:
-  case EVENT_PRIO:
-    // All state updates handled by Opp2Handler (Phase 2)
-    // Just trigger Cyrano message send
-    break;
-
-  case EVENT_TIMER_STATE: {
-    // Check current state using cached status (avoid stack allocation)
-    if (!m_CachedStatusValid) {
-      break; // Cache not initialized yet
-    }
-
-    if ((m_CachedStatus[State] == "E") || (m_CachedStatus[State] == "W"))
-      break;
-
-    if (eventtype & DATA_24BIT_MASK) {
-      StateChanged(EVENT_CYRANO_STATE_F);
-    } else {
-      StateChanged(EVENT_CYRANO_STATE_H);
-    }
-  } break;
-
-  case EVENT_TIMER: {
-    uint32_t temp = millis();
-    if (temp < m_timeToShowTimer) {
-      bTransmit = false;
-    } else {
-      bTransmit = true;
-      if (m_timeToShowTimer - temp < 1000)
-        m_timeToShowTimer += 1000;
-      else
-        m_timeToShowTimer = temp + 900;
-    }
-    // Always show transition to zero
-    if (!event_data)
-      bTransmit = true;
-  } break;
-
-  case EVENT_UW2F_TIMER:
-    // Unknown to Cyrano -> build UW2F_Timer JSON and publish directly
-    bTransmit = false;
-    {
-      char pisteId[OPP2::PISTE_ID_MAX];
-      Opp2Handler::getInstance().getPisteId(pisteId);
-      std::string uw2f_json = make_uw2f_timer_from_event_string(
-          eventtype, pisteId, (long long)millis());
-      if (!uw2f_json.empty()) {
-        mqttClient.publish(mqttPublishTopic, 0, true, uw2f_json.c_str(),
-                           uw2f_json.length());
-      }
-    }
-    break;
-
-  default:
-    bTransmit = false;
-  }
-
-  if (bTransmit) {
-    SendInfoMessage();
-  }
-  // Note: Cache is push-updated by Opp2Handler when state changes
 }
 
 void ProcessCyranoPacket(AsyncUDPPacket packet) {
@@ -531,7 +379,6 @@ void CyranoHandler::CheckConnection() {
     // NOTE: MQTT connection now managed by Opp2Handler
     // CyranoHandler just checks if MQTT is available
     if (!bCyranoConnected && mqttClient.isConnected()) {
-      bSoftwareIsLive = true;
       bmqttCyranoConnected = true;
       bCyranoConnected = true;
     }

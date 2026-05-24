@@ -45,7 +45,6 @@ enum class InputProtocol { OPP2, CYRANO };
  */
 class Opp2Handler : public Observer<FencingStateMachine>,
                     public Observer<UDPIOHandler>,
-                    public Observer<CyranoHandler>,
                     public Subject<Opp2Handler>,
                     public SingletonMixin<Opp2Handler> {
 public:
@@ -56,6 +55,7 @@ public:
    * configure Last Will and Testament, initialize state.
    */
   void Begin();
+  void setFSM(FencingStateMachine *fsm) { m_pFSM = fsm; }
 
   /**
    * Observer pattern: receive events from FencingStateMachine.
@@ -71,15 +71,22 @@ public:
   }
 
   /**
-   * Observer pattern: receive EFP1 string messages from CyranoHandler.
+   * Update canonical state from Cyrano EFP1Message (DISP/INFO).
+   * ZERO-COPY variant for UDP callback context - no string conversion.
+   * Parses all fields: fencers, match, clock, scores, cards, priority, state.
+   * Thread-safe with mutex protection.
+   * @param msg EFP1Message by const reference (no copy)
+   * @param outApparatusState Output parameter - receives the new apparatus state
+   * @return true if update was accepted, false if rejected by guards
    */
-  void update(CyranoHandler *subject,
-              const std::string &strEFP1Message) override;
+  bool updateFromCyranoMessage(const class EFP1Message &msg,
+                               OPP2::ApparatusState &outApparatusState);
 
   /**
-   * Observer pattern: receive event notifications from CyranoHandler.
+   * Called by CyranoHandler when Cyrano ACK is received.
+   * Transitions apparatus state from ENDING → WAITING.
    */
-  void update(CyranoHandler *subject, uint32_t eventtype) override;
+  void ProcessCyranoACK();
 
   /**
    * Check MQTT connection status and reconnect if needed.
@@ -273,6 +280,7 @@ protected:
 private:
   // ── State management ──────────────────────────────────────────────────
 
+  FencingStateMachine *m_pFSM = nullptr;
   OPP2::SystemState
       m_State; ///< Complete OPP2 piste state (CANONICAL - protected by mutex)
   SemaphoreHandle_t m_StateMutex; ///< Mutex for thread-safe access to m_State

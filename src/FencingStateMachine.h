@@ -247,6 +247,10 @@ public:
     SetMachineWeapon(MySensor->GetActualWeapon());
   }
   void ResetAll();
+  void SetClockFromMs(uint32_t time_ms) {
+    m_Timer.SetMinutes(time_ms / 60000);
+    m_Timer.SetSeconds((time_ms % 60000) / 1000);
+  }
   uint32_t MakeTimerEvent();
   void GetFormattedStringTime(char *Destination, int MinutePrecision,
                               int HundredthsPrecision) {

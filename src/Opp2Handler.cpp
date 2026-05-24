@@ -19,7 +19,7 @@ Opp2Handler::Opp2Handler()
     : m_SeqCounter(0), m_NextPeriodicUpdate(0), m_TimeToShowClock(0),
       m_bConnected(false), m_bWifiConnected(false),
       m_bConnectionAttempted(false), m_StateMutex(nullptr),
-      m_ActiveInputProtocol(InputProtocol::OPP2), m_AutoDetectProtocol(true) {
+      m_ActiveInputProtocol(InputProtocol::CYRANO), m_AutoDetectProtocol(false) {
   // Initialize state with defaults
   strncpy(m_State.piste_id, "1", sizeof(m_State.piste_id) - 1);
   m_State.apparatus_state.state = OPP2::ApparatusState::WAITING;
@@ -54,7 +54,7 @@ void Opp2Handler::Begin() {
   ESP_LOGI(OPP2_TAG, "[OPP2] Begin() called - taking MQTT ownership");
 
   // ── Create mutex for thread-safe state access ────────────────────────
-  m_StateMutex = xSemaphoreCreateMutex();
+  m_StateMutex = xSemaphoreCreateRecursiveMutex();
   if (m_StateMutex == nullptr) {
     ESP_LOGE(OPP2_TAG, "[OPP2] FATAL: Failed to create state mutex!");
     return;
@@ -216,8 +216,9 @@ void Opp2Handler::Begin() {
 
   ESP_LOGI(OPP2_TAG, "[OPP2] Dispatcher callbacks registered");
 
-  // ── Initialize CyranoHandler cache ─────────────────────────────────────
+  // ── Initialize CyranoHandler cache and notify observers of boot state ──
   PushCachedStatusToCyrano();
+  notify(EVENT_CYRANO_STATE_W); // Broadcast WAITING to FPA422Handler and others
 }
 
 // ── MQTT Callback Implementations ───────────────────────────────────────────
@@ -248,6 +249,9 @@ void Opp2Handler::OnMqttConnectStatic(bool sessionPresent) {
            handler.m_State.piste_id);
   mqttClient.subscribe(topicBuf, 1);
   ESP_LOGI(OPP2_TAG, "[OPP2] *** SUBSCRIBING TO: %s ***", topicBuf);
+
+  // Publish current apparatus state so broker retained message reflects boot state
+  handler.PublishApparatusState();
 }
 
 void Opp2Handler::OnMqttDisconnectStatic() {
@@ -320,23 +324,29 @@ void Opp2Handler::PublishConnection(bool online) {
     return;
   }
 
-  m_State.connection.seq = NextSeq();
-  m_State.connection.online = online;
-
-  if (online) {
-    m_State.connection.device_present = true;
-    strncpy(m_State.connection.device, "ESP32-Scoring",
-            sizeof(m_State.connection.device) - 1);
-    m_State.connection.fw_version_present = true;
-    strncpy(m_State.connection.fw_version, "1.0.0",
-            sizeof(m_State.connection.fw_version) - 1);
+  OPP2::Connection snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    m_State.connection.online = online;
+    if (online) {
+      m_State.connection.device_present = true;
+      strncpy(m_State.connection.device, "ESP32-Scoring",
+              sizeof(m_State.connection.device) - 1);
+      m_State.connection.fw_version_present = true;
+      strncpy(m_State.connection.fw_version, "1.0.0",
+              sizeof(m_State.connection.fw_version) - 1);
+    }
+    snap = m_State.connection;
+    snap.seq = NextSeq();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishConnection() timeout");
+    return;
   }
 
   char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  OPP2::Serializer::serialize(m_State.connection, payloadBuf,
-                              sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::CONNECTION, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
@@ -352,20 +362,27 @@ void Opp2Handler::PublishApparatusState() {
     return;
   }
 
-  m_State.apparatus_state.seq = NextSeq();
+  OPP2::ApparatusStateMsg snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.apparatus_state;
+    snap.seq = NextSeq();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishApparatusState() timeout");
+    return;
+  }
 
   char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  OPP2::Serializer::serialize(m_State.apparatus_state, payloadBuf,
-                              sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::APPARATUS_STATE, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
 
   const char *stateNames[] = {"FENCING", "HALT",   "PAUSE",
                               "WAITING", "ENDING", "UNKNOWN"};
-  int stateIdx = static_cast<int>(m_State.apparatus_state.state);
+  int stateIdx = static_cast<int>(snap.state);
   if (stateIdx < 0 || stateIdx > 5)
     stateIdx = 5;
 
@@ -378,22 +395,30 @@ void Opp2Handler::PublishLights() {
     return;
   }
 
-  m_State.lights.seq = NextSeq();
-  m_State.lights.ts = CreateTimestamp();
+  OPP2::Lights snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.lights;
+    snap.seq = NextSeq();
+    snap.ts = CreateTimestamp();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishLights() timeout");
+    return;
+  }
 
   char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  OPP2::Serializer::serialize(m_State.lights, payloadBuf, sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::LIGHTS, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
 
   ESP_LOGI(OPP2_TAG, "Published lights L(%s,%s) R(%s,%s) to %s",
-           m_State.lights.left.on_target ? "red" : "off",
-           m_State.lights.left.white ? "white" : "off",
-           m_State.lights.right.on_target ? "green" : "off",
-           m_State.lights.right.white ? "white" : "off", topicBuf);
+           snap.left.on_target ? "red" : "off",
+           snap.left.white ? "white" : "off",
+           snap.right.on_target ? "green" : "off",
+           snap.right.white ? "white" : "off", topicBuf);
 }
 
 void Opp2Handler::PublishClock() {
@@ -402,19 +427,26 @@ void Opp2Handler::PublishClock() {
   }
 
   // Clock is QoS 0, no sequence number
-  m_State.clock.ts = CreateTimestamp();
+  OPP2::Clock snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.clock;
+    snap.ts = CreateTimestamp();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishClock() timeout");
+    return;
+  }
 
   char payloadBuf[512];
   char topicBuf[64];
 
-  OPP2::Serializer::serialize(m_State.clock, payloadBuf, sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::CLOCK, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 0, true, payloadBuf);
 
   ESP_LOGD(OPP2_TAG, "Published clock: %s %ums to %s",
-           m_State.clock.running ? "running" : "stopped", m_State.clock.time_ms,
-           topicBuf);
+           snap.running ? "running" : "stopped", snap.time_ms, topicBuf);
 }
 
 void Opp2Handler::PublishScore() {
@@ -422,18 +454,26 @@ void Opp2Handler::PublishScore() {
     return;
   }
 
-  m_State.score.seq = NextSeq();
+  OPP2::Score snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.score;
+    snap.seq = NextSeq();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishScore() timeout");
+    return;
+  }
 
   char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  OPP2::Serializer::serialize(m_State.score, payloadBuf, sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::SCORE, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
 
   ESP_LOGI(OPP2_TAG, "Published score L:%d R:%d to %s",
-           m_State.score.left.score, m_State.score.right.score, topicBuf);
+           snap.left.score, snap.right.score, topicBuf);
 }
 
 void Opp2Handler::PublishFencers() {
@@ -441,19 +481,26 @@ void Opp2Handler::PublishFencers() {
     return;
   }
 
-  m_State.fencers.seq = NextSeq();
+  OPP2::Fencers snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.fencers;
+    snap.seq = NextSeq();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishFencers() timeout");
+    return;
+  }
 
   char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  OPP2::Serializer::serialize(m_State.fencers, payloadBuf, sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::FENCERS, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
 
   ESP_LOGI(OPP2_TAG, "Published fencers L:%s R:%s to %s",
-           m_State.fencers.left.fencer.name, m_State.fencers.right.fencer.name,
-           topicBuf);
+           snap.left.fencer.name, snap.right.fencer.name, topicBuf);
 }
 
 void Opp2Handler::PublishMatch() {
@@ -462,51 +509,46 @@ void Opp2Handler::PublishMatch() {
     return;
   }
 
-  ESP_LOGI(OPP2_TAG,
-           "PublishMatch START: weapon=%d type=%d phase_type=%d round=%d",
-           static_cast<int>(m_State.match.weapon),
-           static_cast<int>(m_State.match.type),
-           static_cast<int>(m_State.match.phase_type), m_State.match.round);
+  OPP2::Match snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.match;
+    snap.seq = NextSeq();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishMatch() timeout");
+    return;
+  }
 
-  char payloadBuf[512] = {0}; // Initialize to zeros
+  ESP_LOGI(OPP2_TAG, "PublishMatch: weapon=%d type=%d phase_type=%d round=%d",
+           static_cast<int>(snap.weapon), static_cast<int>(snap.type),
+           static_cast<int>(snap.phase_type), snap.round);
+
+  char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  m_State.match.seq = NextSeq();
-
-  ESP_LOGI(OPP2_TAG,
-           "About to serialize Match: weapon=%d type=%d phase_type=%d",
-           static_cast<int>(m_State.match.weapon),
-           static_cast<int>(m_State.match.type),
-           static_cast<int>(m_State.match.phase_type));
-
-  OPP2::SerializeError err = OPP2::Serializer::serialize(
-      m_State.match, payloadBuf, sizeof(payloadBuf));
-
-  ESP_LOGI(OPP2_TAG, "Serialize returned: %d", static_cast<int>(err));
+  OPP2::SerializeError err =
+      OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
 
   if (err != OPP2::SerializeError::OK) {
     ESP_LOGE(OPP2_TAG,
              "Failed to serialize Match: error=%d (weapon=%d type=%d)",
-             static_cast<int>(err), static_cast<int>(m_State.match.weapon),
-             static_cast<int>(m_State.match.type));
+             static_cast<int>(err), static_cast<int>(snap.weapon),
+             static_cast<int>(snap.type));
     return;
   }
 
   BuildTopic(OPP2::MessageType::MATCH, topicBuf, sizeof(topicBuf));
-
-  ESP_LOGI(OPP2_TAG, "About to publish to topic: %s", topicBuf);
   ESP_LOGI(OPP2_TAG, "Payload: %s", payloadBuf);
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
 
-  // OPP2::Weapon enum order: FOIL=0, EPEE=1, SABRE=2, UNKNOWN=3
   const char *weaponNames[] = {"FOIL", "EPEE", "SABRE", "UNKNOWN"};
-  int weaponIdx = static_cast<int>(m_State.match.weapon);
+  int weaponIdx = static_cast<int>(snap.weapon);
   if (weaponIdx < 0 || weaponIdx > 3)
-    weaponIdx = 3; // Default to UNKNOWN
+    weaponIdx = 3;
 
   ESP_LOGI(OPP2_TAG, "Published match: weapon=%s round=%d to %s",
-           weaponNames[weaponIdx], m_State.match.round, topicBuf);
+           weaponNames[weaponIdx], snap.round, topicBuf);
 }
 
 void Opp2Handler::PublishUW2F() {
@@ -514,19 +556,26 @@ void Opp2Handler::PublishUW2F() {
     return;
   }
 
-  m_State.uw2f.seq = NextSeq();
+  OPP2::UW2F snap;
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    snap = m_State.uw2f;
+    snap.seq = NextSeq();
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] PublishUW2F() timeout");
+    return;
+  }
 
   char payloadBuf[512] = {0};
   char topicBuf[64] = {0};
 
-  OPP2::Serializer::serialize(m_State.uw2f, payloadBuf, sizeof(payloadBuf));
+  OPP2::Serializer::serialize(snap, payloadBuf, sizeof(payloadBuf));
   BuildTopic(OPP2::MessageType::UW2F, topicBuf, sizeof(topicBuf));
 
   mqttClient.publish(topicBuf, 1, true, payloadBuf);
 
   ESP_LOGI(OPP2_TAG, "Published UW2F: time=%ums L_P=%d R_P=%d to %s",
-           m_State.uw2f.time_ms, m_State.uw2f.left.p_card,
-           m_State.uw2f.right.p_card, topicBuf);
+           snap.time_ms, snap.left.p_card, snap.right.p_card, topicBuf);
 }
 
 // ── Event Processing ────────────────────────────────────────────────────────
@@ -547,8 +596,51 @@ void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
 
 void Opp2Handler::ProcessUIEvents(uint32_t event) {
   // Handle UI button presses from UDPIOHandler
-  // Future: map to OPP2 control commands if needed
+  // Remote control buttons update canonical state here, then notify Cyrano
   ESP_LOGD(OPP2_TAG, "ProcessUIEvents: 0x%08X", event);
+
+  uint32_t event_data = event & SUB_TYPE_MASK;
+
+  switch (event_data) {
+  case UI_INPUT_CYRANO_NEXT:
+    // NEXT button: Send NEXT message, do NOT change state
+    ESP_LOGI(OPP2_TAG, "[UI] NEXT button pressed");
+    PushCachedStatusToCyrano();     // Update cache if needed
+    notify(EVENT_CYRANO_SEND_NEXT); // Tell CyranoHandler to send NEXT
+    break;
+
+  case UI_INPUT_CYRANO_PREV:
+    // PREV button: Send PREV message, do NOT change state
+    ESP_LOGI(OPP2_TAG, "[UI] PREV button pressed");
+    PushCachedStatusToCyrano();     // Update cache if needed
+    notify(EVENT_CYRANO_SEND_PREV); // Tell CyranoHandler to send PREV
+    break;
+
+  case UI_INPUT_CYRANO_BEGIN:
+    // BEGIN button: Change state WAITING → HALT, then send INFO
+    ESP_LOGI(OPP2_TAG, "[UI] BEGIN button pressed");
+    {
+      OPP2::ApparatusStateMsg newState;
+      newState.state = OPP2::ApparatusState::HALT;
+      updateApparatusStateInternal(newState); // push + notify + send INFO
+    }
+    notify(EVENT_CYRANO_STATE_UNLOCKED); // Unlock FSM (separate from state change)
+    break;
+
+  case UI_INPUT_CYRANO_END:
+    // END button: Change state to ENDING, then send INFO
+    ESP_LOGI(OPP2_TAG, "[UI] END button pressed");
+    {
+      OPP2::ApparatusStateMsg newState;
+      newState.state = OPP2::ApparatusState::ENDING;
+      updateApparatusStateInternal(newState); // push + notify + send INFO
+    }
+    break;
+
+  default:
+    // Other UI events not handled here
+    break;
+  }
 }
 
 // ── MQTT Message Processing ─────────────────────────────────────────────────
@@ -593,10 +685,12 @@ void Opp2Handler::ProcessIncomingControl(const OPP2::Control &msg) {
   // Handle control commands similar to CyranoHandler's DISP/ACK/NAK handling
   switch (msg.command) {
   case OPP2::Command::ACK:
-    // Software acknowledged - equivalent to Cyrano DISP or ACK
-    // Unlocks the state machine to allow fencing
-    ESP_LOGI(OPP2_TAG, "[OPP2] ACK received - notifying state machine");
-    notify(EVENT_CYRANO_STATE_W);
+    ESP_LOGI(OPP2_TAG, "[OPP2] ACK received - transitioning to WAITING");
+    {
+      OPP2::ApparatusStateMsg waiting;
+      waiting.state = OPP2::ApparatusState::WAITING;
+      updateApparatusStateInternal(waiting); // push + notify + send INFO
+    }
     break;
 
   case OPP2::Command::NAK:
@@ -650,11 +744,10 @@ void Opp2Handler::ProcessIncomingControl(const OPP2::Control &msg) {
   }
 }
 
-void Opp2Handler::update(CyranoHandler *subject, uint32_t eventtype) {
-
-  // Handle event-based notifications from CyranoHandler
-  // Currently not used - CyranoHandler mainly sends string messages
-  ESP_LOGD(OPP2_TAG, "[Cyrano→OPP2] Event: 0x%08X", eventtype);
+void Opp2Handler::ProcessCyranoACK() {
+  OPP2::ApparatusStateMsg waiting;
+  waiting.state = OPP2::ApparatusState::WAITING;
+  updateApparatusStateInternal(waiting); // push + notify + send INFO
 }
 
 void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
@@ -730,18 +823,17 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 
       if (eventtype & DATA_24BIT_MASK) {
         clock.running = true;
-        // Don't change apparatus state if already in ENDING or WAITING
         if (apparatusState.state != OPP2::ApparatusState::ENDING &&
             apparatusState.state != OPP2::ApparatusState::WAITING) {
           apparatusState.state = OPP2::ApparatusState::FENCING;
-          updateApparatusStateInternal(apparatusState);
+          updateApparatusStateInternal(apparatusState); // push + notify + send INFO
         }
       } else {
         clock.running = false;
         if (apparatusState.state != OPP2::ApparatusState::ENDING &&
             apparatusState.state != OPP2::ApparatusState::WAITING) {
           apparatusState.state = OPP2::ApparatusState::HALT;
-          updateApparatusStateInternal(apparatusState);
+          updateApparatusStateInternal(apparatusState); // push + notify + send INFO
         }
       }
       updateClockInternal(clock);
@@ -774,9 +866,11 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     TimeInfo.theDWord = eventtype & DATA_24BIT_MASK;
 
     // Convert to milliseconds
+    // centiseconds == 100 is FencingTimer's "top of second" sentinel; treat as 0
     uint32_t minutes = TimeInfo.theBytes[2];
     uint32_t seconds = TimeInfo.theBytes[1];
     uint32_t centiseconds = TimeInfo.theBytes[0];
+    if (centiseconds > 99) centiseconds = 0;
 
     OPP2::Clock clock = m_State.clock; // Copy current state
     clock.time_ms = (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
@@ -923,12 +1017,7 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
   default:
     bTransmit = false;
   }
-
-  // For any unhandled events that set bTransmit = true, we would publish here
-  // (Currently all events handle their own publishing)
-
-  // ── Update CyranoHandler cache after FSM state changes ─────────────────
-  PushCachedStatusToCyrano();
+  (void)bTransmit;
 }
 
 // ── Connection Management ───────────────────────────────────────────────────
@@ -991,243 +1080,287 @@ void Opp2Handler::CheckConnection() {
   }
 }
 
-void Opp2Handler::update(CyranoHandler *subject,
-                         const std::string &strEFP1Message) {
+// ────────────────────────────────────────────────────────────────────────────
+// ZERO-COPY Cyrano Update (Phase 6 stack safety)
+// ────────────────────────────────────────────────────────────────────────────
 
-  EFP1Message EFP1Input(strEFP1Message);
+bool Opp2Handler::updateFromCyranoMessage(const EFP1Message &EFP1Input,
+                                          OPP2::ApparatusState &outApparatusState) {
+  // CRITICAL: This is called from UDP callback context (async_udp task)
+  // NO stack allocations allowed! EFP1Input passed by const reference.
 
-  ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] Received command: %s",
+  ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] (zero-copy) Received command: %s",
            EFP1Input[Command].c_str());
 
-  // ── Handle DISP/INFO commands (match setup) ────────────────────────
-  if (EFP1Input[Command] == "DISP" || EFP1Input[Command] == "INFO") {
-    bool fencersChanged = false;
-    bool scoreChanged = false;
-    bool matchChanged = false;
-    bool apparatusStateChanged = false;
-    bool lightsChanged = false;
-    bool uw2fChanged = false;
-
-    // ── Acquire mutex for state modification ──
-    if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
-      ESP_LOGW(OPP2_TAG, "[MUTEX] update(CyranoHandler*,string) timeout");
-      return;
-    }
-
-    // ── Fencers information (goes to FENCERS message, not SCORE) ──
-
-    // Right fencer
-    if (EFP1Input[RightFencerId] != "") {
-      strncpy(m_State.fencers.right.fencer.id, EFP1Input[RightFencerId].c_str(),
-              sizeof(m_State.fencers.right.fencer.id) - 1);
-      m_State.fencers.right.fencer.present = true;
-      fencersChanged = true;
-    }
-    if (EFP1Input[RightFencerName] != "") {
-      strncpy(m_State.fencers.right.fencer.name,
-              EFP1Input[RightFencerName].c_str(),
-              sizeof(m_State.fencers.right.fencer.name) - 1);
-      m_State.fencers.right.fencer.present = true;
-      fencersChanged = true;
-    }
-    if (EFP1Input[RightFencerNation] != "") {
-      strncpy(m_State.fencers.right.fencer.nation,
-              EFP1Input[RightFencerNation].c_str(),
-              sizeof(m_State.fencers.right.fencer.nation) - 1);
-      m_State.fencers.right.fencer.present = true;
-      fencersChanged = true;
-    }
-
-    // Left fencer
-    if (EFP1Input[LeftFencerId] != "") {
-      strncpy(m_State.fencers.left.fencer.id, EFP1Input[LeftFencerId].c_str(),
-              sizeof(m_State.fencers.left.fencer.id) - 1);
-      m_State.fencers.left.fencer.present = true;
-      fencersChanged = true;
-    }
-    if (EFP1Input[LeftFencerName] != "") {
-      strncpy(m_State.fencers.left.fencer.name,
-              EFP1Input[LeftFencerName].c_str(),
-              sizeof(m_State.fencers.left.fencer.name) - 1);
-      m_State.fencers.left.fencer.present = true;
-      fencersChanged = true;
-    }
-    if (EFP1Input[LeftFencerNation] != "") {
-      strncpy(m_State.fencers.left.fencer.nation,
-              EFP1Input[LeftFencerNation].c_str(),
-              sizeof(m_State.fencers.left.fencer.nation) - 1);
-      m_State.fencers.left.fencer.present = true;
-      fencersChanged = true;
-    }
-
-    // ── Scores (goes to SCORE message) ────────────────────────────
-
-    if (EFP1Input[RightScore] != "") {
-      m_State.score.right.score = std::atoi(EFP1Input[RightScore].c_str());
-      scoreChanged = true;
-    }
-    if (EFP1Input[LeftScore] != "") {
-      m_State.score.left.score = std::atoi(EFP1Input[LeftScore].c_str());
-      scoreChanged = true;
-    }
-
-    // ── Cards ──────────────────────────────────────────────────────
-
-    if (EFP1Input[RightYCard] != "") {
-      m_State.score.right.yellow_card = (EFP1Input[RightYCard] == "1");
-      scoreChanged = true;
-    }
-    if (EFP1Input[LeftYCard] != "") {
-      m_State.score.left.yellow_card = (EFP1Input[LeftYCard] == "1");
-      scoreChanged = true;
-    }
-    if (EFP1Input[RightRCard] != "") {
-      m_State.score.right.red_cards = std::atoi(EFP1Input[RightRCard].c_str());
-      scoreChanged = true;
-    }
-    if (EFP1Input[LeftRCard] != "") {
-      m_State.score.left.red_cards = std::atoi(EFP1Input[LeftRCard].c_str());
-      scoreChanged = true;
-    }
-
-    // ── P-Cards (UW2F) ─────────────────────────────────────────────
-
-    if (EFP1Input[RightPCards] != "") {
-      m_State.uw2f.right.p_card = std::atoi(EFP1Input[RightPCards].c_str());
-      uw2fChanged = true;
-    }
-    if (EFP1Input[LeftPCards] != "") {
-      m_State.uw2f.left.p_card = std::atoi(EFP1Input[LeftPCards].c_str());
-      uw2fChanged = true;
-    }
-
-    // ── Priority ───────────────────────────────────────────────────
-
-    if (EFP1Input[Priority] != "") {
-      if (EFP1Input[Priority] == "R") {
-        m_State.score.priority = OPP2::Priority::RIGHT;
-      } else if (EFP1Input[Priority] == "L") {
-        m_State.score.priority = OPP2::Priority::LEFT;
-      } else {
-        m_State.score.priority = OPP2::Priority::NONE;
-      }
-      scoreChanged = true;
-    }
-
-    // ── Weapon ─────────────────────────────────────────────────────
-
-    if (EFP1Input[Weapon] != "") {
-      if (EFP1Input[Weapon] == "E") {
-        m_State.match.weapon = OPP2::Weapon::EPEE;
-      } else if (EFP1Input[Weapon] == "S") {
-        m_State.match.weapon = OPP2::Weapon::SABRE;
-      } else if (EFP1Input[Weapon] == "F") {
-        m_State.match.weapon = OPP2::Weapon::FOIL;
-      }
-      matchChanged = true;
-    }
-
-    // ── Round number ───────────────────────────────────────────────
-
-    if (EFP1Input[RoundNumber] != "") {
-      m_State.match.round = std::atoi(EFP1Input[RoundNumber].c_str());
-      matchChanged = true;
-    }
-
-    // ── State (apparatus state) ────────────────────────────────────
-
-    if (EFP1Input[State] != "") {
-      // Cyrano state: W=WAITING, F=FENCING, H=HALT, P=PAUSE, E=ENDING
-      if (EFP1Input[State] == "W") {
-        m_State.apparatus_state.state = OPP2::ApparatusState::WAITING;
-      } else if (EFP1Input[State] == "F") {
-        m_State.apparatus_state.state = OPP2::ApparatusState::FENCING;
-      } else if (EFP1Input[State] == "H") {
-        m_State.apparatus_state.state = OPP2::ApparatusState::HALT;
-      } else if (EFP1Input[State] == "P") {
-        m_State.apparatus_state.state = OPP2::ApparatusState::PAUSE;
-      } else if (EFP1Input[State] == "E") {
-        m_State.apparatus_state.state = OPP2::ApparatusState::ENDING;
-      }
-      apparatusStateChanged = true;
-    }
-
-    // ── Lights (if present in INFO messages) ──────────────────────
-
-    if (EFP1Input[RightLight] != "") {
-      m_State.lights.right.on_target = (EFP1Input[RightLight] == "1");
-      lightsChanged = true;
-    }
-    if (EFP1Input[LeftLight] != "") {
-      m_State.lights.left.on_target = (EFP1Input[LeftLight] == "1");
-      lightsChanged = true;
-    }
-    if (EFP1Input[RightWhiteLight] != "") {
-      m_State.lights.right.white = (EFP1Input[RightWhiteLight] == "1");
-      lightsChanged = true;
-    }
-    if (EFP1Input[LeftWhiteLight] != "") {
-      m_State.lights.left.white = (EFP1Input[LeftWhiteLight] == "1");
-      lightsChanged = true;
-    }
-
-    // ── Release mutex before publishing ─────────────────────────────
-    xSemaphoreGive(m_StateMutex);
-
-    // ── Publish updated state to OPP2 MQTT topics ─────────────────
-
-    if (fencersChanged || scoreChanged || matchChanged ||
-        apparatusStateChanged || lightsChanged || uw2fChanged) {
-      ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] Publishing updated state from %s",
-               EFP1Input[Command].c_str());
-
-      if (fencersChanged)
-        PublishFencers();
-      if (scoreChanged)
-        PublishScore();
-      if (matchChanged)
-        PublishMatch();
-      if (apparatusStateChanged)
-        PublishApparatusState();
-      if (lightsChanged)
-        PublishLights();
-      if (uw2fChanged)
-        PublishUW2F();
-
-      // Notify observers (e.g., FPA422Handler) of state change
-      StateChanged(0); // Generic state change notification
-    } else {
-      // No changes but still notify if command was INFO
-      if (EFP1Input[Command] == "INFO") {
-        StateChanged(0);
-      }
-    }
-  } else {
-    // Other commands - release mutex if we took it
-    // (currently we only take mutex for DISP/INFO)
+  // ── Only process DISP/INFO commands (match setup) ───────────────────
+  if (EFP1Input[Command] != "DISP" && EFP1Input[Command] != "INFO") {
+    return false; // Not a match setup command
   }
-  /*
-    // ── Handle ACK command ──────────────────────────────────────────────
-    else if (EFP1Input[Command] == "ACK") {
-      ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] ACK received");
-      // Already handled by ProcessIncomingControl for OPP2::Command::ACK
-      // No action needed here - Cyrano ACK is informational
-    }
 
-    // ── Handle NAK command ──────────────────────────────────────────────
-    else if (EFP1Input[Command] == "NAK") {
-      ESP_LOGE(OPP2_TAG, "[Cyrano→OPP2] NAK received - error state");
-      m_State.apparatus_state.state = OPP2::ApparatusState::HALT;
-      PublishApparatusState();
-    }
+  bool fencersChanged = false;
+  bool scoreChanged = false;
+  bool matchChanged = false;
+  bool lightsChanged = false;
+  bool uw2fChanged = false;
+  bool clockChanged = false;
+  bool isDisp = (EFP1Input[Command] == "DISP");
+  // Snapshot for FSM sync — captured inside mutex before release
+  uint8_t  snapScoreLeft = 0, snapScoreRight = 0;
+  bool     snapYcLeft = false, snapYcRight = false;
+  uint8_t  snapRcLeft = 0, snapRcRight = 0;
+  uint32_t snapClockMs = 0;
+  weapon_t snapWeapon = UNKNOWN;
 
-    // ── Handle HELLO command ────────────────────────────────────────────
-    else if (EFP1Input[Command] == "HELLO") {
-      ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] HELLO received - software connected");
-      // No specific OPP2 action needed
+  // ── Acquire mutex for state modification ────────────────────────────
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+    ESP_LOGW(OPP2_TAG,
+             "[MUTEX] updateFromCyranoMessage() timeout - dropping update");
+    return false;
+  }
+
+  // ── Fencers information (goes to FENCERS message, not SCORE) ────────
+
+  // Right fencer
+  if (EFP1Input[RightFencerId] != "") {
+    strncpy(m_State.fencers.right.fencer.id, EFP1Input[RightFencerId].c_str(),
+            sizeof(m_State.fencers.right.fencer.id) - 1);
+    m_State.fencers.right.fencer.present = true;
+    fencersChanged = true;
+  }
+  if (EFP1Input[RightFencerName] != "") {
+    strncpy(m_State.fencers.right.fencer.name,
+            EFP1Input[RightFencerName].c_str(),
+            sizeof(m_State.fencers.right.fencer.name) - 1);
+    m_State.fencers.right.fencer.present = true;
+    fencersChanged = true;
+  }
+  if (EFP1Input[RightFencerNation] != "") {
+    strncpy(m_State.fencers.right.fencer.nation,
+            EFP1Input[RightFencerNation].c_str(),
+            sizeof(m_State.fencers.right.fencer.nation) - 1);
+    m_State.fencers.right.fencer.present = true;
+    fencersChanged = true;
+  }
+
+  // Left fencer
+  if (EFP1Input[LeftFencerId] != "") {
+    strncpy(m_State.fencers.left.fencer.id, EFP1Input[LeftFencerId].c_str(),
+            sizeof(m_State.fencers.left.fencer.id) - 1);
+    m_State.fencers.left.fencer.present = true;
+    fencersChanged = true;
+  }
+  if (EFP1Input[LeftFencerName] != "") {
+    strncpy(m_State.fencers.left.fencer.name, EFP1Input[LeftFencerName].c_str(),
+            sizeof(m_State.fencers.left.fencer.name) - 1);
+    m_State.fencers.left.fencer.present = true;
+    fencersChanged = true;
+  }
+  if (EFP1Input[LeftFencerNation] != "") {
+    strncpy(m_State.fencers.left.fencer.nation,
+            EFP1Input[LeftFencerNation].c_str(),
+            sizeof(m_State.fencers.left.fencer.nation) - 1);
+    m_State.fencers.left.fencer.present = true;
+    fencersChanged = true;
+  }
+
+  // ── Scores (goes to SCORE message) ──────────────────────────────────
+
+  if (EFP1Input[RightScore] != "") {
+    m_State.score.right.score = std::atoi(EFP1Input[RightScore].c_str());
+    scoreChanged = true;
+  }
+  if (EFP1Input[LeftScore] != "") {
+    m_State.score.left.score = std::atoi(EFP1Input[LeftScore].c_str());
+    scoreChanged = true;
+  }
+
+  // ── Cards ────────────────────────────────────────────────────────────
+
+  if (EFP1Input[RightYCard] != "") {
+    m_State.score.right.yellow_card = (EFP1Input[RightYCard] == "1");
+    scoreChanged = true;
+  }
+  if (EFP1Input[LeftYCard] != "") {
+    m_State.score.left.yellow_card = (EFP1Input[LeftYCard] == "1");
+    scoreChanged = true;
+  }
+  if (EFP1Input[RightRCard] != "") {
+    m_State.score.right.red_cards = std::atoi(EFP1Input[RightRCard].c_str());
+    scoreChanged = true;
+  }
+  if (EFP1Input[LeftRCard] != "") {
+    m_State.score.left.red_cards = std::atoi(EFP1Input[LeftRCard].c_str());
+    scoreChanged = true;
+  }
+
+  // ── P-Cards (UW2F) ───────────────────────────────────────────────────
+
+  if (EFP1Input[RightPCards] != "") {
+    m_State.uw2f.right.p_card = std::atoi(EFP1Input[RightPCards].c_str());
+    uw2fChanged = true;
+  }
+  if (EFP1Input[LeftPCards] != "") {
+    m_State.uw2f.left.p_card = std::atoi(EFP1Input[LeftPCards].c_str());
+    uw2fChanged = true;
+  }
+
+  // ── Priority ─────────────────────────────────────────────────────────
+
+  if (EFP1Input[Priority] != "") {
+    if (EFP1Input[Priority] == "R") {
+      m_State.score.priority = OPP2::Priority::RIGHT;
+    } else if (EFP1Input[Priority] == "L") {
+      m_State.score.priority = OPP2::Priority::LEFT;
+    } else {
+      m_State.score.priority = OPP2::Priority::NONE;
     }
-      */
-} // End of update(CyranoHandler*, const std::string&)
+    scoreChanged = true;
+  }
+
+  // ── Weapon ───────────────────────────────────────────────────────────
+
+  if (EFP1Input[Weapon] != "") {
+    if (EFP1Input[Weapon] == "E") {
+      m_State.match.weapon = OPP2::Weapon::EPEE;
+    } else if (EFP1Input[Weapon] == "S") {
+      m_State.match.weapon = OPP2::Weapon::SABRE;
+    } else if (EFP1Input[Weapon] == "F") {
+      m_State.match.weapon = OPP2::Weapon::FOIL;
+    }
+    matchChanged = true;
+  }
+
+  // ── Round number ─────────────────────────────────────────────────────
+
+  if (EFP1Input[RoundNumber] != "") {
+    m_State.match.round = std::atoi(EFP1Input[RoundNumber].c_str());
+    matchChanged = true;
+  }
+
+  // ── Match identification fields (echoed back in INFO) ────────────────
+  if (EFP1Input[PhaseNumber] != "") {
+    strncpy(m_State.match.phase, EFP1Input[PhaseNumber].c_str(),
+            sizeof(m_State.match.phase) - 1);
+    m_State.match.phase[sizeof(m_State.match.phase) - 1] = '\0';
+    matchChanged = true;
+  }
+  if (EFP1Input[Poule_Tableau_Id] != "") {
+    strncpy(m_State.match.poule, EFP1Input[Poule_Tableau_Id].c_str(),
+            sizeof(m_State.match.poule) - 1);
+    m_State.match.poule[sizeof(m_State.match.poule) - 1] = '\0';
+    matchChanged = true;
+  }
+  if (EFP1Input[MatchNumber] != "") {
+    m_State.match.match_num =
+        (uint16_t)std::atoi(EFP1Input[MatchNumber].c_str());
+    matchChanged = true;
+  }
+  if (EFP1Input[CompetitionType] != "") {
+    if (EFP1Input[CompetitionType] == "T")
+      m_State.match.type = OPP2::MatchType::TEAM;
+    else
+      m_State.match.type = OPP2::MatchType::INDIVIDUAL;
+    matchChanged = true;
+  }
+
+  // ── StopWatch (initial clock value from DISP) ────────────────────────
+  if (EFP1Input[StopWatch] != "") {
+    uint32_t minutes = 0, seconds = 0;
+    sscanf(EFP1Input[StopWatch].c_str(), "%u:%u", &minutes, &seconds);
+    uint32_t new_time_ms = (minutes * 60000) + (seconds * 1000);
+    if (m_State.clock.time_ms != new_time_ms) {
+      m_State.clock.time_ms = new_time_ms;
+      clockChanged = true;
+    }
+  }
+
+  // ── Lights (if present in INFO messages) ────────────────────────────
+
+  if (EFP1Input[RightLight] != "") {
+    m_State.lights.right.on_target = (EFP1Input[RightLight] == "1");
+    lightsChanged = true;
+  }
+  if (EFP1Input[LeftLight] != "") {
+    m_State.lights.left.on_target = (EFP1Input[LeftLight] == "1");
+    lightsChanged = true;
+  }
+  if (EFP1Input[RightWhiteLight] != "") {
+    m_State.lights.right.white = (EFP1Input[RightWhiteLight] == "1");
+    lightsChanged = true;
+  }
+  if (EFP1Input[LeftWhiteLight] != "") {
+    m_State.lights.left.white = (EFP1Input[LeftWhiteLight] == "1");
+    lightsChanged = true;
+  }
+
+  // Return current bout state to caller (DISP does not change it)
+  outApparatusState = m_State.apparatus_state.state;
+
+  // ── Capture FSM sync snapshot (inside mutex) ─────────────────────────
+  if (isDisp) {
+    snapScoreLeft  = m_State.score.left.score;
+    snapScoreRight = m_State.score.right.score;
+    snapYcLeft     = m_State.score.left.yellow_card;
+    snapYcRight    = m_State.score.right.yellow_card;
+    snapRcLeft     = m_State.score.left.red_cards;
+    snapRcRight    = m_State.score.right.red_cards;
+    snapClockMs    = m_State.clock.time_ms;
+    if (EFP1Input[Weapon] != "") {
+      switch (m_State.match.weapon) {
+        case OPP2::Weapon::EPEE:  snapWeapon = EPEE;  break;
+        case OPP2::Weapon::FOIL:  snapWeapon = FOIL;  break;
+        case OPP2::Weapon::SABRE: snapWeapon = SABRE; break;
+        default: break;
+      }
+    }
+  }
+
+  // ── Release mutex before publishing ──────────────────────────────────
+  xSemaphoreGiveRecursive(m_StateMutex);
+
+  // ── Publish updated state to OPP2 MQTT topics ───────────────────────
+
+  if (fencersChanged || scoreChanged || matchChanged ||
+      lightsChanged || uw2fChanged || clockChanged) {
+    ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] Publishing updated state from %s",
+             EFP1Input[Command].c_str());
+
+    if (fencersChanged)
+      PublishFencers();
+    if (scoreChanged)
+      PublishScore();
+    if (matchChanged)
+      PublishMatch();
+    if (lightsChanged)
+      PublishLights();
+    if (uw2fChanged)
+      PublishUW2F();
+    if (clockChanged)
+      PublishClock();
+
+    StateChanged(EVENT_STATE_CHANGED);
+    PushCachedStatusToCyrano();
+  } else {
+    if (EFP1Input[Command] == "INFO") {
+      StateChanged(EVENT_STATE_CHANGED);
+    }
+  }
+
+  // ── Sync FSM internal state from canonical (DISP only) ───────────────
+  if (isDisp && m_pFSM) {
+    m_pFSM->SetScoreLeft(snapScoreLeft);
+    m_pFSM->SetScoreRight(snapScoreRight);
+    m_pFSM->SetYellowCardLeft(snapYcLeft ? 1 : 0);
+    m_pFSM->SetYellowCardRight(snapYcRight ? 1 : 0);
+    m_pFSM->SetRedCardLeft(snapRcLeft);
+    m_pFSM->SetRedCardRight(snapRcRight);
+    m_pFSM->SetClockFromMs(snapClockMs);
+    if (snapWeapon != UNKNOWN)
+      m_pFSM->SetMachineWeapon(snapWeapon);
+  }
+
+  return true;
+} // End of updateFromCyranoMessage()
 
 // ════════════════════════════════════════════════════════════════════════════
 // Thread-Safe State Access (Phase 1)
@@ -1237,9 +1370,9 @@ OPP2::SystemState Opp2Handler::getStateCopy() {
   OPP2::SystemState copy;
 
   // Acquire mutex with timeout
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     copy = m_State;
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG,
              "[MUTEX] getStateCopy() timeout - returning default state");
@@ -1251,10 +1384,10 @@ OPP2::SystemState Opp2Handler::getStateCopy() {
 
 void Opp2Handler::getPisteId(char *buffer) {
   // Acquire mutex with timeout
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     strncpy(buffer, m_State.piste_id, OPP2::PISTE_ID_MAX - 1);
     buffer[OPP2::PISTE_ID_MAX - 1] = '\0';
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] getPisteId() timeout - returning empty");
     buffer[0] = '\0';
@@ -1270,9 +1403,9 @@ void Opp2Handler::PushCachedStatusToCyrano() {
   // Safe to take mutex again for read-only copy
   OPP2::SystemState stateCopy;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     stateCopy = m_State;
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] PushCachedStatusToCyrano() timeout");
     return;
@@ -1290,12 +1423,12 @@ void Opp2Handler::PushCachedStatusToCyrano() {
 void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights) {
   bool changed = false;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!lightsEqual(m_State.lights, lights)) {
       m_State.lights = lights;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateLightsInternal() timeout");
     return;
@@ -1306,19 +1439,20 @@ void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights) {
              lights.left.on_target, lights.left.white, lights.right.on_target,
              lights.right.white);
     PublishLights();
-    PushCachedStatusToCyrano(); // Update CyranoHandler cache
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
 void Opp2Handler::updateScoreInternal(const OPP2::Score &score) {
   bool changed = false;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!scoreEqual(m_State.score, score)) {
       m_State.score = score;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateScoreInternal() timeout");
     return;
@@ -1329,18 +1463,20 @@ void Opp2Handler::updateScoreInternal(const OPP2::Score &score) {
              score.left.score, score.right.score,
              static_cast<int>(score.priority));
     PublishScore();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
 void Opp2Handler::updateClockInternal(const OPP2::Clock &clock) {
   bool changed = false;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!clockEqual(m_State.clock, clock)) {
       m_State.clock = clock;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateClockInternal() timeout");
     return;
@@ -1350,6 +1486,8 @@ void Opp2Handler::updateClockInternal(const OPP2::Clock &clock) {
     ESP_LOGI(OPP2_TAG, "[Internal] Clock updated: time=%u running=%d",
              clock.time_ms, clock.running);
     PublishClock();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
@@ -1357,12 +1495,12 @@ void Opp2Handler::updateApparatusStateInternal(
     const OPP2::ApparatusStateMsg &apparatusState) {
   bool changed = false;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!apparatusStateEqual(m_State.apparatus_state, apparatusState)) {
       m_State.apparatus_state = apparatusState;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateApparatusStateInternal() timeout");
     return;
@@ -1372,18 +1510,33 @@ void Opp2Handler::updateApparatusStateInternal(
     ESP_LOGI(OPP2_TAG, "[Internal] ApparatusState updated: state=%d",
              static_cast<int>(apparatusState.state));
     PublishApparatusState();
+    PushCachedStatusToCyrano();
+
+    // Map new state to the correct Cyrano event for FPA422Handler/CyranoHandler
+    static const uint32_t kCyranoStateEvent[] = {
+        EVENT_CYRANO_STATE_F, // FENCING = 0
+        EVENT_CYRANO_STATE_H, // HALT    = 1
+        EVENT_CYRANO_STATE_P, // PAUSE   = 2
+        EVENT_CYRANO_STATE_W, // WAITING = 3
+        EVENT_CYRANO_STATE_E, // ENDING  = 4
+        EVENT_CYRANO_STATE_W, // UNKNOWN = 5
+    };
+    int idx = static_cast<int>(apparatusState.state);
+    if (idx < 0 || idx > 5) idx = 5;
+    notify(kCyranoStateEvent[idx]);
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
 void Opp2Handler::updateMatchInternal(const OPP2::Match &match) {
   bool changed = false;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!matchEqual(m_State.match, match)) {
       m_State.match = match;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateMatchInternal() timeout");
     return;
@@ -1395,18 +1548,20 @@ void Opp2Handler::updateMatchInternal(const OPP2::Match &match) {
              static_cast<int>(match.weapon), static_cast<int>(match.type),
              static_cast<int>(match.phase_type), match.round);
     PublishMatch();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
 void Opp2Handler::updateUW2FInternal(const OPP2::UW2F &uw2f) {
   bool changed = false;
 
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!uw2fEqual(m_State.uw2f, uw2f)) {
       m_State.uw2f = uw2f;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateUW2FInternal() timeout");
     return;
@@ -1416,6 +1571,8 @@ void Opp2Handler::updateUW2FInternal(const OPP2::UW2F &uw2f) {
     ESP_LOGI(OPP2_TAG, "[Internal] UW2F updated: time=%ums L_P=%d R_P=%d",
              uw2f.time_ms, uw2f.left.p_card, uw2f.right.p_card);
     PublishUW2F();
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
@@ -1444,10 +1601,10 @@ bool Opp2Handler::updateFencersExternal(const OPP2::Fencers &fencers,
 
   // Guard 3: Only accept when apparatus is in WAITING state
   bool canUpdate = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     canUpdate =
         (m_State.apparatus_state.state == OPP2::ApparatusState::WAITING);
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateFencersExternal() guard check timeout");
     return false;
@@ -1461,12 +1618,12 @@ bool Opp2Handler::updateFencersExternal(const OPP2::Fencers &fencers,
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!fencersEqual(m_State.fencers, fencers)) {
       m_State.fencers = fencers;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateFencersExternal() update timeout");
     return false;
@@ -1494,10 +1651,10 @@ bool Opp2Handler::updateMatchExternal(const OPP2::Match &match,
 
   // Guard 2: Only accept when apparatus is in WAITING state
   bool canUpdate = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     canUpdate =
         (m_State.apparatus_state.state == OPP2::ApparatusState::WAITING);
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateMatchExternal() guard check timeout");
     return false;
@@ -1511,12 +1668,12 @@ bool Opp2Handler::updateMatchExternal(const OPP2::Match &match,
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!matchEqual(m_State.match, match)) {
       m_State.match = match;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateMatchExternal() update timeout");
     return false;
@@ -1544,9 +1701,9 @@ bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock,
 
   // Guard 2: Only accept when clock is not running
   bool canUpdate = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     canUpdate = !m_State.clock.running;
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateClockExternal() guard check timeout");
     return false;
@@ -1559,12 +1716,12 @@ bool Opp2Handler::updateClockExternal(const OPP2::Clock &clock,
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!clockEqual(m_State.clock, clock)) {
       m_State.clock = clock;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateClockExternal() update timeout");
     return false;
@@ -1595,12 +1752,12 @@ bool Opp2Handler::updateScoreExternal(const OPP2::Score &score,
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!scoreEqual(m_State.score, score)) {
       m_State.score = score;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateScoreExternal() update timeout");
     return false;
@@ -1632,12 +1789,12 @@ bool Opp2Handler::updateLightsExternal(const OPP2::Lights &lights,
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!lightsEqual(m_State.lights, lights)) {
       m_State.lights = lights;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateLightsExternal() update timeout");
     return false;
@@ -1663,17 +1820,26 @@ bool Opp2Handler::updateApparatusStateExternal(
     return false;
   }
 
-  // Note: ApparatusState can be changed anytime by software (START/STOP/RESET)
-  // No additional guard needed - software control is valid
+  // Guard 2: Software may only reset apparatus to WAITING.
+  // FENCING/HALT/PAUSE/ENDING are driven by physical buttons and timer,
+  // not by software commands. Reject stale retained MQTT messages that
+  // could otherwise overwrite the device's own state on reconnect.
+  if (apparatusState.state != OPP2::ApparatusState::WAITING) {
+    ESP_LOGW(OPP2_TAG,
+             "[Guard] ApparatusState external update rejected: software may "
+             "only set WAITING (got %d)",
+             static_cast<int>(apparatusState.state));
+    return false;
+  }
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!apparatusStateEqual(m_State.apparatus_state, apparatusState)) {
       m_State.apparatus_state = apparatusState;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateApparatusStateExternal() update timeout");
     return false;
@@ -1705,12 +1871,12 @@ bool Opp2Handler::updateUW2FExternal(const OPP2::UW2F &uw2f,
 
   // Update state
   bool changed = false;
-  if (xSemaphoreTake(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (!uw2fEqual(m_State.uw2f, uw2f)) {
       m_State.uw2f = uw2f;
       changed = true;
     }
-    xSemaphoreGive(m_StateMutex);
+    xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] updateUW2FExternal() update timeout");
     return false;
@@ -1854,6 +2020,23 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
   snprintf(round_buf, sizeof(round_buf), "%u", state.match.round);
   cyrano[RoundNumber] = round_buf;
 
+  // Match identification fields (echoed back from DISP)
+  if (state.match.phase[0] != '\0')
+    cyrano[PhaseNumber] = state.match.phase;
+  if (state.match.poule[0] != '\0')
+    cyrano[Poule_Tableau_Id] = state.match.poule;
+  char match_num_buf[8];
+  snprintf(match_num_buf, sizeof(match_num_buf), "%u", state.match.match_num);
+  cyrano[MatchNumber] = match_num_buf;
+  switch (state.match.type) {
+  case OPP2::MatchType::TEAM:
+    cyrano[CompetitionType] = "T";
+    break;
+  default:
+    cyrano[CompetitionType] = "I";
+    break;
+  }
+
   // Priority: OPP2::Priority to Cyrano (L/R/N)
   switch (state.score.priority) {
   case OPP2::Priority::LEFT:
@@ -1881,6 +2064,16 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
            state.score.right.score);
   cyrano[RightScore] = right_score_buf;
 
+  // Right status (U=undefined/active, V=victory, D=defeat, A=abandonment, E=exclusion)
+  switch (state.score.right.status) {
+  case OPP2::FencerStatus::VICTORY:     cyrano[RightStatus] = "V"; break;
+  case OPP2::FencerStatus::DEFEAT:      cyrano[RightStatus] = "D"; break;
+  case OPP2::FencerStatus::ABANDONMENT: cyrano[RightStatus] = "A"; break;
+  case OPP2::FencerStatus::EXCLUSION:   cyrano[RightStatus] = "E"; break;
+  case OPP2::FencerStatus::DNS:         cyrano[RightStatus] = "DNS"; break;
+  default:                              cyrano[RightStatus] = "U"; break;
+  }
+
   // Right cards
   cyrano[RightYCard] = state.score.right.yellow_card ? "1" : "0";
   char right_red_buf[8];
@@ -1891,6 +2084,10 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
   // Right lights
   cyrano[RightLight] = state.lights.right.on_target ? "1" : "0";
   cyrano[RightWhiteLight] = state.lights.right.white ? "1" : "0";
+
+  // Right medical and reserve (known gaps — 0/N for individual competitions)
+  cyrano[RightMedicalIntervention] = "0";
+  cyrano[RightReserveIntroduction] = "N";
 
   // Right P-cards
   char right_pcard_buf[8];
@@ -1912,6 +2109,16 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
            state.score.left.score);
   cyrano[LeftScore] = left_score_buf;
 
+  // Left status
+  switch (state.score.left.status) {
+  case OPP2::FencerStatus::VICTORY:     cyrano[LeftStatus] = "V"; break;
+  case OPP2::FencerStatus::DEFEAT:      cyrano[LeftStatus] = "D"; break;
+  case OPP2::FencerStatus::ABANDONMENT: cyrano[LeftStatus] = "A"; break;
+  case OPP2::FencerStatus::EXCLUSION:   cyrano[LeftStatus] = "E"; break;
+  case OPP2::FencerStatus::DNS:         cyrano[LeftStatus] = "DNS"; break;
+  default:                              cyrano[LeftStatus] = "U"; break;
+  }
+
   // Left cards
   cyrano[LeftYCard] = state.score.left.yellow_card ? "1" : "0";
   char left_red_buf[8];
@@ -1922,6 +2129,10 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
   // Left lights
   cyrano[LeftLight] = state.lights.left.on_target ? "1" : "0";
   cyrano[LeftWhiteLight] = state.lights.left.white ? "1" : "0";
+
+  // Left medical and reserve (known gaps — 0/N for individual competitions)
+  cyrano[LeftMedicalIntervention] = "0";
+  cyrano[LeftReserveIntroduction] = "N";
 
   // Left P-cards
   char left_pcard_buf[8];

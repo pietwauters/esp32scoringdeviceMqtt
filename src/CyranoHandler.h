@@ -26,8 +26,9 @@ enum CyranoState { FENCING, HALT, PAUSE, ENDING, WAITING };
 };*/
 
 class UDPIOHandler;
-class CyranoHandler : public Observer<FencingStateMachine>,
-                      public Observer<UDPIOHandler>,
+class Opp2Handler;
+class CyranoHandler : public Observer<UDPIOHandler>,
+                      public Observer<Opp2Handler>,
                       public Subject<CyranoHandler>,
                       public SingletonMixin<CyranoHandler> {
 public:
@@ -40,10 +41,10 @@ public:
   void SetPisteID(const std::string &ID);
   // Publish a minimal parry event JSON to MQTT
   void publishParryEvent(bool state, uint64_t timestamp_ms);
-  void update(FencingStateMachine *subject, uint32_t eventtype);
   void update(UDPIOHandler *subject, uint32_t eventtype) {
     ProcessUIEvents(eventtype);
   };
+  void update(Opp2Handler *subject, uint32_t eventtype);
   void StateChanged(uint32_t eventtype) { notify(eventtype); }
   void StateChanged(std::string eventtype) { notify(eventtype); }
   void ProcessLightsChange(uint32_t eventtype);

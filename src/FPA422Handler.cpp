@@ -252,6 +252,12 @@ void FPA422Handler::WifiPeriodicalUpdate() {
       WifiTransmitMessage(8);
     }
     if (5 == m_SlowWifiPeriodicalUpdateCounter) {
+      {
+        static const char kStateChars[] = {'F','H','P','W','E','W'};
+        OPP2::SystemState s = Opp2Handler::getInstance().getStateCopy();
+        int idx = static_cast<int>(s.apparatus_state.state);
+        Message10.SetMachineStatus(kStateChars[idx < 6 ? idx : 3]);
+      }
       WifiTransmitMessage(10);
       if (m_WifiStarted) {
         udp.broadcastTo(SoftAPIPAddress, AnnouncingPort, TCPIP_ADAPTER_IF_AP);
@@ -664,6 +670,21 @@ void FPA422Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 void SetNOC(const char* NOC);*/
 
 void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
+  // Machine status ('W','H','F','P','E') — state byte lives in event low byte.
+  // LOCKED/UNLOCKED share the same main type but are not machine status chars.
+  if (EVENT_CYRANO_STATE == (eventtype & MAIN_TYPE_MASK) &&
+      eventtype != EVENT_CYRANO_STATE_LOCKED &&
+      eventtype != EVENT_CYRANO_STATE_UNLOCKED &&
+      eventtype != EVENT_CYRANO_SEND_INFO &&
+      eventtype != EVENT_CYRANO_SEND_NEXT &&
+      eventtype != EVENT_CYRANO_SEND_PREV) {
+    mix_t thestatus;
+    thestatus.theDWord = eventtype & DATA_24BIT_MASK;
+    Message10.SetMachineStatus(thestatus.theBytes[0]);
+    AllProtocolsTransmitMessage(10);
+    return;
+  }
+
   // Read fencer information from OPP2 canonical state
   OPP2::SystemState state = subject->getStateCopy();
 
@@ -693,4 +714,44 @@ void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
 
   AllProtocolsTransmitMessage(5);
   AllProtocolsTransmitMessage(6);
+
+  // Update score, cards, priority, round (Message 3)
+  Message3.SetScoreLeft(state.score.left.score);
+  Message3.SetScoreRight(state.score.right.score);
+  Message3.SetYellowCardLeft(state.score.left.yellow_card ? 1 : 0);
+  Message3.SetYellowCardRight(state.score.right.yellow_card ? 1 : 0);
+  Message3.SetRedCardLeft(state.score.left.red_cards);
+  Message3.SetRedCardRight(state.score.right.red_cards);
+  Message3.SetBlackCardLeft(state.score.left.black_card ? 1 : 0);
+  Message3.SetBlackCardRight(state.score.right.black_card ? 1 : 0);
+  switch (state.score.priority) {
+    case OPP2::Priority::LEFT:  Message3.SetPrioLeft();  break;
+    case OPP2::Priority::RIGHT: Message3.SetPrioRight(); break;
+    default:                    Message3.SetNoPrio();    break;
+  }
+  Message3.SetRound(state.match.round);
+  AllProtocolsTransmitMessage(3);
+
+  // Update clock (Message 2)
+  uint32_t t = state.clock.time_ms;
+  uint8_t  min  = t / 60000;
+  uint8_t  sec  = (t % 60000) / 1000;
+  uint8_t  hun  = (t % 1000) / 10;
+  Message2.SetTime(min, sec, hun);
+  Message2.SetTimerStatus(state.clock.running ? 'R' : 'N');
+  AllProtocolsTransmitMessage(2);
+
+  // Update weapon (Message 4)
+  switch (state.match.weapon) {
+    case OPP2::Weapon::EPEE:  Message4.setWeapon(EPEE);  break;
+    case OPP2::Weapon::SABRE: Message4.setWeapon(SABRE); break;
+    case OPP2::Weapon::FOIL:  Message4.setWeapon(FOIL);  break;
+    default:                  Message4.setWeapon(UNKNOWN); break;
+  }
+  AllProtocolsTransmitMessage(4);
+
+  // Update P-cards and UW2F timer (Message 8)
+  Message8.SetPCardLeft(state.uw2f.left.p_card);
+  Message8.SetPCardRight(state.uw2f.right.p_card);
+  AllProtocolsTransmitMessage(8);
 }

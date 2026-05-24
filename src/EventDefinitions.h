@@ -186,6 +186,15 @@ union mix_t {
 #define EVENT_CYRANO_STATE_LOCKED 0x300000A1
 #define EVENT_CYRANO_STATE_UNLOCKED 0x300000A0
 
+// Cyrano message send requests (from Opp2Handler → CyranoHandler)
+#define EVENT_CYRANO_SEND_INFO 0x30000100
+#define EVENT_CYRANO_SEND_NEXT 0x30000101
+#define EVENT_CYRANO_SEND_PREV 0x30000102
+
+// Generic state change notification (non-lights, non-score).
+// 0x40000000 — chosen to not alias any existing event constant.
+#define EVENT_STATE_CHANGED    0x40000000
+
 // WS2812 Animation types
 #define EVENT_WS2812_WELCOME 0x08010000
 #define EVENT_WS2812_PRIO_NONE 0x08020000

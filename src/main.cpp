@@ -138,12 +138,11 @@ void setup() {
     MyCyranoHandler = &CyranoHandler::getInstance();
     MyStatemachine->ResetAll();
     MyFPA422Handler->StartWiFi();
-    MyStatemachine->attach(*MyFPA422Handler);
+    MyStatemachine->attach(*MyFPA422Handler);   // FPA422: raw display events (score/time/cards)
     MyUDPIOHandler->attach(*MyStatemachine);
     MyStatemachine->attach(*MyUDPIOHandler);
-    MyStatemachine->attach(*MyCyranoHandler);
     MyUDPIOHandler->attach(*MyCyranoHandler);
-    MyCyranoHandler->attach(*MyStatemachine);
+    MyCyranoHandler->attach(*MyStatemachine);   // FSM: LOCKED/UNLOCKED from Cyrano
     MySensor->attach(*MyStatemachine);
     MyStatemachine->RegisterMultiWeaponSensor(MySensor);
     MyStatemachine->begin();
@@ -155,10 +154,12 @@ void setup() {
     // Initialize OPP2 Handler (parallel with CyranoHandler)
     MyOpp2Handler = &Opp2Handler::getInstance();
     MyStatemachine->attach(*MyOpp2Handler);
+    MyOpp2Handler->setFSM(MyStatemachine);
     MyUDPIOHandler->attach(*MyOpp2Handler);
-    MyCyranoHandler->attach(*MyOpp2Handler);
     MyOpp2Handler->attach(
         *MyFPA422Handler); // Attach FPA422Handler AFTER getInstance()
+    MyOpp2Handler->attach(*MyCyranoHandler); // CyranoHandler observes Opp2 for
+                                             // message send events
     MyOpp2Handler->Begin();
 
     MyRepeaterSender = &RepeaterSender::getInstance();
