@@ -602,6 +602,81 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
   uint32_t event_data = event & SUB_TYPE_MASK;
 
   switch (event_data) {
+  case UI_SWAP_FENCERS: {
+    ESP_LOGI(OPP2_TAG, "[UI] SWAP FENCERS");
+
+    // Snapshots for FSM sync — populated inside mutex
+    uint8_t snapScoreL = 0, snapScoreR = 0;
+    bool    snapYcL = false, snapYcR = false;
+    uint8_t snapRcL = 0, snapRcR = 0;
+    Priority_t snapPrio = NO_PRIO;
+
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      // Swap fencer identities
+      OPP2::FencerSide tmpFencer = m_State.fencers.left;
+      m_State.fencers.left  = m_State.fencers.right;
+      m_State.fencers.right = tmpFencer;
+
+      // Swap scores and cards
+      OPP2::ScoreState tmpScore = m_State.score.left;
+      m_State.score.left  = m_State.score.right;
+      m_State.score.right = tmpScore;
+
+      // Flip priority
+      if (m_State.score.priority == OPP2::Priority::LEFT)
+        m_State.score.priority = OPP2::Priority::RIGHT;
+      else if (m_State.score.priority == OPP2::Priority::RIGHT)
+        m_State.score.priority = OPP2::Priority::LEFT;
+
+      // Swap lights
+      OPP2::LightState tmpLight = m_State.lights.left;
+      m_State.lights.left  = m_State.lights.right;
+      m_State.lights.right = tmpLight;
+
+      // Swap UW2F (P-cards)
+      OPP2::UW2FSide tmpUw2f = m_State.uw2f.left;
+      m_State.uw2f.left  = m_State.uw2f.right;
+      m_State.uw2f.right = tmpUw2f;
+
+      // Capture FSM sync snapshot (swapped values are now in m_State)
+      snapScoreL = m_State.score.left.score;
+      snapScoreR = m_State.score.right.score;
+      snapYcL    = m_State.score.left.yellow_card;
+      snapYcR    = m_State.score.right.yellow_card;
+      snapRcL    = m_State.score.left.red_cards;
+      snapRcR    = m_State.score.right.red_cards;
+      switch (m_State.score.priority) {
+        case OPP2::Priority::LEFT:  snapPrio = PRIO_LEFT;  break;
+        case OPP2::Priority::RIGHT: snapPrio = PRIO_RIGHT; break;
+        default:                    snapPrio = NO_PRIO;    break;
+      }
+
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[SWAP] mutex timeout — swap dropped");
+      break;
+    }
+
+    PublishFencers();
+    PublishScore();
+    PublishLights();
+    PublishUW2F();
+    PushCachedStatusToCyrano();
+    StateChanged(EVENT_STATE_CHANGED);
+
+    // Sync FSM so its next event doesn't overwrite the swapped canonical state
+    if (m_pFSM) {
+      m_pFSM->SetScoreLeft(snapScoreL);
+      m_pFSM->SetScoreRight(snapScoreR);
+      m_pFSM->SetYellowCardLeft(snapYcL ? 1 : 0);
+      m_pFSM->SetYellowCardRight(snapYcR ? 1 : 0);
+      m_pFSM->SetRedCardLeft(snapRcL);
+      m_pFSM->SetRedCardRight(snapRcR);
+      m_pFSM->SetPriority(snapPrio);
+    }
+    break;
+  }
+
   case UI_INPUT_CYRANO_NEXT:
     // NEXT button: Send NEXT message, do NOT change state
     ESP_LOGI(OPP2_TAG, "[UI] NEXT button pressed");
