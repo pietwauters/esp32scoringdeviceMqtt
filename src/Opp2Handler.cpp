@@ -2007,39 +2007,38 @@ bool Opp2Handler::scoreEqual(const OPP2::Score &a, const OPP2::Score &b) {
       a.left.score == b.left.score && a.left.red_cards == b.left.red_cards &&
       a.left.yellow_card == b.left.yellow_card &&
       a.left.black_card == b.left.black_card &&
+      a.left.status == b.left.status &&
       a.right.score == b.right.score &&
       a.right.red_cards == b.right.red_cards &&
       a.right.yellow_card == b.right.yellow_card &&
-      a.right.black_card == b.right.black_card && a.priority == b.priority);
+      a.right.black_card == b.right.black_card &&
+      a.right.status == b.right.status && a.priority == b.priority);
+}
+
+static bool personEqual(const OPP2::Person &a, const OPP2::Person &b) {
+  if (a.present != b.present) return false;
+  if (!a.present) return true;  // both absent
+  return (strcmp(a.name, b.name) == 0 &&
+          strcmp(a.id, b.id) == 0 &&
+          strcmp(a.nation, b.nation) == 0);
 }
 
 bool Opp2Handler::fencersEqual(const OPP2::Fencers &a, const OPP2::Fencers &b) {
-  // Compare left fencer
-  bool leftEqual = true;
-  if (a.left.fencer.present && b.left.fencer.present) {
-    leftEqual = (strcmp(a.left.fencer.name, b.left.fencer.name) == 0 &&
-                 strcmp(a.left.fencer.id, b.left.fencer.id) == 0 &&
-                 strcmp(a.left.fencer.nation, b.left.fencer.nation) == 0);
-  } else if (a.left.fencer.present != b.left.fencer.present) {
-    leftEqual = false;
-  }
-
-  // Compare right fencer
-  bool rightEqual = true;
-  if (a.right.fencer.present && b.right.fencer.present) {
-    rightEqual = (strcmp(a.right.fencer.name, b.right.fencer.name) == 0 &&
-                  strcmp(a.right.fencer.id, b.right.fencer.id) == 0 &&
-                  strcmp(a.right.fencer.nation, b.right.fencer.nation) == 0);
-  } else if (a.right.fencer.present != b.right.fencer.present) {
-    rightEqual = false;
-  }
-
-  return leftEqual && rightEqual;
+  return personEqual(a.left.fencer,   b.left.fencer)   &&
+         personEqual(a.left.coach,    b.left.coach)     &&
+         personEqual(a.right.fencer,  b.right.fencer)   &&
+         personEqual(a.right.coach,   b.right.coach)    &&
+         personEqual(a.referee,       b.referee)        &&
+         personEqual(a.video_official, b.video_official);
 }
 
 bool Opp2Handler::matchEqual(const OPP2::Match &a, const OPP2::Match &b) {
   return (a.weapon == b.weapon && a.type == b.type &&
-          a.phase_type == b.phase_type && a.round == b.round);
+          a.phase_type == b.phase_type && a.round == b.round &&
+          a.match_num == b.match_num &&
+          strcmp(a.competition, b.competition) == 0 &&
+          strcmp(a.phase, b.phase) == 0 &&
+          strcmp(a.poule, b.poule) == 0);
 }
 
 bool Opp2Handler::apparatusStateEqual(const OPP2::ApparatusStateMsg &a,
