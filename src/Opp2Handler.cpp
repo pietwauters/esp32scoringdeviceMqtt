@@ -2006,9 +2006,11 @@ bool Opp2Handler::scoreEqual(const OPP2::Score &a, const OPP2::Score &b) {
   return (
       a.left.score == b.left.score && a.left.red_cards == b.left.red_cards &&
       a.left.yellow_card == b.left.yellow_card &&
+      a.left.black_card == b.left.black_card &&
       a.right.score == b.right.score &&
       a.right.red_cards == b.right.red_cards &&
-      a.right.yellow_card == b.right.yellow_card && a.priority == b.priority);
+      a.right.yellow_card == b.right.yellow_card &&
+      a.right.black_card == b.right.black_card && a.priority == b.priority);
 }
 
 bool Opp2Handler::fencersEqual(const OPP2::Fencers &a, const OPP2::Fencers &b) {
