@@ -1,6 +1,5 @@
 #include "Opp2Handler.h"
 #include "AbsoluteTime.h"
-#include "CyranoConverter.h"
 #include "CyranoHandler.h"
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
@@ -9,8 +8,6 @@
 
 static const char *OPP2_TAG = "OPP2";
 extern const char *mdnsName;             // Defined in CyranoHandler.cpp
-extern char *mqttListenTopic;            // Cyrano listen topic (temporary)
-extern char *mqttLastWillTopic;          // Cyrano LWT topic
 extern AtlasAsyncMqttClient &mqttClient; // Shared MQTT client singleton
 
 // ── Constructor / Destructor ────────────────────────────────────────────────
@@ -227,13 +224,6 @@ void Opp2Handler::OnMqttConnectStatic(bool sessionPresent) {
   ESP_LOGI(OPP2_TAG, "[OPP2] MQTT Connected (sessionPresent=%d)",
            sessionPresent);
 
-  // Publish Cyrano online status (temporary for step 1)
-  mqttClient.publish(mqttLastWillTopic, 1, true, "online");
-
-  // Subscribe to Cyrano topic (temporary for step 1)
-  mqttClient.subscribe(mqttListenTopic, 1);
-  ESP_LOGI(OPP2_TAG, "[Cyrano] Subscribed to: %s", mqttListenTopic);
-
   // Subscribe to OPP2 control topics
   Opp2Handler &handler = Opp2Handler::getInstance();
   char topicBuf[64];
@@ -276,14 +266,6 @@ void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,
     // OPP2 protocol message
     ESP_LOGD(OPP2_TAG, "[OPP2] Routing to Opp2Handler");
     Opp2Handler::getInstance().ProcessIncomingMessage(topic, payload, length);
-  } else if (strncmp(topic, "MQTT_Cyrano/", 12) == 0) {
-    // Cyrano protocol message (temporary routing for step 1)
-    ESP_LOGD(OPP2_TAG, "[Cyrano] Routing to CyranoHandler");
-    std::string cyranoStr = convert_json_to_cyrano_string((char *)payload);
-    if (cyranoStr != "") {
-      CyranoHandler::getInstance().ProcessMessageFromSoftware(
-          EFP1Message(cyranoStr), false);
-    }
   } else {
     ESP_LOGW(OPP2_TAG, "[MQTT] Unknown topic prefix: %s", topic);
   }

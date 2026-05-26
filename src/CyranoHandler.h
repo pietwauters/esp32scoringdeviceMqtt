@@ -39,8 +39,6 @@ public:
   void SendInfoMessage();
   void ProcessUIEvents(uint32_t const event);
   void SetPisteID(const std::string &ID);
-  // Publish a minimal parry event JSON to MQTT
-  void publishParryEvent(bool state, uint64_t timestamp_ms);
   void update(UDPIOHandler *subject, uint32_t eventtype) {
     ProcessUIEvents(eventtype);
   };
@@ -82,11 +80,8 @@ private:
   // SendInfoMessage() and ProcessUIEvents() use cached strings - NO stack.
   EFP1Message m_CachedStatus;       //!< Updated when Opp2Handler state changes
   std::string m_CachedCyranoString; //!< Pre-built INFO Cyrano string
-  std::string m_CachedJsonString;   //!< Pre-built INFO JSON for MQTT
   std::string m_CachedNextCyrano;   //!< Pre-built NEXT Cyrano string
-  std::string m_CachedNextJson;     //!< Pre-built NEXT JSON for MQTT
   std::string m_CachedPrevCyrano;   //!< Pre-built PREV Cyrano string
-  std::string m_CachedPrevJson;     //!< Pre-built PREV JSON for MQTT
   bool m_CachedStatusValid;         //!< True when cache is synchronized
 
   /**

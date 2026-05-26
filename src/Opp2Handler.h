@@ -272,7 +272,6 @@ public:
   /**
    * MQTT message callback - routes messages based on topic prefix.
    * openpiste/* → Opp2Handler::ProcessIncomingMessage
-   * MQTT_Cyrano/* → CyranoHandler (temporary for step 1)
    */
   static void OnMqttMessageStatic(const char *topic, const char *payload,
                                   unsigned int length);
