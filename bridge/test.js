@@ -17,7 +17,7 @@ const dgram = require('dgram');
 const mqtt  = require('mqtt');
 
 const LOCALHOST   = '127.0.0.1';
-const UDP_PORT    = 50101;
+const UDP_PORT    = 50100;
 const CMS_PORT    = 50100;
 const MQTT_BROKER = 'mqtt://localhost';
 const PISTE_ID    = '1';

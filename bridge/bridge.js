@@ -26,8 +26,8 @@ const mqtt  = require('mqtt');
 const config = {
   subnet:     '192.168.0',      // first three octets of your LAN subnet
   ipBase:     100,              // piste N gets IP subnet.(ipBase + N)
-  udpPort:    50101,            // port the apparatus listens on
-  cmsPort:    50100,            // port the CMS listens on
+  udpPort:    50100,            // port used for all Cyrano UDP traffic
+  cmsPort:    50100,
   mqttBroker: 'mqtt://localhost',
   pistes: [
     { number: 1, id: '1' },
