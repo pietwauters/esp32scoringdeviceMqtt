@@ -11,6 +11,12 @@ extern const char ca_cert_pem[];
 extern const size_t ca_cert_pem_len;
 
 static const char *CYRANO_TAG = "Cyrano";
+
+// Set true to broadcast INFO on the subnet so CMS software can discover online
+// pistes without prior configuration. Disabled: we send unicast only, which
+// avoids unnecessary traffic. Some commercial CMS products rely on broadcast
+// discovery — re-enable here if needed.
+static constexpr bool kCyranoBroadcastEnabled = false;
 const char *mdnsName = "openpiste";
 CyranoHandler::CyranoHandler() : m_CachedStatusValid(false) {
   // ctor
@@ -122,9 +128,10 @@ void CyranoHandler::SendInfoMessage() {
   CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                               SoftwareIPAddress(), CyranoBroadcastPort,
                               TCPIP_ADAPTER_IF_STA);
-  CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
-                                        CyranoBroadcastPort,
-                                        TCPIP_ADAPTER_IF_STA);
+  if (kCyranoBroadcastEnabled)
+    CyranoHandlerudpBroadcast.broadcastTo((uint8_t *)pCyranoMsg, cyranoLen,
+                                          CyranoBroadcastPort,
+                                          TCPIP_ADAPTER_IF_STA);
 
   // Level 1: mirror raw EFP1.1 payload to MQTT
   if (mqttClient.isConnected()) {
