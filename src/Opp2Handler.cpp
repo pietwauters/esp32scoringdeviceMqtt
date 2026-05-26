@@ -263,9 +263,16 @@ void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,
 
   // Route based on topic prefix
   if (strncmp(topic, "openpiste/", 10) == 0) {
-    // OPP2 protocol message
-    ESP_LOGD(OPP2_TAG, "[OPP2] Routing to Opp2Handler");
-    Opp2Handler::getInstance().ProcessIncomingMessage(topic, payload, length);
+    // Level 1: raw EFP1.1 from software over MQTT
+    if (strstr(topic, "/software/efp1") != nullptr) {
+      ESP_LOGD(OPP2_TAG, "[L1] Routing software/efp1 to CyranoHandler");
+      CyranoHandler::getInstance().ProcessMessageFromSoftware(
+          EFP1Message((char *)payload), false);
+    } else {
+      // OPP2 protocol message
+      ESP_LOGD(OPP2_TAG, "[OPP2] Routing to Opp2Handler");
+      Opp2Handler::getInstance().ProcessIncomingMessage(topic, payload, length);
+    }
   } else {
     ESP_LOGW(OPP2_TAG, "[MQTT] Unknown topic prefix: %s", topic);
   }

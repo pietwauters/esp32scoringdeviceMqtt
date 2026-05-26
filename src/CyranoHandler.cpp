@@ -126,6 +126,13 @@ void CyranoHandler::SendInfoMessage() {
                                         CyranoBroadcastPort,
                                         TCPIP_ADAPTER_IF_STA);
 
+  // Level 1: mirror raw EFP1.1 payload to MQTT
+  char efp1Topic[64];
+  char pisteId[OPP2::PISTE_ID_MAX];
+  Opp2Handler::getInstance().getPisteId(pisteId);
+  snprintf(efp1Topic, sizeof(efp1Topic), "openpiste/%s/apparatus/efp1", pisteId);
+  mqttClient.publish(efp1Topic, 0, false, pCyranoMsg, cyranoLen);
+
   return;
 }
 
@@ -205,6 +212,11 @@ void CyranoHandler::update(Opp2Handler *subject, uint32_t eventtype) {
       CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                                   SoftwareIPAddress(), CyranoBroadcastPort,
                                   TCPIP_ADAPTER_IF_STA);
+      char efp1Topic[64];
+      char pisteId[OPP2::PISTE_ID_MAX];
+      Opp2Handler::getInstance().getPisteId(pisteId);
+      snprintf(efp1Topic, sizeof(efp1Topic), "openpiste/%s/apparatus/efp1", pisteId);
+      mqttClient.publish(efp1Topic, 0, false, pCyranoMsg, cyranoLen);
     }
     break;
 
@@ -221,6 +233,11 @@ void CyranoHandler::update(Opp2Handler *subject, uint32_t eventtype) {
       CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                                   SoftwareIPAddress(), CyranoBroadcastPort,
                                   TCPIP_ADAPTER_IF_STA);
+      char efp1Topic[64];
+      char pisteId[OPP2::PISTE_ID_MAX];
+      Opp2Handler::getInstance().getPisteId(pisteId);
+      snprintf(efp1Topic, sizeof(efp1Topic), "openpiste/%s/apparatus/efp1", pisteId);
+      mqttClient.publish(efp1Topic, 0, false, pCyranoMsg, cyranoLen);
     }
     break;
 
