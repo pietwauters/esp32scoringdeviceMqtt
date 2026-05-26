@@ -1,0 +1,12 @@
+{
+  "name": "openpiste-bridge",
+  "version": "0.1.0",
+  "description": "UDP-MQTT bridge for Level 1 EFP1.1 transport — relays Cyrano UDP traffic to/from an MQTT broker",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.0.0"
+  }
+}
