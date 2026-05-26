@@ -15,10 +15,11 @@
 //   npm install
 //   node bridge.js [--verbose]
 
-const dgram = require('dgram');
-const mqtt  = require('mqtt');
-const fs    = require('fs');
-const path  = require('path');
+const dgram       = require('dgram');
+const mqtt        = require('mqtt');
+const fs          = require('fs');
+const path        = require('path');
+const { execSync } = require('child_process');
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,19 @@ const { mqttBroker, udpPort, subnet, ipBase, pistes } = config;
 function pisteIp(number) {
   return `${subnet}.${ipBase + number}`;
 }
+
+// ── IP alias setup ────────────────────────────────────────────────────────────
+// Requires root (run via systemd service). Silently skips if already assigned.
+
+pistes.forEach(p => {
+  const cidr = `${pisteIp(p.number)}/24`;
+  try {
+    execSync(`ip addr add ${cidr} dev ${config.networkInterface}`, { stdio: 'pipe' });
+    log(`[network] Added IP alias ${cidr} on ${config.networkInterface}`);
+  } catch (e) {
+    // RTNETLINK: File exists — alias already set, ignore
+  }
+});
 
 // ── MQTT client ───────────────────────────────────────────────────────────────
 

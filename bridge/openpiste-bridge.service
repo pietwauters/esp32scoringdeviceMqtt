@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenPiste Level 1 UDP-MQTT Bridge
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+Type=simple
+# Adjust WorkingDirectory to where you cloned the repo
+WorkingDirectory=/home/pi/esp32scoringdeviceMqtt/bridge
+ExecStart=/usr/bin/node bridge.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
