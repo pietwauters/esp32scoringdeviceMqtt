@@ -13,12 +13,17 @@
 // Usage:
 //   cp config.example.json config.json   # edit to match your network
 //   npm install
-//   node bridge.js
+//   node bridge.js [--verbose]
 
 const dgram = require('dgram');
 const mqtt  = require('mqtt');
 const fs    = require('fs');
 const path  = require('path');
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+
+const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
+const log = (...args) => { if (verbose) console.log(...args); };
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -48,17 +53,17 @@ function pisteIp(number) {
 const mqttClient = mqtt.connect(mqttBroker);
 
 mqttClient.on('connect', () => {
-  console.log(`[MQTT] Connected to ${mqttBroker}`);
+  log(`[MQTT] Connected to ${mqttBroker}`);
   pistes.forEach(p => {
     const topic = `openpiste/${p.id}/apparatus/efp1`;
     mqttClient.subscribe(topic, { qos: 0 }, () =>
-      console.log(`[MQTT] Subscribed: ${topic}`));
+      log(`[MQTT] Subscribed: ${topic}`));
   });
 });
 
 mqttClient.on('error',      err => console.error('[MQTT] Error:', err.message));
 mqttClient.on('disconnect', ()  => console.warn('[MQTT] Disconnected'));
-mqttClient.on('reconnect',  ()  => console.log('[MQTT] Reconnecting...'));
+mqttClient.on('reconnect',  ()  => log('[MQTT] Reconnecting...'));
 
 // ── Per-piste UDP sockets ─────────────────────────────────────────────────────
 
@@ -71,11 +76,11 @@ pistes.forEach(piste => {
   sock.on('message', (msg, rinfo) => {
     if (!cmsIp) {
       cmsIp = rinfo.address;
-      console.log(`[${piste.id}] CMS address: ${cmsIp}`);
+      log(`[${piste.id}] CMS address: ${cmsIp}`);
     }
     const topic = `openpiste/${piste.id}/software/efp1`;
     mqttClient.publish(topic, msg, { qos: 0, retain: false });
-    console.log(`[${piste.id}] UDP→MQTT  from=${rinfo.address}  bytes=${msg.length}`);
+    log(`[${piste.id}] UDP→MQTT  from=${rinfo.address}  bytes=${msg.length}`);
   });
 
   sock.on('error', err => {
@@ -84,22 +89,22 @@ pistes.forEach(piste => {
   });
 
   sock.bind(udpPort, ip, () =>
-    console.log(`[${piste.id}] Listening on UDP ${ip}:${udpPort}`));
+    log(`[${piste.id}] Listening on UDP ${ip}:${udpPort}`));
 
   // MQTT → UDP: apparatus publishes INFO/NEXT/PREV; forward to CMS
   mqttClient.on('message', (topic, payload) => {
     if (topic !== `openpiste/${piste.id}/apparatus/efp1`) return;
     if (!cmsIp) {
-      console.log(`[${piste.id}] MQTT→UDP skipped — CMS address not yet known`);
+      log(`[${piste.id}] MQTT→UDP skipped — CMS address not yet known`);
       return;
     }
     sock.send(payload, udpPort, cmsIp, err => {
       if (err) console.error(`[${piste.id}] UDP send error: ${err.message}`);
-      else console.log(`[${piste.id}] MQTT→UDP  to=${cmsIp}  bytes=${payload.length}`);
+      else log(`[${piste.id}] MQTT→UDP  to=${cmsIp}  bytes=${payload.length}`);
     });
   });
 
-  console.log(`[${piste.id}] Configured — IP ${ip}:${udpPort}`);
+  log(`[${piste.id}] Configured — IP ${ip}:${udpPort}`);
 });
 
-console.log(`[bridge] Started — ${pistes.length} piste(s)`);
+log(`[bridge] Started — ${pistes.length} piste(s)`);
