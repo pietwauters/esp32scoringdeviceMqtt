@@ -30,8 +30,8 @@ const config = {
   cmsPort:    50100,            // port the CMS listens on
   mqttBroker: 'mqtt://localhost',
   pistes: [
-    { number: 1, id: 'piste_001' },
-    { number: 2, id: 'piste_002' },
+    { number: 1, id: '1' },
+    { number: 2, id: '2' },
   ],
 };
 
