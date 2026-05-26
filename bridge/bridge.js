@@ -2,91 +2,89 @@
 
 // OpenPiste Level 1 bridge — EFP1.1 UDP ↔ MQTT
 //
-// Runs on the same machine as the Mosquitto broker (Raspberry Pi).
+// Reads config.json from the same directory (copy from config.example.json).
 // For each configured piste, binds a UDP socket to the piste's static IP
-// so the CMS can connect without reconfiguration. Relays in both directions:
+// so the CMS can connect without reconfiguration.
 //
-//   CMS → UDP → bridge → MQTT  (openpiste/{id}/software/efp1)
-//   apparatus → MQTT → bridge → UDP → CMS  (openpiste/{id}/apparatus/efp1)
-//
-// Prerequisites:
-//   IP aliases must be added before starting (see config.subnet below):
-//     sudo ip addr add 192.168.0.101/24 dev eth0
-//     sudo ip addr add 192.168.0.102/24 dev eth0
+// Before starting, add IP aliases for each piste (once per boot):
+//   sudo ip addr add 192.168.0.101/24 dev eth0
+// or use a startup script — see install-on-pi.sh.
 //
 // Usage:
+//   cp config.example.json config.json   # edit to match your network
 //   npm install
 //   node bridge.js
 
 const dgram = require('dgram');
 const mqtt  = require('mqtt');
+const fs    = require('fs');
+const path  = require('path');
 
-// ── Configuration ────────────────────────────────────────────────────────────
+// ── Config ───────────────────────────────────────────────────────────────────
 
-const config = {
-  subnet:     '192.168.0',      // first three octets of your LAN subnet
-  ipBase:     100,              // piste N gets IP subnet.(ipBase + N)
-  udpPort:    50100,            // port used for all Cyrano UDP traffic
-  cmsPort:    50100,
-  mqttBroker: 'mqtt://localhost',
-  pistes: [
-    { number: 1, id: '1' },
-    { number: 2, id: '2' },
-  ],
-};
+const configPath = path.join(__dirname, 'config.json');
+if (!fs.existsSync(configPath)) {
+  console.error(`[config] ${configPath} not found.`);
+  console.error('[config] Copy config.example.json to config.json and edit it.');
+  process.exit(1);
+}
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+let config;
+try {
+  config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+} catch (e) {
+  console.error('[config] Failed to parse config.json:', e.message);
+  process.exit(1);
+}
+
+const { mqttBroker, udpPort, subnet, ipBase, pistes } = config;
 
 function pisteIp(number) {
-  return `${config.subnet}.${config.ipBase + number}`;
+  return `${subnet}.${ipBase + number}`;
 }
 
-// Extract piste ID from raw EFP1.1 payload for logging.
-// Format: |Protocol|Command|PisteId|...  → split('|')[3]
-function parsePisteId(buf) {
-  const parts = buf.toString('ascii').split('|');
-  return parts.length > 3 ? parts[3] : '?';
-}
+// ── MQTT client ───────────────────────────────────────────────────────────────
 
-// ── MQTT client ──────────────────────────────────────────────────────────────
-
-const mqttClient = mqtt.connect(config.mqttBroker);
+const mqttClient = mqtt.connect(mqttBroker);
 
 mqttClient.on('connect', () => {
-  console.log(`[MQTT] Connected to ${config.mqttBroker}`);
-  config.pistes.forEach(p => {
+  console.log(`[MQTT] Connected to ${mqttBroker}`);
+  pistes.forEach(p => {
     const topic = `openpiste/${p.id}/apparatus/efp1`;
-    mqttClient.subscribe(topic, { qos: 0 }, () => {
-      console.log(`[MQTT] Subscribed to ${topic}`);
-    });
+    mqttClient.subscribe(topic, { qos: 0 }, () =>
+      console.log(`[MQTT] Subscribed: ${topic}`));
   });
 });
 
-mqttClient.on('error', err => console.error('[MQTT] Error:', err.message));
+mqttClient.on('error',      err => console.error('[MQTT] Error:', err.message));
+mqttClient.on('disconnect', ()  => console.warn('[MQTT] Disconnected'));
+mqttClient.on('reconnect',  ()  => console.log('[MQTT] Reconnecting...'));
 
 // ── Per-piste UDP sockets ─────────────────────────────────────────────────────
 
-config.pistes.forEach(piste => {
-  const ip    = pisteIp(piste.number);
-  const sock  = dgram.createSocket('udp4');
-  let   cmsIp = null;   // learned from first incoming UDP packet
+pistes.forEach(piste => {
+  const ip   = pisteIp(piste.number);
+  const sock = dgram.createSocket('udp4');
+  let   cmsIp = null;
 
-  // UDP → MQTT: CMS sends HELLO/DISP/ACK/NAK to this IP:udpPort
+  // UDP → MQTT: CMS sends HELLO/DISP/ACK/NAK to this piste's IP
   sock.on('message', (msg, rinfo) => {
     if (!cmsIp) {
       cmsIp = rinfo.address;
-      console.log(`[${piste.id}] CMS address learned: ${cmsIp}`);
+      console.log(`[${piste.id}] CMS address: ${cmsIp}`);
     }
     const topic = `openpiste/${piste.id}/software/efp1`;
-    console.log(`[${piste.id}] UDP→MQTT  cmd=${parsePisteId(msg)}  topic=${topic}`);
     mqttClient.publish(topic, msg, { qos: 0, retain: false });
+    console.log(`[${piste.id}] UDP→MQTT  from=${rinfo.address}  bytes=${msg.length}`);
   });
 
-  sock.on('error', err => console.error(`[${piste.id}] UDP error:`, err.message));
-
-  sock.bind(config.udpPort, ip, () => {
-    console.log(`[${piste.id}] Listening on UDP ${ip}:${config.udpPort}`);
+  sock.on('error', err => {
+    console.error(`[${piste.id}] UDP error: ${err.message}`);
+    console.error(`[${piste.id}] Is the IP alias set? sudo ip addr add ${ip}/24 dev ${config.networkInterface}`);
   });
+
+  sock.bind(udpPort, ip, () =>
+    console.log(`[${piste.id}] Listening on UDP ${ip}:${udpPort}`));
 
   // MQTT → UDP: apparatus publishes INFO/NEXT/PREV; forward to CMS
   mqttClient.on('message', (topic, payload) => {
@@ -95,9 +93,13 @@ config.pistes.forEach(piste => {
       console.log(`[${piste.id}] MQTT→UDP skipped — CMS address not yet known`);
       return;
     }
-    console.log(`[${piste.id}] MQTT→UDP  → ${cmsIp}:${config.cmsPort}`);
-    sock.send(payload, config.cmsPort, cmsIp);
+    sock.send(payload, udpPort, cmsIp, err => {
+      if (err) console.error(`[${piste.id}] UDP send error: ${err.message}`);
+      else console.log(`[${piste.id}] MQTT→UDP  to=${cmsIp}  bytes=${payload.length}`);
+    });
   });
+
+  console.log(`[${piste.id}] Configured — IP ${ip}:${udpPort}`);
 });
 
-console.log('OpenPiste Level 1 bridge starting...');
+console.log(`[bridge] Started — ${pistes.length} piste(s)`);
