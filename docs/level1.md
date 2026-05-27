@@ -188,6 +188,8 @@ The bridge can run on any machine with network access to both the UDP subnet and
 
 The bridge is a lightweight process with no persistent state beyond the learned peer IP addresses. It can be implemented in approximately 50 lines of Python or Node.js.
 
+A reference implementation for Raspberry Pi (Node.js, systemd service, multi-piste config) is available at **https://github.com/pietwauters/openpiste-bridge**.
+
 ---
 
 ## 8. Fixed IP constraint
