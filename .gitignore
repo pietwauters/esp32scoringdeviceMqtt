@@ -5,3 +5,6 @@
 .vscode/ipch
 OTAbuilds/
 logs.txt
+build/
+bootloader/
+partition_table/
