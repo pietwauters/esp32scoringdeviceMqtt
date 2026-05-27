@@ -381,19 +381,10 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 
 ---
 
-## Source Code Locations
+## Source Code Location
 
-Two directories are available for this session. **Do not modify anything in the main
-branch directory — it is read-only reference material.**
-
-| Directory | Branch | Purpose |
-|-----------|--------|---------|
-| `/home/piet/esp-idfProjects/esp32scoring-main/` | `main` | Clean original code, pre-refactor. Read only. |
-| `/home/piet/esp-idfProjects/esp32scoringdeviceMqtt/` | refactor (current) | Partially refactored working copy. This is the working directory. |
-
-Start your analysis by reading the `main` branch source — it is the ground truth for
-what the device actually does today. Then compare to the current branch to understand
-what has changed during the refactor attempt.
+The working directory is `/home/piet/esp-idfProjects/esp32scoringdeviceMqtt/` on the `main` branch.
+The OPP2 canonical state refactor is complete and merged. There is no separate reference directory.
 
 ---
 
@@ -401,42 +392,12 @@ what has changed during the refactor attempt.
 
 Read in this order:
 
-**From the main branch (original working code):**
-1. `/home/piet/esp-idfProjects/esp32scoring-main/src/` — all `.h` and `.cpp` files
-2. `/home/piet/esp-idfProjects/esp32scoring-main/main.cpp` (or equivalent entry point)
-
-**From this repo (reference documents + refactor in progress):**
-3. `docs/architecture.md` — proposed architecture and rationale
-4. `docs/level2.md` — OPP2 protocol specification (authoritative)
-5. `src/Opp2Handler.h` and `src/Opp2Handler.cpp` — canonical state owner (refactored)
-6. `src/CyranoHandler.h` and `src/CyranoHandler.cpp` — Cyrano protocol + cache (refactored)
-7. `src/FencingStateMachine.h` — FSM event definitions
-8. `main.cpp` or `src/main.cpp` — wiring of observers and singletons (refactored)
-
----
-
-## Your Task for This Session
-
-> **Analyse the existing code in the `main` branch and evaluate whether the proposed
-> architecture in `docs/architecture.md` is correct, implementable, and the best
-> approach — or whether a better architecture should be proposed.**
-
-Specifically:
-
-1. Read all source files in the main branch to understand the original working architecture.
-2. Read all source files in the current branch to understand what the refactor has changed.
-3. Read `docs/architecture.md` to understand the intended target architecture.
-4. Identify what is actually implemented versus what the architecture document describes.
-5. Identify any architectural gaps, inconsistencies, or risks not covered by the document.
-6. Produce a written assessment with one of these conclusions:
-   - **Proceed with proposed architecture** — it is sound, gaps are minor, implementation
-     path is clear.
-   - **Proposed architecture needs amendments** — describe the specific changes and why.
-   - **Alternative architecture recommended** — describe the alternative with rationale,
-     and what would need to change.
-
-7. Do NOT make any code changes unless explicitly asked after the assessment is complete.
-   Read and analyse only in this first session.
+1. `docs/level2.md` — OPP2 protocol specification (authoritative)
+2. `docs/level1.md` — EFP1.1 over MQTT (Level 1 transport spec)
+3. `src/Opp2Handler.h` and `src/Opp2Handler.cpp` — canonical state owner (SSOT)
+4. `src/CyranoHandler.h` and `src/CyranoHandler.cpp` — Cyrano protocol + push-based cache
+5. `src/FencingStateMachine.h` — FSM event definitions
+6. `src/main.cpp` — observer wiring and singleton setup
 
 ---
 
