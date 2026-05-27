@@ -21,7 +21,7 @@ Commercial fencing scoring devices are expensive. The OpenPiste scoring device d
 | Period management | ✓ |
 | Priority (drawing and sudden death) | ✓ |
 | All three weapons (foil, épée, sabre) | ✓ |
-| Wifi connectivity with Cyrano | ✓ |
+| Wifi connectivity — Cyrano/EFP1.1 and OPP2 | ✓ |
 | Wireless repeaters (esp-now) | ✓ |
 
 **Build cost: under €60.** The remote control is a free Android app — no dedicated hardware to buy.
@@ -57,9 +57,9 @@ The scoring device speaks the industry-standard protocols used by professional f
 
 | Protocol | Purpose |
 |----------|---------|
-| **Cyrano (UDP)** | Competition management — compatible with FencingTime, Engarde, FencingFox and others |
-| **FPA (UDP)** | Real-time data — Android remote, CYD hardware remote, video refereeing via the free [SFS iOS app](https://superfencingsystem.com/) |
-| **MQTT / JSON** | Modern open layer — piste monitor, and the foundation for future ecosystem expansion |
+| **OPP2 (MQTT/JSON)** | Native open protocol — structured per-topic messages with timestamps, retained state, and sequence numbers. The canonical state layer. |
+| **Cyrano / EFP1.1 (UDP + MQTT)** | Legacy competition management — compatible with FencingTime, Engarde, FencingFox and others. Bridged to MQTT via [openpiste-bridge](https://github.com/pietwauters/openpiste-bridge). |
+| **FPA RS422** | Hardware displays and scoreboards — real-time data feed to repeater screens. Also used by the Android remote, CYD hardware remote, and the free [SFS iOS app](https://superfencingsystem.com/). |
 
 Drop it into your existing setup and it works. No changes to your competition software, no migration required.
 
@@ -72,22 +72,26 @@ The scoring device is the heart of a broader platform:
 ```
 Scoring device
       │
-      ├─── Cyrano (UDP) ──► FencingTime / Engarde / FencingFox
+      ├─── OPP2 (MQTT) ───► MQTT broker
+      │                           └─── Browser-based piste monitor
+      │                                (single piste or multi-piste overview,
+      │                                 with fencer photos)
       │
-      ├─── FPA (UDP) ─────► SFS video referee app (iOS)
+      ├─── Cyrano (UDP) ──► openpiste-bridge (Raspberry Pi)
+      │                           └─── MQTT broker (Level 1 EFP1.1 topics)
+      │    Cyrano (UDP) ──► FencingTime / Engarde / FencingFox (direct)
+      │
+      ├─── FPA RS422 ─────► Hardware repeater displays / scoreboards
+      │    FPA (UDP) ──────► SFS video referee app (iOS)
       │                 ├─► Android remote control app
       │                 └─► CYD hardware remote
       │
-      ├─── ESP-NOW ───────► Wireless repeater displays (no WiFi required)
-      │
-      └─── MQTT ──────────► Raspberry Pi hub
-                                  └─── Browser-based piste monitor
-                                       (single piste or multi-piste overview,
-                                        with fencer photos)
+      └─── ESP-NOW ───────► Wireless repeater displays (no WiFi required)
 ```
 
 | Repo | Description |
 |------|-------------|
+| [openpiste-bridge](https://github.com/pietwauters/openpiste-bridge) | EFP1.1 Cyrano UDP ↔ MQTT bridge (Raspberry Pi, Node.js) |
 | [ImprovedTesterAfterGenova](https://github.com/pietwauters/ImprovedTesterAfterGenova) | Weapon and wire tester |
 | [remotecontrolapp](https://github.com/pietwauters/remotecontrolapp) | Android remote control (Kotlin) |
 | [CYDRemoteControl](https://github.com/pietwauters/CYDRemoteControl) | Hardware remote (ESP32 + touchscreen) |
