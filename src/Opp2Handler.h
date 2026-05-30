@@ -378,6 +378,13 @@ private:
    */
   void ProcessIncomingControl(const OPP2::Control &msg);
 
+  /**
+   * Clear fencer and match identifying data on ACK (E→W).
+   * Resets m_State.fencers and m_State.match, publishes cleared retained
+   * messages to the broker, and notifies observers.
+   */
+  void ClearIdentifyingData();
+
   // ── Utility ───────────────────────────────────────────────────────────
 
   /**

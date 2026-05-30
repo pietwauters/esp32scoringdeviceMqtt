@@ -798,6 +798,7 @@ void Opp2Handler::ProcessIncomingControl(const OPP2::Control &msg) {
       waiting.state = OPP2::ApparatusState::WAITING;
       updateApparatusStateInternal(waiting); // push + notify + send INFO
     }
+    ClearIdentifyingData();
     break;
 
   case OPP2::Command::NAK:
@@ -855,6 +856,23 @@ void Opp2Handler::ProcessCyranoACK() {
   OPP2::ApparatusStateMsg waiting;
   waiting.state = OPP2::ApparatusState::WAITING;
   updateApparatusStateInternal(waiting); // push + notify + send INFO
+  ClearIdentifyingData();
+}
+
+void Opp2Handler::ClearIdentifyingData() {
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    m_State.fencers = OPP2::Fencers{};
+    m_State.match   = OPP2::Match{};
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] ClearIdentifyingData() timeout");
+    return;
+  }
+  ESP_LOGI(OPP2_TAG, "[ACK] Cleared fencer/match identifying data");
+  PublishFencers();
+  PublishMatch();
+  PushCachedStatusToCyrano();
+  notify(EVENT_CYRANO_SEND_INFO);
 }
 
 void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
