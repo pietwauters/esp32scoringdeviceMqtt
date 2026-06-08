@@ -16,7 +16,7 @@ Opp2Handler::Opp2Handler()
     : m_SeqCounter(0), m_NextPeriodicUpdate(0), m_TimeToShowClock(0),
       m_bConnected(false), m_bWifiConnected(false),
       m_bConnectionAttempted(false), m_StateMutex(nullptr),
-      m_ActiveInputProtocol(InputProtocol::NONE), m_AutoDetectProtocol(true) {
+      m_ActiveInputProtocol(InputProtocol::OPP2), m_AutoDetectProtocol(false) {
   // Initialize state with defaults
   strncpy(m_State.piste_id, "1", sizeof(m_State.piste_id) - 1);
   m_State.apparatus_state.state = OPP2::ApparatusState::WAITING;
@@ -710,17 +710,39 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
     break;
 
   case UI_INPUT_CYRANO_NEXT:
-    // NEXT button: Send NEXT message, do NOT change state
     ESP_LOGI(OPP2_TAG, "[UI] NEXT button pressed");
-    PushCachedStatusToCyrano();     // Update cache if needed
-    notify(EVENT_CYRANO_SEND_NEXT); // Tell CyranoHandler to send NEXT
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_NEXT);
+    if (mqttClient.isConnected()) {
+      OPP2::Control ctrl;
+      ctrl.seq     = NextSeq();
+      ctrl.ts      = CreateTimestamp();
+      ctrl.command = OPP2::Command::NEXT;
+      char payloadBuf[160];
+      char topicBuf[64];
+      OPP2::Serializer::serialize(ctrl, payloadBuf, sizeof(payloadBuf));
+      BuildTopic(OPP2::MessageType::CONTROL, topicBuf, sizeof(topicBuf));
+      mqttClient.publish(topicBuf, 1, false, payloadBuf);
+      ESP_LOGI(OPP2_TAG, "[OPP2] Published control NEXT to %s", topicBuf);
+    }
     break;
 
   case UI_INPUT_CYRANO_PREV:
-    // PREV button: Send PREV message, do NOT change state
     ESP_LOGI(OPP2_TAG, "[UI] PREV button pressed");
-    PushCachedStatusToCyrano();     // Update cache if needed
-    notify(EVENT_CYRANO_SEND_PREV); // Tell CyranoHandler to send PREV
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_SEND_PREV);
+    if (mqttClient.isConnected()) {
+      OPP2::Control ctrl;
+      ctrl.seq     = NextSeq();
+      ctrl.ts      = CreateTimestamp();
+      ctrl.command = OPP2::Command::PREV;
+      char payloadBuf[160];
+      char topicBuf[64];
+      OPP2::Serializer::serialize(ctrl, payloadBuf, sizeof(payloadBuf));
+      BuildTopic(OPP2::MessageType::CONTROL, topicBuf, sizeof(topicBuf));
+      mqttClient.publish(topicBuf, 1, false, payloadBuf);
+      ESP_LOGI(OPP2_TAG, "[OPP2] Published control PREV to %s", topicBuf);
+    }
     break;
 
   case UI_INPUT_CYRANO_BEGIN:
@@ -735,12 +757,23 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
     break;
 
   case UI_INPUT_CYRANO_END:
-    // END button: Change state to ENDING, then send INFO
     ESP_LOGI(OPP2_TAG, "[UI] END button pressed");
     {
       OPP2::ApparatusStateMsg newState;
       newState.state = OPP2::ApparatusState::ENDING;
       updateApparatusStateInternal(newState); // push + notify + send INFO
+    }
+    if (mqttClient.isConnected()) {
+      OPP2::Control ctrl;
+      ctrl.seq     = NextSeq();
+      ctrl.ts      = CreateTimestamp();
+      ctrl.command = OPP2::Command::END;
+      char payloadBuf[160];
+      char topicBuf[64];
+      OPP2::Serializer::serialize(ctrl, payloadBuf, sizeof(payloadBuf));
+      BuildTopic(OPP2::MessageType::CONTROL, topicBuf, sizeof(topicBuf));
+      mqttClient.publish(topicBuf, 1, false, payloadBuf);
+      ESP_LOGI(OPP2_TAG, "[OPP2] Published control END to %s", topicBuf);
     }
     break;
 
@@ -1186,8 +1219,8 @@ void Opp2Handler::CheckConnection() {
     PublishApparatusState();
     PublishScore();
     PublishLights();
-    ESP_LOGI(OPP2_TAG, "[OPP2] About to publish initial Match state");
     PublishMatch();
+    PublishFencers();
 
     ESP_LOGI(OPP2_TAG, "[OPP2] Initial state published");
   } else if (!mqttClient.isConnected() && m_bConnected) {
