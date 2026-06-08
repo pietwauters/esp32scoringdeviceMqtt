@@ -16,7 +16,7 @@ Opp2Handler::Opp2Handler()
     : m_SeqCounter(0), m_NextPeriodicUpdate(0), m_TimeToShowClock(0),
       m_bConnected(false), m_bWifiConnected(false),
       m_bConnectionAttempted(false), m_StateMutex(nullptr),
-      m_ActiveInputProtocol(InputProtocol::OPP2), m_AutoDetectProtocol(false) {
+      m_ActiveInputProtocol(InputProtocol::NONE), m_AutoDetectProtocol(true) {
   // Initialize state with defaults
   strncpy(m_State.piste_id, "1", sizeof(m_State.piste_id) - 1);
   m_State.apparatus_state.state = OPP2::ApparatusState::WAITING;
@@ -286,17 +286,35 @@ void Opp2Handler::SetPisteID(const char *pisteId) {
 // ── Topic Management ────────────────────────────────────────────────────────
 
 bool Opp2Handler::isProtocolAllowed(InputProtocol source) {
-  if (m_AutoDetectProtocol && m_ActiveInputProtocol == InputProtocol::NONE) {
-    ESP_LOGI(OPP2_TAG, "[Protocol] Auto-detected: locking to %s",
-             source == InputProtocol::OPP2 ? "OPP2" : "Cyrano");
-    m_ActiveInputProtocol = source;
+  // Hard override (m_AutoDetectProtocol=false): locked to whatever was set at boot.
+  if (!m_AutoDetectProtocol) {
+    return (m_ActiveInputProtocol == source);
   }
-  if (m_ActiveInputProtocol != source) {
-    ESP_LOGV(OPP2_TAG, "[Guard] Rejected: active=%d source=%d",
-             static_cast<int>(m_ActiveInputProtocol), static_cast<int>(source));
-    return false;
+
+  // Cyrano-priority auto-detect: Cyrano can always take over from NONE or OPP2.
+  if (source == InputProtocol::CYRANO) {
+    if (m_ActiveInputProtocol != InputProtocol::CYRANO) {
+      ESP_LOGI(OPP2_TAG, "[Protocol] Cyrano detected: locking to Cyrano (was %s)",
+               m_ActiveInputProtocol == InputProtocol::NONE ? "NONE" : "OPP2");
+      m_ActiveInputProtocol = InputProtocol::CYRANO;
+    }
+    return true;
   }
-  return true;
+
+  // OPP2: provisional — accepted only if Cyrano has not yet been detected.
+  if (source == InputProtocol::OPP2) {
+    if (m_ActiveInputProtocol == InputProtocol::CYRANO) {
+      ESP_LOGV(OPP2_TAG, "[Guard] OPP2 rejected: Cyrano is active");
+      return false;
+    }
+    if (m_ActiveInputProtocol == InputProtocol::NONE) {
+      ESP_LOGI(OPP2_TAG, "[Protocol] OPP2 provisional (no Cyrano detected yet)");
+      m_ActiveInputProtocol = InputProtocol::OPP2;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 void Opp2Handler::BuildTopic(OPP2::MessageType msgType, char *topicBuf,
@@ -704,9 +722,10 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
   }
 
   case UI_INPUT_RESET:
-    // Full apparatus reset — release protocol lock so next session can auto-detect
-    ESP_LOGI(OPP2_TAG, "[Protocol] Reset: returning to auto-detect (NONE)");
-    m_ActiveInputProtocol = InputProtocol::NONE;
+    if (m_AutoDetectProtocol) {
+      ESP_LOGI(OPP2_TAG, "[Protocol] Reset: releasing protocol lock (NONE)");
+      m_ActiveInputProtocol = InputProtocol::NONE;
+    }
     break;
 
   case UI_INPUT_CYRANO_NEXT:
