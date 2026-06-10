@@ -14,6 +14,8 @@
 #include "RS422_FPA_Type8_Message.h"
 #include "SubjectObserverTemplate.h"
 #include "network.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 #define MAX_MESSAGE_TYPE 11
 // #define ALLOW_BLE
@@ -83,6 +85,10 @@ private:
   char SoftAPIPAddress[16] = "255.255.255.255";
   int m_WifiPeriodicalUpdateCounter = 0;
   int m_SlowWifiPeriodicalUpdateCounter = 0;
+
+  QueueHandle_t m_EventQueue = nullptr;
+  static void   fpa422Task(void *pvParam);
+  void          processOpp2Event(uint32_t eventtype);
 };
 
 #endif // FPA422HANDLER_H

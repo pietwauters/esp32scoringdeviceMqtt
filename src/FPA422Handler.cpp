@@ -112,15 +112,15 @@ void StartBLE() {
 #endif
 
 FPA422Handler::FPA422Handler() {
-  // ctor
-  //
-
   Message5.SetTypeToLeft();
   Message5.SetName("Left fencer", 11);
   Message5.SetNOC("BEL");
   Message6.SetTypeToRight();
   Message6.SetName("Right fencer", 12);
   Message6.SetNOC("FRA");
+
+  m_EventQueue = xQueueCreate(16, sizeof(uint32_t));
+  xTaskCreatePinnedToCore(fpa422Task, "fpa422_upd", 4096, this, 2, nullptr, 0);
 }
 
 FPA422Handler::~FPA422Handler() {
@@ -661,6 +661,22 @@ void FPA422Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 void SetNOC(const char* NOC);*/
 
 void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
+  // Runs in async_udp context (4 KB stack) — must not allocate or call
+  // getStateCopy(). Post to queue; fpa422Task does the actual work.
+  if (m_EventQueue)
+    xQueueSend(m_EventQueue, &eventtype, 0);
+}
+
+void FPA422Handler::fpa422Task(void *pvParam) {
+  FPA422Handler *self = static_cast<FPA422Handler *>(pvParam);
+  uint32_t eventtype;
+  while (true) {
+    if (xQueueReceive(self->m_EventQueue, &eventtype, portMAX_DELAY) == pdTRUE)
+      self->processOpp2Event(eventtype);
+  }
+}
+
+void FPA422Handler::processOpp2Event(uint32_t eventtype) {
   // Machine status ('W','H','F','P','E') — state byte lives in event low byte.
   // LOCKED/UNLOCKED share the same main type but are not machine status chars.
   if (EVENT_CYRANO_STATE == (eventtype & MAIN_TYPE_MASK) &&
@@ -676,10 +692,8 @@ void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
     return;
   }
 
-  // Read fencer information from OPP2 canonical state
-  OPP2::SystemState state = subject->getStateCopy();
+  OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
 
-  // Update right fencer (Message 6)
   if (state.fencers.right.fencer.present) {
     if (state.fencers.right.fencer.id[0] != '\0')
       Message6.SetUID(state.fencers.right.fencer.id,
@@ -691,7 +705,6 @@ void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
       Message6.SetNOC(state.fencers.right.fencer.nation);
   }
 
-  // Update left fencer (Message 5)
   if (state.fencers.left.fencer.present) {
     if (state.fencers.left.fencer.id[0] != '\0')
       Message5.SetUID(state.fencers.left.fencer.id,
@@ -706,7 +719,6 @@ void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
   AllProtocolsTransmitMessage(5);
   AllProtocolsTransmitMessage(6);
 
-  // Update score, cards, priority, round (Message 3)
   Message3.SetScoreLeft(state.score.left.score);
   Message3.SetScoreRight(state.score.right.score);
   Message3.SetYellowCardLeft(state.score.left.yellow_card ? 1 : 0);
@@ -723,16 +735,14 @@ void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
   Message3.SetRound(state.match.round);
   AllProtocolsTransmitMessage(3);
 
-  // Update clock (Message 2)
-  uint32_t t = state.clock.time_ms;
-  uint8_t  min  = t / 60000;
-  uint8_t  sec  = (t % 60000) / 1000;
-  uint8_t  hun  = (t % 1000) / 10;
+  uint32_t t   = state.clock.time_ms;
+  uint8_t  min = t / 60000;
+  uint8_t  sec = (t % 60000) / 1000;
+  uint8_t  hun = (t % 1000) / 10;
   Message2.SetTime(min, sec, hun);
   Message2.SetTimerStatus(state.clock.running ? 'R' : 'N');
   AllProtocolsTransmitMessage(2);
 
-  // Update weapon (Message 4)
   switch (state.match.weapon) {
     case OPP2::Weapon::EPEE:  Message4.setWeapon(EPEE);  break;
     case OPP2::Weapon::SABRE: Message4.setWeapon(SABRE); break;
@@ -741,7 +751,6 @@ void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
   }
   AllProtocolsTransmitMessage(4);
 
-  // Update P-cards and UW2F timer (Message 8)
   Message8.SetPCardLeft(state.uw2f.left.p_card);
   Message8.SetPCardRight(state.uw2f.right.p_card);
   AllProtocolsTransmitMessage(8);
