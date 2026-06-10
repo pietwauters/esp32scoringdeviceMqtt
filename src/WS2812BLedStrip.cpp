@@ -59,14 +59,32 @@ void LedStripHandler(void *parameter) {
 
 TaskHandle_t LedStripAnimationTask;
 void WS2812B_LedStrip::LedStripAnimator(void *parameter) {
-  WS2812B_LedStrip &MyLocalLedStrip = WS2812B_LedStrip::getInstance();
-  uint32_t LastEvent;
+  WS2812B_LedStrip &strip = WS2812B_LedStrip::getInstance();
+  uint32_t event;
   while (true) {
-    if (xQueueReceive(MyLocalLedStrip.Animationqueue, &LastEvent,
-                      4 / portTICK_PERIOD_MS) == pdPASS) {
-      uint32_t event_data = LastEvent;
-      MyLocalLedStrip.DoAnimation(event_data);
+    if (xQueueReceive(strip.Animationqueue, &event, 4 / portTICK_PERIOD_MS) != pdPASS)
+      continue;
+
+    if ((event & 0xffff0000) == EVENT_WS2812_FLASH_SCORE) {
+      // Brief yield so closely-following score events can pile up in the queue
+      vTaskDelay(12 / portTICK_PERIOD_MS);
+
+      // Coalesce: drain all pending score events, tracking which sides changed
+      bool seenLeft  = (event & 0xffff) == 0x0001;
+      bool seenRight = (event & 0xffff) == 0x0002;
+      uint32_t next;
+      while (xQueuePeek(strip.Animationqueue, &next, 0) == pdTRUE &&
+             (next & 0xffff0000) == EVENT_WS2812_FLASH_SCORE) {
+        xQueueReceive(strip.Animationqueue, &next, 0);
+        if ((next & 0xffff) == 0x0001) seenLeft  = true;
+        if ((next & 0xffff) == 0x0002) seenRight = true;
+      }
+
+      if (seenLeft && seenRight)
+        event = EVENT_WS2812_FLASH_SCORE | 0x0003; // both sides — animate together
     }
+
+    strip.DoAnimation(event);
   }
 }
 
@@ -1067,7 +1085,10 @@ void WS2812B_LedStrip::DoAnimation(uint32_t type) {
     break;
 
   case EVENT_WS2812_FLASH_SCORE:
-    AnimateFlashScore((type & 0xffff) == 0x0001);
+    if ((type & 0xffff) == 0x0003)
+      AnimateFlashBothScores();
+    else
+      AnimateFlashScore((type & 0xffff) == 0x0001);
     SetLedStatus(0xff);
     break;
   }
@@ -1130,6 +1151,30 @@ void WS2812B_LedStrip::AnimateFlashScore(bool leftSide) {
   m_pixels->show();
   vTaskDelay(250 / portTICK_PERIOD_MS);
   // DoAnimation() calls SetLedStatus(0xff) for final clean render
+}
+
+void WS2812B_LedStrip::AnimateFlashBothScores() {
+  const int cycles = 8;
+  const int onTime = 180;
+  const int offTime = 60;
+
+  for (int i = 0; i < cycles; i++) {
+    for (int led = 0; led < 128; led++) m_pixels->setPixelColor(led, m_Off);
+    showNumber(0,  m_LeftScore,  m_Red,   0);
+    showNumber(64, m_RightScore, m_Green, 1);
+    m_pixels->show();
+    vTaskDelay(onTime / portTICK_PERIOD_MS);
+
+    for (int led = 0; led < 128; led++) m_pixels->setPixelColor(led, m_Off);
+    m_pixels->show();
+    vTaskDelay(offTime / portTICK_PERIOD_MS);
+  }
+
+  for (int led = 0; led < 128; led++) m_pixels->setPixelColor(led, m_Off);
+  showNumber(0,  m_LeftScore,  m_Red,   0);
+  showNumber(64, m_RightScore, m_Green, 1);
+  m_pixels->show();
+  vTaskDelay(250 / portTICK_PERIOD_MS);
 }
 
 void WS2812B_LedStrip::AnimateAutoRefMode() {

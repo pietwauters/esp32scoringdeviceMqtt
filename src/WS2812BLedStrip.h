@@ -90,6 +90,7 @@ public:
   void AnimateAutoRefMode();
   void AnimateUndoHit(bool leftSide);
   void AnimateFlashScore(bool leftSide);
+  void AnimateFlashBothScores();
   void StartWarning(uint32_t prio);
   void AnimateEngardePretsAllez();
   void StartEngardePretsAllezSequence();
