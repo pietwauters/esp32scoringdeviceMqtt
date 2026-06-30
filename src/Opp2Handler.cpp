@@ -907,14 +907,16 @@ void Opp2Handler::ProcessBootRecovery(const char *topic, const char *payload,
     case OPP2::MessageType::APPARATUS_STATE: {
       OPP2::ApparatusStateMsg msg;
       if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
-        if (msg.state == OPP2::ApparatusState::ENDING) {
-          // ACK/NAK was in-flight when the device rebooted — outcome unknown.
-          // Revert to W so the device does not stay stuck in E indefinitely.
-          ESP_LOGW(OPP2_TAG, "[Boot] Restored state=E: reverting to W (ACK/NAK lost across reboot)");
-          msg.state = OPP2::ApparatusState::WAITING;
+        // Always revert to W after a reboot. The FSM starts fresh regardless of
+        // broker state, and external updates (NEXT/PREV/DISP) are only accepted
+        // in W. Score/lights/fencers are restored as a display reference; the
+        // referee presses BEGIN to start or re-confirm the match.
+        if (msg.state != OPP2::ApparatusState::WAITING) {
+          ESP_LOGW(OPP2_TAG, "[Boot] Restored state=%d: reverting to W (FSM reset on reboot)",
+                   static_cast<int>(msg.state));
         }
+        msg.state = OPP2::ApparatusState::WAITING;
         m_State.apparatus_state = msg;
-        ESP_LOGI(OPP2_TAG, "[Boot] Restored apparatus state: %d", static_cast<int>(msg.state));
       }
       break;
     }
