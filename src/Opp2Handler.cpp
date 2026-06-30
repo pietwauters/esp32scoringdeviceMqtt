@@ -1408,15 +1408,23 @@ void Opp2Handler::CheckConnection() {
   if (s_bBootRecoveryActive && (millis() - s_BootRecoveryStartMs >= 300)) {
     s_bBootRecoveryActive = false;
     s_bFirstConnect       = false;
-    ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery complete — state=%d score=%d:%d",
-             static_cast<int>(m_State.apparatus_state.state),
-             m_State.score.left.score, m_State.score.right.score);
+    ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery complete — state=W score=%d:%d fencers L:%s R:%s",
+             m_State.score.left.score, m_State.score.right.score,
+             m_State.fencers.left.fencer.name, m_State.fencers.right.fencer.name);
+    // Publish recovered state to broker.
     PublishConnection(true);
     PublishApparatusState();
     PublishScore();
     PublishLights();
     PublishMatch();
     PublishFencers();
+    // Notify observers so FPA422 and Cyrano displays update immediately.
+    // EVENT_CYRANO_STATE_W → FPA422 sends Message10 (machine status).
+    // EVENT_CYRANO_SEND_INFO → FPA422 does full getStateCopy() refresh
+    //   (score, cards, fencers, clock, weapon, P-cards).
+    PushCachedStatusToCyrano();
+    notify(EVENT_CYRANO_STATE_W);
+    notify(EVENT_CYRANO_SEND_INFO);
   }
 }
 
