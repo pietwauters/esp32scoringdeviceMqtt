@@ -309,6 +309,21 @@ void ProcessCyranoPacket(AsyncUDPPacket packet) {
 }
 
 void CyranoHandler::CheckConnection() {
+  // Detect WiFi drop and reset connection flags so sockets are re-bound on
+  // reconnect.  Also restart the HELLO timeout clock so the 40 s countdown
+  // does not fire for time the CMS was simply unreachable.
+  if (WiFi.status() != WL_CONNECTED) {
+    if (bWifiConnected) {
+      ESP_LOGW(CYRANO_TAG, "[Cyrano] WiFi lost — resetting UDP/MQTT flags");
+      bWifiConnected = false;
+      budpCyranoConnected = false;
+      bmqttCyranoConnected = false;
+      bCyranoConnected = false;
+      LastHelloReception = millis();
+    }
+    return;
+  }
+
   if (bCyranoConnected) {
     if (bSoftwareIsLive) {
       if (LastHelloReception + 40000 < millis()) {

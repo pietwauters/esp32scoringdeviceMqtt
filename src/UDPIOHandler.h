@@ -50,6 +50,7 @@ class UDPIOHandler : public Subject<UDPIOHandler> , public Observer<FencingState
     int m_hundredths;
     int previous_seconds;
     AsyncUDP Commandudp;
+    AsyncUDP m_OPRCPudp;
 };
 
 

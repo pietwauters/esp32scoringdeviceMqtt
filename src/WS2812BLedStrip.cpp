@@ -419,15 +419,17 @@ void WS2812B_LedStrip::updateHelper(uint32_t eventtype) {
 
     break;
   case EVENT_SCORE_LEFT:
-    SetLeftScore(event_data);
-    // Flash left score
-    startAnimation(EVENT_WS2812_FLASH_SCORE | 0x0001);
+    if (event_data != m_LeftScore) {
+      SetLeftScore(event_data);
+      startAnimation(EVENT_WS2812_FLASH_SCORE | 0x0001);
+    }
     break;
 
   case EVENT_SCORE_RIGHT:
-    SetRightScore(event_data);
-    // Flash right score
-    startAnimation(EVENT_WS2812_FLASH_SCORE | 0x0002);
+    if (event_data != m_RightScore) {
+      SetRightScore(event_data);
+      startAnimation(EVENT_WS2812_FLASH_SCORE | 0x0002);
+    }
     break;
 
   case EVENT_PRIO:
