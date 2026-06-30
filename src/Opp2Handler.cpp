@@ -935,9 +935,28 @@ void Opp2Handler::ProcessBootRecovery(const char *topic, const char *payload,
       }
       break;
     }
+    case OPP2::MessageType::FENCERS: {
+      OPP2::Fencers msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        m_State.fencers = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored fencers L:%s R:%s",
+                 msg.left.fencer.name, msg.right.fencer.name);
+      }
+      break;
+    }
+    case OPP2::MessageType::MATCH: {
+      OPP2::Match msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        m_State.match = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored match weapon=%d round=%d",
+                 static_cast<int>(msg.weapon), msg.round);
+      }
+      break;
+    }
     default:
-      // connection, fencers, match, etc. — not restored (connection is LWT,
-      // fencers/match are not retained by design — see §4.5)
+      // connection: LWT-managed, not restored here.
+      // apparatus/fencers and apparatus/match are retained and handled above.
+      // software/fencers and software/match are NOT retained per §4.5 — CMS re-pushes on reconnect.
       break;
   }
 
@@ -1341,15 +1360,19 @@ void Opp2Handler::CheckConnection() {
       // delivers last-known state back to us.  ProcessBootRecovery() will write
       // them into m_State.  We publish nothing until the window closes.
       char topicBuf[80];
-      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/score",  m_State.piste_id);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/score",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
-      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/lights", m_State.piste_id);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/lights",  m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
-      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/state",  m_State.piste_id);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/state",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
-      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/clock",  m_State.piste_id);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/clock",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 0);
-      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/uw2f",   m_State.piste_id);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/uw2f",    m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 1);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/fencers", m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 1);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/match",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
       s_bBootRecoveryActive = true;
       s_BootRecoveryStartMs = millis();
