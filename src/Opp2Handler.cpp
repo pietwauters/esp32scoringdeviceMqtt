@@ -1430,6 +1430,9 @@ void Opp2Handler::CheckConnection() {
       m_pFSM->SetClockFromMs(m_State.clock.time_ms);
       if (snapWeapon != UNKNOWN)
         m_pFSM->SetMachineWeapon(snapWeapon);
+      m_pFSM->SetUW2FSecondsFromMs(m_State.uw2f.time_ms);
+      m_pFSM->SetPCardLeft(m_State.uw2f.left.p_card);
+      m_pFSM->SetPCardRight(m_State.uw2f.right.p_card);
     }
     // Publish recovered state to broker.
     PublishConnection(true);
