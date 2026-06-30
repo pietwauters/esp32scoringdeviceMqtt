@@ -10,6 +10,13 @@ static const char *OPP2_TAG = "OPP2";
 extern const char *mdnsName;             // Defined in CyranoHandler.cpp
 extern AtlasAsyncMqttClient &mqttClient; // Shared MQTT client singleton
 
+// Boot recovery state — used by CheckConnection() and OnMqttMessageStatic()
+// to intercept the apparatus's own retained topics on the first MQTT connect
+// and restore m_State from broker before publishing anything.
+static bool     s_bFirstConnect       = true;   // false after first connect completes
+static bool     s_bBootRecoveryActive = false;  // true during the 300ms recovery window
+static uint32_t s_BootRecoveryStartMs = 0;      // millis() when the window opened
+
 // ── Constructor / Destructor ────────────────────────────────────────────────
 
 Opp2Handler::Opp2Handler()
@@ -240,8 +247,8 @@ void Opp2Handler::OnMqttConnectStatic(bool sessionPresent) {
   mqttClient.subscribe(topicBuf, 1);
   ESP_LOGI(OPP2_TAG, "[OPP2] *** SUBSCRIBING TO: %s ***", topicBuf);
 
-  // Publish current apparatus state so broker retained message reflects boot state
-  handler.PublishApparatusState();
+  // Do NOT publish here — boot recovery (CheckConnection) will restore state
+  // from retained broker topics first, then publish once the window closes.
 }
 
 void Opp2Handler::OnMqttDisconnectStatic() {
@@ -263,6 +270,18 @@ void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,
 
   // Route based on topic prefix
   if (strncmp(topic, "openpiste/", 10) == 0) {
+
+    // Apparatus topics are our own publishes — never process as incoming events.
+    // Exception: during boot recovery, intercept them to restore m_State from
+    // retained broker data before we overwrite with boot-state zeros.
+    if (strstr(topic, "/apparatus/") != nullptr) {
+      if (s_bBootRecoveryActive) {
+        Opp2Handler::getInstance().ProcessBootRecovery(topic, payload, length);
+      }
+      // After recovery (or if not from apparatus publisher) — drop silently.
+      return;
+    }
+
     // Level 1: raw EFP1.1 from software over MQTT
     if (strstr(topic, "/software/efp1") != nullptr) {
       ESP_LOGD(OPP2_TAG, "[L1] Routing software/efp1 to CyranoHandler");
@@ -777,6 +796,12 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
 
   case UI_INPUT_CYRANO_END:
     ESP_LOGI(OPP2_TAG, "[UI] END button pressed");
+    if (m_State.apparatus_state.state == OPP2::ApparatusState::WAITING) {
+      // W→E is not a valid transition (spec §13). After a reboot the referee
+      // must press BEGIN first (W→H), then END (H→E).
+      ESP_LOGW(OPP2_TAG, "[UI] END ignored in W state — press BEGIN first");
+      break;
+    }
     {
       OPP2::ApparatusStateMsg newState;
       newState.state = OPP2::ApparatusState::ENDING;
@@ -835,6 +860,88 @@ void Opp2Handler::ProcessIncomingMessage(const char *topic, const char *payload,
              static_cast<int>(result));
     break;
   }
+}
+
+void Opp2Handler::ProcessBootRecovery(const char *topic, const char *payload,
+                                      unsigned int length) {
+  // Called only during the 300ms boot recovery window (first MQTT connect).
+  // Deserializes retained apparatus messages directly into m_State without
+  // triggering publish or observer notifications.  State is published once,
+  // in bulk, when the window closes.
+  //
+  // Note: FSM is NOT synced here — the apparatus was rebooted, so button
+  // behaviour will be as if in W regardless of restored bout state.  This is
+  // acceptable: restored display state gives the referee a reference; a spare
+  // unit or manual referee action handles the rest.
+
+  OPP2::Topic parsedTopic;
+  if (!OPP2::TopicParser::parse(topic, parsedTopic)) {
+    ESP_LOGW(OPP2_TAG, "[Boot] Unparseable topic: %s", topic);
+    return;
+  }
+
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+    ESP_LOGW(OPP2_TAG, "[Boot] Mutex timeout during recovery");
+    return;
+  }
+
+  switch (parsedTopic.message_type) {
+    case OPP2::MessageType::SCORE: {
+      OPP2::Score msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        m_State.score = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored score L=%d R=%d", msg.left.score, msg.right.score);
+      }
+      break;
+    }
+    case OPP2::MessageType::LIGHTS: {
+      OPP2::Lights msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        m_State.lights = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored lights L(%d,%d) R(%d,%d)",
+                 (int)msg.left.on_target, (int)msg.left.white,
+                 (int)msg.right.on_target, (int)msg.right.white);
+      }
+      break;
+    }
+    case OPP2::MessageType::APPARATUS_STATE: {
+      OPP2::ApparatusStateMsg msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        if (msg.state == OPP2::ApparatusState::ENDING) {
+          // ACK/NAK was in-flight when the device rebooted — outcome unknown.
+          // Revert to W so the device does not stay stuck in E indefinitely.
+          ESP_LOGW(OPP2_TAG, "[Boot] Restored state=E: reverting to W (ACK/NAK lost across reboot)");
+          msg.state = OPP2::ApparatusState::WAITING;
+        }
+        m_State.apparatus_state = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored apparatus state: %d", static_cast<int>(msg.state));
+      }
+      break;
+    }
+    case OPP2::MessageType::CLOCK: {
+      OPP2::Clock msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        msg.running = false; // timer is always stopped after a reboot
+        m_State.clock = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored clock: %ums (stopped)", msg.time_ms);
+      }
+      break;
+    }
+    case OPP2::MessageType::UW2F: {
+      OPP2::UW2F msg;
+      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
+        m_State.uw2f = msg;
+        ESP_LOGI(OPP2_TAG, "[Boot] Restored UW2F L_P=%d R_P=%d", msg.left.p_card, msg.right.p_card);
+      }
+      break;
+    }
+    default:
+      // connection, fencers, match, etc. — not restored (connection is LWT,
+      // fencers/match are not retained by design — see §4.5)
+      break;
+  }
+
+  xSemaphoreGiveRecursive(m_StateMutex);
 }
 
 void Opp2Handler::ProcessIncomingControl(const OPP2::Control &msg) {
@@ -1227,21 +1334,37 @@ void Opp2Handler::CheckConnection() {
   }
 
   if (mqttClient.isConnected() && !m_bConnected) {
-    // Just connected - publish initial state
     m_bConnected = true;
 
-    ESP_LOGI(OPP2_TAG,
-             "[OPP2] MQTT connected! Publishing initial state for piste: %s",
-             m_State.piste_id);
+    if (s_bFirstConnect) {
+      // First boot: subscribe to our own retained apparatus topics so the broker
+      // delivers last-known state back to us.  ProcessBootRecovery() will write
+      // them into m_State.  We publish nothing until the window closes.
+      char topicBuf[80];
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/score",  m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 1);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/lights", m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 1);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/state",  m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 1);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/clock",  m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 0);
+      snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/uw2f",   m_State.piste_id);
+      mqttClient.subscribe(topicBuf, 1);
+      s_bBootRecoveryActive = true;
+      s_BootRecoveryStartMs = millis();
+      ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery: subscribed to retained apparatus topics, holding 300ms");
+    } else {
+      // WiFi glitch reconnect — RAM state is valid; republish it.
+      ESP_LOGI(OPP2_TAG, "[OPP2] MQTT reconnect: republishing RAM state for piste %s", m_State.piste_id);
+      PublishConnection(true);
+      PublishApparatusState();
+      PublishScore();
+      PublishLights();
+      PublishMatch();
+      PublishFencers();
+    }
 
-    PublishConnection(true);
-    PublishApparatusState();
-    PublishScore();
-    PublishLights();
-    PublishMatch();
-    PublishFencers();
-
-    ESP_LOGI(OPP2_TAG, "[OPP2] Initial state published");
   } else if (!mqttClient.isConnected() && m_bConnected) {
     // Lost connection
     ESP_LOGW(OPP2_TAG, "[OPP2] MQTT connection lost");
@@ -1254,6 +1377,21 @@ void Opp2Handler::CheckConnection() {
       ESP_LOGD(OPP2_TAG, "[OPP2] Waiting for MQTT connection...");
       lastLogTime = millis();
     }
+  }
+
+  // Close the boot recovery window after 300ms and publish restored state.
+  if (s_bBootRecoveryActive && (millis() - s_BootRecoveryStartMs >= 300)) {
+    s_bBootRecoveryActive = false;
+    s_bFirstConnect       = false;
+    ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery complete — state=%d score=%d:%d",
+             static_cast<int>(m_State.apparatus_state.state),
+             m_State.score.left.score, m_State.score.right.score);
+    PublishConnection(true);
+    PublishApparatusState();
+    PublishScore();
+    PublishLights();
+    PublishMatch();
+    PublishFencers();
   }
 }
 

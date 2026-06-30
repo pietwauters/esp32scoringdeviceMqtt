@@ -165,10 +165,12 @@ The apparatus is the authoritative source of truth for what is happening on the 
 
 Connection recovery follows this hierarchy (see also Section 4.7):
 1. If the apparatus retains its RAM state (network glitch, no power loss), it republishes its own apparatus topics on reconnect. No CMS action is needed.
-2. If the apparatus reboots, it first reloads state from its own non-volatile memory (NVS). Failing that, it reads its own last-known state from the retained apparatus topics on the broker — specifically `lights`, `score`, `state`, `clock`, `uw2f`.
+2. If the apparatus reboots, it first reloads state from its own non-volatile memory (NVS). Failing that, it reads its own last-known state from the retained apparatus topics on the broker — specifically `lights`, `score`, `state`, `clock`, `uw2f`. The apparatus then publishes its restored state before accepting any input.
 3. Only if neither local nor broker apparatus state is recoverable does the user press NEXT, prompting the CMS to republish `fencers` and `match`.
 
-A CMS that automatically republishes `fencers` and `match` on apparatus reconnect would violate recovery case 1 by pushing potentially stale CMS-side data over a valid apparatus state.
+A CMS SHOULD republish `fencers` and `match` whenever it detects an apparatus coming online (`apparatus/connection` with `online: true`), provided the CMS has an active bout assigned to that piste. This restores fencer names after a reboot (case 2) at the cost of a harmless redundant push after a glitch (case 1).
+
+**Recovering from a reboot mid-bout:** After a reboot, the apparatus returns to W with the pre-reboot score and lights restored from broker retained topics. The retained `apparatus/state` will reflect the pre-reboot state. If that pre-reboot state was E (the match was ending when the device rebooted), the apparatus reverts it to W on recovery — the ACK/NAK outcome cannot be known after a reboot. The CMS SHOULD re-push `fencers` and `match` on reconnect so the apparatus display is complete. The referee then presses BEGIN (W→H) followed by END (H→E) to re-confirm the result via the normal path. If the pre-reboot state was an active state (H, F, or P), the referee presses BEGIN and the match resumes normally.
 
 **blade_contact** is not retained because it is a point-in-time event. A retained blade contact message would cause a late subscriber to receive a contact notification with no way to know it was already resolved.
 
@@ -530,6 +532,23 @@ Indicates the current operational state of the scoring apparatus. Published on e
 | `"P"` | Pause — between periods |
 | `"W"` | Waiting — no active bout |
 | `"E"` | Ending — awaiting ACK from software |
+
+### State machine
+
+The following transitions are the only valid ones. An apparatus MUST NOT publish a state that does not result from one of these transitions.
+
+| From | Event | To |
+|------|-------|----|
+| `W` | BEGIN button | `H` |
+| `H` | Timer started | `F` |
+| `F` | Timer stopped | `H` |
+| `H` / `F` / `P` | END button | `E` |
+| `E` | ACK received from software | `W` |
+| `E` | NAK received from software | `H` |
+
+**END from W is not a valid transition.** The END button MUST be ignored if the apparatus is in W state. A bout that was interrupted by a reboot is recovered by the referee pressing BEGIN (W→H) followed immediately by END (H→E), which is the normal H→E path requiring no special handling by the CMS.
+
+NAK returns the apparatus to H (not the state it was in before E), because the timer is stopped and the referee must resolve the disputed result before the match can continue.
 
 ---
 
@@ -1073,7 +1092,7 @@ A formal security specification will be added in a future revision.
 
 **Blade contact semantics.** The blade_contact message currently treats contact as a stateful on/off event. An alternative treats it as a momentary event — a single publish with no corresponding off message. The choice affects whether blade_contact should eventually become a retained message. This will be resolved based on feedback from video referee application developers.
 
-**ACK/NAK state machine.** The exact behaviour expected of a Level 2 apparatus when it receives an ACK or NAK control command — and the full state machine around the Ending state — is not yet formally specified.
+**ACK/NAK state machine.** ~~Not yet specified.~~ Resolved: the full state machine is defined in Section 13. ACK transitions E→W; NAK transitions E→H. END is only valid from H, F, or P — W→E is explicitly forbidden.
 
 **JSON Schema.** A machine-readable JSON Schema for all message types is planned as a separate document at `schemas/opp2/` in the OpenPiste repository. Not yet published.
 

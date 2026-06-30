@@ -373,6 +373,14 @@ private:
                               unsigned int length);
 
   /**
+   * Restore m_State from retained apparatus topics during the boot recovery
+   * window (first MQTT connect only).  No publish or observer notification —
+   * state is published in bulk when the window closes in CheckConnection().
+   */
+  void ProcessBootRecovery(const char *topic, const char *payload,
+                           unsigned int length);
+
+  /**
    * Process incoming OPP2 control messages from software/remote.
    * Handles ACK/NAK, video review, and remote control commands.
    */
