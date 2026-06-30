@@ -1418,10 +1418,6 @@ void Opp2Handler::CheckConnection() {
     PublishLights();
     PublishMatch();
     PublishFencers();
-    // Notify observers so FPA422 and Cyrano displays update immediately.
-    // EVENT_CYRANO_STATE_W → FPA422 sends Message10 (machine status).
-    // EVENT_CYRANO_SEND_INFO → FPA422 does full getStateCopy() refresh
-    //   (score, cards, fencers, clock, weapon, P-cards).
     PushCachedStatusToCyrano();
     notify(EVENT_CYRANO_STATE_W);
     notify(EVENT_CYRANO_SEND_INFO);
