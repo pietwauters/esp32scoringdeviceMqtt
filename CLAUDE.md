@@ -12,6 +12,16 @@
 > The observer chain has many paths — only runtime logs can reliably trace behavior.
 > Never spend more than one exchange reading files before asking for a log.
 
+## Protocol / Spec Decisions (FORBIDDEN without permission)
+
+> **Never change protocol-level behavior** — what is retained, QoS levels, what gets
+> published, topic structure, or any other spec-visible behavior — without first:
+> 1. Explaining the problem in plain text
+> 2. Proposing the change and the rationale
+> 3. Waiting for explicit user permission
+>
+> This applies even when the fix seems obviously correct. The user owns the spec.
+
 ## Adding Fields to Established Classes (FORBIDDEN without permission)
 
 > **Never add a member variable, method, or field to an existing handler class**

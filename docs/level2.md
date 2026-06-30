@@ -155,13 +155,18 @@ See Section 22 for the timestamp encoding convention, including the fallback beh
 
 ### 4.5 Retained messages
 
-Apparatus-published topics use retained messages. Software-published topics (`fencers`, `match`) do **not** use retained messages. `blade_contact` and `control` are also not retained.
+Apparatus-published topics use retained messages. All software-published topics (`fencers`, `match`, `score`, `clock`, `uw2f`) do **not** use retained messages. `blade_contact` and `control` are also not retained.
 
 Retained apparatus messages mean the broker holds the last published value for every apparatus topic. A subscriber connecting after the apparatus is online — a display app, a recorder, a second CMS — immediately receives the current state without waiting for the next publish cycle. Combined with QoS 1 on all state-bearing topics, this eliminates the need for periodic heartbeat resends.
 
-**fencers and match** (publisher: software) are **not retained**. The rationale is:
+**All software-published topics are not retained.** The rationale is:
 
-The apparatus is the authoritative source of truth for what is happening on the piste. The CMS is a manager, not a state owner. If `software/fencers` and `software/match` were retained, a stale assignment from a previous competition or a previous session would be replayed to a newly connected apparatus even when no live CMS is present. The apparatus cannot distinguish a retained message from a live one, so it cannot know whether the assignment is current. Making these non-retained means the apparatus only accepts fencer and match data when a CMS is actively pushing it.
+The apparatus is the authoritative source of truth for what is happening on the piste. The CMS is a manager, not a state owner. If software-published messages were retained, a stale value from a previous session would be replayed to a reconnecting apparatus even when no live CMS is present. The apparatus cannot distinguish a retained message from a live one.
+
+- `software/fencers` and `software/match` are initialisation messages: replaying them would assign stale fencer or match data to a fresh apparatus session.
+- `software/score`, `software/clock`, and `software/uw2f` are also initialisation messages sent once at match start. If retained, they would be replayed on any MQTT reconnect (including a brief network glitch) and overwrite the live score, clock, and passivity state that the apparatus correctly holds in RAM. The apparatus is the sole authority for these values once a bout is in progress.
+
+A CMS MUST clear any previously retained software messages for `score`, `clock`, and `uw2f` on a given piste whenever it detects the apparatus coming online (`apparatus/connection` with `online: true`). This is done by publishing an empty payload with `retain: true` on each topic, which instructs the broker to delete the retained message.
 
 Connection recovery follows this hierarchy (see also Section 4.7):
 1. If the apparatus retains its RAM state (network glitch, no power loss), it republishes its own apparatus topics on reconnect. No CMS action is needed.
@@ -239,13 +244,16 @@ openpiste/+/apparatus/connection      # connection status from all pistes
 |-------------|-----------|-----|----------|---------------|
 | `lights` | apparatus | 1 | Yes | On any light change |
 | `clock` | apparatus | 0 | Yes | Every second while running; on any clock state change |
+| `clock` | software | 0 | **No** | At match initialisation (sets starting time) |
 | `blade_contact` | apparatus | 0 | No | On blade contact event |
-| `score` | apparatus or software | 1 | Yes | On score, card, or priority change |
+| `score` | apparatus | 1 | Yes | On score, card, or priority change |
+| `score` | software | 1 | **No** | At match initialisation or manual correction |
 | `connection` | apparatus | 1 | Yes | On connection or disconnection (including LWT) |
 | `state` | apparatus | 1 | Yes | On apparatus state change |
 | `fencers` | software | 1 | No | On fencer, coach, or referee identity change |
 | `match` | software | 1 | No | On match or competition metadata change |
 | `uw2f` | apparatus | 1 | Yes | On UW2F timer or P-card change |
+| `uw2f` | software | 1 | **No** | At match initialisation (resets passivity timer) |
 | `medical` | apparatus | 1 | Yes | On medical timeout event or timer update |
 | `video_review` | apparatus or software | 1 | Yes | On video review request or resolution |
 | `control` | apparatus, software, or remote | 1 | No | On remote control event |
