@@ -1411,6 +1411,26 @@ void Opp2Handler::CheckConnection() {
     ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery complete — state=W score=%d:%d fencers L:%s R:%s",
              m_State.score.left.score, m_State.score.right.score,
              m_State.fencers.left.fencer.name, m_State.fencers.right.fencer.name);
+    // Sync FSM from restored state so all FSM observers (FPA422, LED strip,
+    // TimeScoreDisplay) receive the correct values on the next FSM tick.
+    if (m_pFSM) {
+      weapon_t snapWeapon = UNKNOWN;
+      switch (m_State.match.weapon) {
+        case OPP2::Weapon::EPEE:  snapWeapon = EPEE;  break;
+        case OPP2::Weapon::FOIL:  snapWeapon = FOIL;  break;
+        case OPP2::Weapon::SABRE: snapWeapon = SABRE; break;
+        default: break;
+      }
+      m_pFSM->SetScoreLeft(m_State.score.left.score);
+      m_pFSM->SetScoreRight(m_State.score.right.score);
+      m_pFSM->SetYellowCardLeft(m_State.score.left.yellow_card ? 1 : 0);
+      m_pFSM->SetYellowCardRight(m_State.score.right.yellow_card ? 1 : 0);
+      m_pFSM->SetRedCardLeft(m_State.score.left.red_cards);
+      m_pFSM->SetRedCardRight(m_State.score.right.red_cards);
+      m_pFSM->SetClockFromMs(m_State.clock.time_ms);
+      if (snapWeapon != UNKNOWN)
+        m_pFSM->SetMachineWeapon(snapWeapon);
+    }
     // Publish recovered state to broker.
     PublishConnection(true);
     PublishApparatusState();
