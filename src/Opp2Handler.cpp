@@ -1361,6 +1361,8 @@ void Opp2Handler::CheckConnection() {
       // First boot: subscribe to our own retained apparatus topics so the broker
       // delivers last-known state back to us.  ProcessBootRecovery() will write
       // them into m_State.  We publish nothing until the window closes.
+      s_bBootRecoveryActive = true;
+      s_BootRecoveryStartMs = millis();
       char topicBuf[80];
       snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/score",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
@@ -1376,8 +1378,6 @@ void Opp2Handler::CheckConnection() {
       mqttClient.subscribe(topicBuf, 1);
       snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/match",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
-      s_bBootRecoveryActive = true;
-      s_BootRecoveryStartMs = millis();
       ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery: subscribed to retained apparatus topics, holding 300ms");
     } else {
       // WiFi glitch reconnect — RAM state is valid; republish it.
