@@ -1432,6 +1432,19 @@ void Opp2Handler::CheckConnection() {
       m_pFSM->SetUW2FSecondsFromMs(m_State.uw2f.time_ms);
       m_pFSM->SetPCardLeft(m_State.uw2f.left.p_card);
       m_pFSM->SetPCardRight(m_State.uw2f.right.p_card);
+      // FSM setters only set m_StateChanged/m_WeaponChanged flags; the tick
+      // emits score/card/timer events only inline, not from those flags.
+      // Explicitly broadcast so WS2812B and TimeScoreDisplay update now.
+      m_pFSM->StateChanged(EVENT_SCORE_LEFT  | m_State.score.left.score);
+      m_pFSM->StateChanged(EVENT_SCORE_RIGHT | m_State.score.right.score);
+      m_pFSM->StateChanged(EVENT_YELLOW_CARD_LEFT  | (m_State.score.left.yellow_card  ? 1 : 0));
+      m_pFSM->StateChanged(EVENT_YELLOW_CARD_RIGHT | (m_State.score.right.yellow_card ? 1 : 0));
+      m_pFSM->StateChanged(EVENT_RED_CARD_LEFT  | m_State.score.left.red_cards);
+      m_pFSM->StateChanged(EVENT_RED_CARD_RIGHT | m_State.score.right.red_cards);
+      m_pFSM->StateChanged(EVENT_P_CARD | m_State.uw2f.left.p_card | (m_State.uw2f.right.p_card << 8));
+      m_pFSM->StateChanged(m_pFSM->MakeTimerEvent());
+      uint32_t uw2fSec = m_State.uw2f.time_ms / 1000;
+      m_pFSM->StateChanged(EVENT_UW2F_TIMER | (uw2fSec / 60) << 16 | (uw2fSec % 60) << 8);
     }
     // Publish recovered state to broker.
     PublishConnection(true);
