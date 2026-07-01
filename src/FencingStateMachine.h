@@ -187,7 +187,7 @@ public:
     m_Timer.SetMinutes(time_ms / 60000);
     m_Timer.SetSeconds((time_ms % 60000) / 1000);
   }
-  void SetUW2FSecondsFromMs(uint32_t time_ms) { m_UW2FSeconds = (long)(time_ms / 1000); }
+  void SetUW2FSecondsFromMs(uint32_t time_ms) { m_UW2FSeconds = (long)(time_ms / 1000); m_UW2FTimer.Seed(time_ms); }
   void SetPCardLeft(int count)  { m_PCardLeft  = count; }
   void SetPCardRight(int count) { m_PCardRight = count; }
   uint32_t MakeTimerEvent();

@@ -16,6 +16,7 @@ class UW2FTimer
         void Stop();
         void Reset();
         void RestorePreviousState(){m_TotalTime = m_TotalTime_backup;};
+        void Seed(long totalTimeMs) { m_TotalTime = totalTimeMs; }
         long GetIntermediateTime();
 
 
