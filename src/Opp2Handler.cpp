@@ -895,13 +895,10 @@ void Opp2Handler::ProcessBootRecovery(const char *topic, const char *payload,
       break;
     }
     case OPP2::MessageType::LIGHTS: {
-      OPP2::Lights msg;
-      if (OPP2::Deserializer::deserialize(payload, length, msg) == OPP2::DeserializeError::OK) {
-        m_State.lights = msg;
-        ESP_LOGI(OPP2_TAG, "[Boot] Restored lights L(%d,%d) R(%d,%d)",
-                 (int)msg.left.on_target, (int)msg.left.white,
-                 (int)msg.right.on_target, (int)msg.right.white);
-      }
+      // Lights are transient hit state — not valid after a reboot. The FSM
+      // resets to no-hit on every power cycle, so we always start with
+      // lights off regardless of what the broker retained. Skipped.
+      ESP_LOGI(OPP2_TAG, "[Boot] Skipping retained lights — always off after reboot");
       break;
     }
     case OPP2::MessageType::APPARATUS_STATE: {
