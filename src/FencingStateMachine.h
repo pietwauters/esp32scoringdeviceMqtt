@@ -46,77 +46,13 @@ public:
   void PeriodicallyBroadcastFullState(class RepeaterSender *TheRepeater,
                                       long Period = 7919);
 
-  /** Access m_Red
-   * \return The current value of m_Red
-   */
-  bool GetRed() { return m_Lights & MASK_RED; }
-  /** Set m_Red
-   * \param val New value to set
-   */
-  void SetRed(bool val) {
-    if (val != m_Red) {
-      m_Red = val;
-      m_StateChanged = true;
-    }
-  }
-  /** Access m_Green
-   * \return The current value of m_Green
-   */
-  bool GetGreen() { return m_Lights & MASK_GREEN; }
-  /** Set m_Green
-   * \param val New value to set
-   */
-  void SetGreen(bool val) {
-    if (val != m_Green) {
-      m_Green = val;
-      m_StateChanged = true;
-    }
-  }
-  /** Access m_WhiteL
-   * \return The current value of m_WhiteL
-   */
+  // Light state is stored entirely in m_Lights (bitmask). Getters read from it directly.
+  bool GetRed()    { return m_Lights & MASK_RED; }
+  bool GetGreen()  { return m_Lights & MASK_GREEN; }
   bool GetWhiteL() { return m_Lights & MASK_WHITE_L; }
-  /** Set m_WhiteL
-   * \param val New value to set
-   */
-  void SetWhiteL(bool val) {
-    if (val != m_WhiteL) {
-      m_WhiteL = val;
-      m_StateChanged = true;
-    }
-  }
-
-  /** Access m_WhiteR
-   * \return The current value of m_WhiteL
-   */
   bool GetWhiteR() { return m_Lights & MASK_WHITE_R; }
-
-  /** Access m_OrangeL
-   * \return The current value of m_OrangeL
-   */
   bool GetOrangeL() { return m_Lights & MASK_ORANGE_L; }
-  /** Set m_OrangeL
-   * \param val New value to set
-   */
-  void SetOrangeL(bool val) {
-    if (val != m_OrangeL) {
-      m_OrangeL = val;
-      m_StateChanged = true;
-    }
-  }
-  /** Access m_OrangeR
-   * \return The current value of m_OrangeR
-   */
   bool GetOrangeR() { return m_Lights & MASK_ORANGE_R; }
-  /** Set m_OrangeR
-   * \param val New value to set
-   */
-  void SetOrangeR(bool val) {
-    if (val != m_OrangeR) {
-      m_OrangeR = val;
-      m_StateChanged = true;
-    }
-  }
   /** Access m_Priority&
    * \return The current value of m_Priority
    */
@@ -282,11 +218,6 @@ private:
   void ProcessUW2FUndo();
 
   // private member variables
-  bool m_Red;     //!< Member variable "m_Red"
-  bool m_Green;   //!< Member variable "m_Green"
-  bool m_WhiteL;  //!< Member variable "m_WhiteL"
-  bool m_OrangeL; //!< Member variable "m_OrangeL"
-  bool m_OrangeR; //!< Member variable "m_OrangeR"
   bool m_StateChanged;
   Priority_t m_Priority;  //!< Member variable "m_Priority"
   int m_YellowCardLeft;   //!< Member variable "m_YellowCardLeft"
