@@ -14,7 +14,7 @@ extern AtlasAsyncMqttClient &mqttClient; // Shared MQTT client singleton
 // to intercept the apparatus's own retained topics on the first MQTT connect
 // and restore m_State from broker before publishing anything.
 static bool     s_bFirstConnect       = true;   // false after first connect completes
-static bool     s_bBootRecoveryActive = false;  // true during the 300ms recovery window
+static bool     s_bBootRecoveryActive = false;  // true during the 1000ms recovery window
 static uint32_t s_BootRecoveryStartMs = 0;      // millis() when the window opened
 
 // ── Constructor / Destructor ────────────────────────────────────────────────
@@ -864,7 +864,7 @@ void Opp2Handler::ProcessIncomingMessage(const char *topic, const char *payload,
 
 void Opp2Handler::ProcessBootRecovery(const char *topic, const char *payload,
                                       unsigned int length) {
-  // Called only during the 300ms boot recovery window (first MQTT connect).
+  // Called only during the 1000ms boot recovery window (first MQTT connect).
   // Deserializes retained apparatus messages directly into m_State without
   // triggering publish or observer notifications.  State is published once,
   // in bulk, when the window closes.
@@ -1378,7 +1378,7 @@ void Opp2Handler::CheckConnection() {
       mqttClient.subscribe(topicBuf, 1);
       snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/apparatus/match",   m_State.piste_id);
       mqttClient.subscribe(topicBuf, 1);
-      ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery: subscribed to retained apparatus topics, holding 300ms");
+      ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery: subscribed to retained apparatus topics, holding 1000ms");
     } else {
       // WiFi glitch reconnect — RAM state is valid; republish it.
       ESP_LOGI(OPP2_TAG, "[OPP2] MQTT reconnect: republishing RAM state for piste %s", m_State.piste_id);
@@ -1386,6 +1386,8 @@ void Opp2Handler::CheckConnection() {
       PublishApparatusState();
       PublishScore();
       PublishLights();
+      PublishClock();
+      PublishUW2F();
       PublishMatch();
       PublishFencers();
     }
@@ -1404,8 +1406,8 @@ void Opp2Handler::CheckConnection() {
     }
   }
 
-  // Close the boot recovery window after 300ms and publish restored state.
-  if (s_bBootRecoveryActive && (millis() - s_BootRecoveryStartMs >= 300)) {
+  // Close the boot recovery window after 1000ms and publish restored state.
+  if (s_bBootRecoveryActive && (millis() - s_BootRecoveryStartMs >= 1000)) {
     s_bBootRecoveryActive = false;
     s_bFirstConnect       = false;
     ESP_LOGI(OPP2_TAG, "[OPP2] Boot recovery complete — state=W score=%d:%d fencers L:%s R:%s",
