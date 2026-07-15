@@ -161,4 +161,49 @@ Alternative approaches considered:
 
 ---
 
+## Tier A (mTLS) provisioning: TLS hostname/CN check disabled
+
+*Decided 2026-07-14 — see `src/TierAProvisioning.h`/`.cpp`, `src/AtlasAsyncMqttClient.cpp`.*
+
+### The Problem
+
+This device connects to the MQTT broker using a **resolved IP address**
+(`CyranoHandler::Begin()` → `MDNSResolver::resolveHostname()` returns an `IPAddress`,
+stored as `AtlasAsyncMqttClient::m_host`), never a hostname string. The broker's TLS
+certificate (Atlas's `scripts/generate-tls-cert.sh`) only lists `openpiste.local`,
+`localhost`, and `127.0.0.1` in its Subject Alternative Name — never an arbitrary LAN
+IP. This mismatch was invisible until Tier A (`docs/level2.md` §30.5) added the first
+certificate-verified TLS connection this device has ever made — the pre-existing
+anonymous connection is plain TCP, no certificate check at all.
+
+Confirmed on real hardware: without a fix, every mTLS connection attempt fails the
+handshake unconditionally with `Failed to verify peer certificate!` (mbedtls `-0x2700`,
+`MBEDTLS_ERR_X509_CERT_VERIFY_FAILED`) — regardless of whether the certificate is
+otherwise entirely valid and correctly signed.
+
+### The Solution
+
+`mqtt_cfg.skip_cert_common_name_check = true` in `AtlasAsyncMqttClient::begin()`
+(only when `m_tlsEnabled`). This disables **only** the hostname/CN-vs-SAN match — the
+certificate **chain** is still fully verified against `m_ca_cert` (Atlas's own
+locally-generated CA; nothing else is trusted by this device). A certificate not
+signed by that CA still cannot pass the handshake.
+
+### Why not fix the root cause instead?
+
+The textbook-correct fix is connecting via the `openpiste.local` hostname string
+instead of a pre-resolved IP, so the certificate's SAN would actually match what's
+being verified. Not done here because that touches `CyranoHandler::Begin()`'s shared
+connection-setup/address-resolution logic, which the existing anonymous/legacy Cyrano
+path also depends on — a bigger-blast-radius change than this narrower one, for a
+project whose stated trust model (`docs/level2.md` §30.1) is already
+"physically-secured local network... not bank-grade," not defense against an
+on-path attacker who has already compromised the venue LAN.
+
+**Revisit if:** the connection-setup code is ever refactored to support hostname-based
+connections generally, or if a deployment's threat model changes such that this
+tradeoff is no longer acceptable.
+
+---
+
 *Last updated: May 17, 2026*

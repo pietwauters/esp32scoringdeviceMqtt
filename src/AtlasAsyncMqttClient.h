@@ -61,6 +61,10 @@ public:
   // Connection status
   bool isConnected();
 
+  // For Tier A provisioning (TierAProvisioning), which needs to switch to port
+  // 8883/mTLS on the same broker host without otherwise touching the connection.
+  std::string getHost() const { return m_host; }
+
 private:
   AtlasAsyncMqttClient(); // singleton protected
 
@@ -90,7 +94,18 @@ private:
   bool m_lwtRetain = false;
   bool m_lwtEnabled = false;
 
-  std::string m_ca_cert; // For TLS server verification (PEM format)
+  std::string m_ca_cert;     // For TLS server verification (PEM format)
+  std::string m_client_cert; // Tier A (docs/level2.md §30.5) mTLS client certificate
+  std::string m_client_key;  // and its matching private key — set via setTlsCerts()
+
+  // esp-mqtt delivers any message larger than its internal buffer (default 1024
+  // bytes — see MQTT_EVENT_DATA's total_data_len/current_data_offset) across
+  // multiple MQTT_EVENT_DATA callbacks, each with a fragment of the payload and
+  // only the first carrying the topic. Everything up to now (OPP2 score/clock/etc.
+  // messages) has stayed comfortably under that limit, so this was never hit
+  // before Tier A's provisioning response (two PEM certificates, ~1.3KB) needed it.
+  std::string m_incomingTopic;
+  std::string m_incomingPayload;
 
   static esp_err_t mqttEventHandlerCb(esp_mqtt_event_handle_t event);
   static void eventHandler(void *handler_args, esp_event_base_t base,

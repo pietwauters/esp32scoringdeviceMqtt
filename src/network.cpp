@@ -4,6 +4,7 @@
 #include "AsyncUDP.h"
 #include "FlashWriteGuard.h"
 #include "MDNSResolver.h"
+#include "TierAProvisioning.h"
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiAP.h>
@@ -24,6 +25,58 @@ AsyncWebServer server(80);
 // Forward declaration for calibration HTML handler
 String getCalibrationHtml();
 
+// Tier A provisioning (docs/level2.md §30.5) — this device has no camera to scan a
+// QR with, unlike a phone-based Tier B scoresheet, so the operator-relayed ticket
+// code is entered here instead, on the device's own existing web server.
+String getProvisionHtml(const String &sentParam) {
+  bool has = TierAProvisioning::getInstance().HasCertificate();
+  String html = "<html><head><meta charset='utf-8'>"
+                "<title>Tier A Provisioning</title></head><body>";
+  html += "<h2>Pair this device with the CMS</h2>";
+  if (sentParam == "1")
+    html += "<p><i>Request sent &mdash; reload this page in a few seconds to "
+            "check the status below.</i></p>";
+  else if (sentParam == "0")
+    html += "<p><i>Could not start provisioning &mdash; a request may already "
+            "be in flight (see device logs), or key generation failed.</i></p>";
+  html += "<p><b>Device id:</b> " +
+          String(TierAProvisioning::getInstance().GetOrCreateDeviceId().c_str()) +
+          "</p>";
+  html += "<p><b>Current status:</b> " +
+          String(has ? "provisioned (certificate on file)"
+                     : "not provisioned &mdash; connecting anonymously") +
+          "</p>";
+
+  TierAProvisioning::StorageDebugInfo dbg = TierAProvisioning::getInstance().GetStorageDebugInfo();
+  html += "<p><b>NVS storage (diagnostic):</b><br>";
+  html += "cert: " + String((unsigned)dbg.certLen) + " bytes<br>";
+  html += "priv_key: " + String((unsigned)dbg.privKeyLen) + " bytes<br>";
+  html += "ca_cert: " + String((unsigned)dbg.caCertLen) + " bytes<br>";
+  html += "request in flight: " +
+          String(dbg.requestPending
+                     ? ("yes, sent " + String((unsigned)(dbg.requestAgeMs / 1000)) + "s ago")
+                     : "no") +
+          "</p>";
+
+  html += "<form method='POST' action='/provision'>";
+  html += "<label>Ticket code (from the CMS's \"Pair a scoring device\" "
+          "screen): <input name='code' maxlength='6'></label><br>";
+  html += "<label>Role: <select name='role'>"
+          "<option value='apparatus'>Apparatus (scoring device)</option>"
+          "<option value='scoresheet'>Scoresheet</option>"
+          "<option value='remote'>Remote control</option>"
+          "<option value='var'>Video review</option>"
+          "</select></label><br>";
+  html += "<button type='submit'>Provision</button>";
+  html += "</form>";
+  html += "<p>The device generates its own certificate request and reports the "
+          "result over MQTT &mdash; this page only sends the ticket code, then "
+          "reloads to show the outcome above (safe to refresh from here on, it "
+          "won't resend the form).</p>";
+  html += "</body></html>";
+  return html;
+}
+
 // Register endpoints and start server
 void startCalibrationWebServer() {
   server.reset();
@@ -33,6 +86,25 @@ void startCalibrationWebServer() {
   server.on("/calibration", HTTP_GET, [](AsyncWebServerRequest *request) {
     String html = getCalibrationHtml();
     request->send(200, "text/html", html);
+  });
+  server.on("/provision", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String sentParam = request->hasParam("sent") ? request->getParam("sent")->value() : "";
+    request->send(200, "text/html; charset=utf-8", getProvisionHtml(sentParam));
+  });
+  server.on("/provision", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!request->hasParam("code", true) || !request->hasParam("role", true)) {
+      request->send(400, "text/plain", "code and role are required");
+      return;
+    }
+    String code = request->getParam("code", true)->value();
+    String role = request->getParam("role", true)->value();
+    bool started = TierAProvisioning::getInstance().GenerateAndRequest(
+        code.c_str(), role.c_str());
+    // Redirect (not render) after the POST, so refreshing the resulting page
+    // re-does a harmless GET instead of the browser re-submitting the form —
+    // that resubmission is exactly what corrupted a real device's in-flight
+    // request state before this fix.
+    request->redirect(started ? "/provision?sent=1" : "/provision?sent=0");
   });
   server.begin();
 }

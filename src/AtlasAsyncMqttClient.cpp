@@ -1,5 +1,12 @@
 
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
+// platformio.ini sets -DLOG_LOCAL_LEVEL=0 (ESP_LOG_NONE) globally, silencing all
+// ESP_LOGx output including errors. Overridden here (before AtlasAsyncMqttClient.h,
+// which pulls in esp_log.h) so this file's own logging — including the new Tier A
+// fragment-reassembly/mTLS logging — is visible while debugging.
+#undef LOG_LOCAL_LEVEL
+#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+
 #include "AtlasAsyncMqttClient.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
@@ -76,6 +83,19 @@ void AtlasAsyncMqttClient::publishString(const char *topic, int qos,
   publish(topic, qos, retain, payload.c_str(), payload.length());
 }
 
+// Tier A (docs/level2.md §30.5) mTLS. cert_pem/key_pem are this device's own
+// provisioned certificate + private key (TierAProvisioning persists both in NVS);
+// ca_pem, if given, overrides whatever setTLS() already set — both are equally
+// valid ways to supply the same broker CA, kept as separate parameters only
+// because that's the signature already declared in the header.
+void AtlasAsyncMqttClient::setTlsCerts(const char *cert_pem, const char *key_pem,
+                                       const char *ca_pem) {
+  m_client_cert = cert_pem ? cert_pem : "";
+  m_client_key = key_pem ? key_pem : "";
+  if (ca_pem)
+    m_ca_cert = ca_pem;
+}
+
 void AtlasAsyncMqttClient::setWill(const char *topic, const char *message,
                                    int qos, bool retain) {
   m_lwtTopic = topic;
@@ -115,11 +135,23 @@ void AtlasAsyncMqttClient::handleEvent(esp_mqtt_event_handle_t event) {
       disconnectCb();
     break;
   case MQTT_EVENT_DATA:
-    ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-    if (messageCb) {
-      std::string topic(event->topic, event->topic_len);
-      std::string payload(event->data, event->data_len);
-      messageCb(topic.c_str(), payload.c_str(), payload.size());
+    // A message larger than esp-mqtt's internal buffer (default 1024 bytes)
+    // arrives split across several MQTT_EVENT_DATA events — current_data_offset
+    // == 0 marks the first fragment (the only one carrying the topic);
+    // reassemble until current_data_offset + data_len reaches total_data_len.
+    if (event->current_data_offset == 0) {
+      m_incomingTopic.assign(event->topic, event->topic_len);
+      m_incomingPayload.clear();
+      m_incomingPayload.reserve(event->total_data_len);
+    }
+    m_incomingPayload.append(event->data, event->data_len);
+
+    if (event->current_data_offset + event->data_len >= event->total_data_len) {
+      ESP_LOGI(TAG, "MQTT_EVENT_DATA complete (%d bytes, topic %s)",
+               event->total_data_len, m_incomingTopic.c_str());
+      if (messageCb)
+        messageCb(m_incomingTopic.c_str(), m_incomingPayload.c_str(),
+                  m_incomingPayload.size());
     }
     break;
   case MQTT_EVENT_SUBSCRIBED:
@@ -163,6 +195,45 @@ void AtlasAsyncMqttClient::begin() {
   if (m_tlsEnabled && !m_ca_cert.empty()) {
     mqtt_cfg.cert_pem = m_ca_cert.c_str();
     ESP_LOGE(TAG, "certificate set");
+
+    // KNOWN TRADEOFF — decided deliberately 2026-07-14, revisit if this ever
+    // needs tightening:
+    //
+    // This device connects via a resolved IP address (m_host, set from
+    // MDNSResolver::resolveHostname()'s IPAddress result in
+    // CyranoHandler::Begin()), never a hostname string. The broker's TLS
+    // certificate (scripts/generate-tls-cert.sh, on the Atlas side) only lists
+    // "openpiste.local" / "localhost" / "127.0.0.1" in its SAN — never an
+    // arbitrary LAN IP. Confirmed on real hardware: without the line below,
+    // every mTLS connection attempt fails the handshake with
+    // "Failed to verify peer certificate!" (mbedtls -0x2700,
+    // MBEDTLS_ERR_X509_CERT_VERIFY_FAILED), unconditionally, regardless of
+    // whether the certificate is otherwise entirely valid.
+    //
+    // skip_cert_common_name_check disables ONLY the hostname/CN-vs-SAN match —
+    // the certificate CHAIN is still fully verified against m_ca_cert above
+    // (Atlas's own locally-generated CA; nothing else is trusted). A rogue
+    // device still cannot pass this handshake without a certificate actually
+    // signed by that CA. This was a deliberate choice, not an oversight: full
+    // hostname verification would need CyranoHandler::Begin() to connect via
+    // the "openpiste.local" hostname string instead of a pre-resolved IP —
+    // that touches shared connection-setup code the existing anonymous/legacy
+    // Cyrano path also depends on, judged a bigger/riskier change than this
+    // narrower one for now. Revisit if that ever changes, or if this
+    // trust-model tradeoff (docs/level2.md §30.1: "physically-secured local
+    // network... not bank-grade") stops being acceptable for a given
+    // deployment.
+    mqtt_cfg.skip_cert_common_name_check = true;
+  }
+
+  // Tier A (docs/level2.md §30.5) mTLS — this device's own provisioned client
+  // certificate, presented to the broker at the TLS handshake. Additive: a
+  // never-provisioned device leaves these empty and connects exactly as before
+  // (anonymous, whatever setCredentials()/username-password may separately add).
+  if (m_tlsEnabled && !m_client_cert.empty() && !m_client_key.empty()) {
+    mqtt_cfg.client_cert_pem = m_client_cert.c_str();
+    mqtt_cfg.client_key_pem = m_client_key.c_str();
+    ESP_LOGI(TAG, "Tier A client certificate set");
   }
 
   client = esp_mqtt_client_init(&mqtt_cfg);

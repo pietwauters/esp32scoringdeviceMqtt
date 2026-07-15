@@ -1,8 +1,17 @@
+// platformio.ini sets -DLOG_LOCAL_LEVEL=0 (ESP_LOG_NONE) globally, silencing all
+// ESP_LOGx output including errors. Overridden here (before Opp2Handler.h, which
+// transitively pulls in esp_log.h via AtlasAsyncMqttClient.h) so this file's
+// existing logging plus the new Tier A routing log line are visible while
+// debugging.
+#undef LOG_LOCAL_LEVEL
+#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+
 #include "Opp2Handler.h"
 #include "AbsoluteTime.h"
 #include "CyranoHandler.h"
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
+#include "TierAProvisioning.h"
 #include <cstring>
 #include <esp_log.h>
 
@@ -270,6 +279,15 @@ void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,
 
   // Route based on topic prefix
   if (strncmp(topic, "openpiste/", 10) == 0) {
+
+    // Tier A provisioning (docs/level2.md §30.5) — reserved, non-piste-scoped
+    // topic (openpiste/_provision/response/{device_id}). Doesn't fit the
+    // opp2-library's Dispatcher (hard 4-segment openpiste/{piste}/{publisher}/
+    // {type} requirement), so it's special-cased here, ahead of everything below.
+    if (strstr(topic, "/_provision/response/") != nullptr) {
+      TierAProvisioning::getInstance().HandleResponse(payload, length);
+      return;
+    }
 
     // Apparatus topics are our own publishes — never process as incoming events.
     // Exception: during boot recovery, intercept them to restore m_State from
@@ -1340,8 +1358,22 @@ void Opp2Handler::CheckConnection() {
     m_bWifiConnected = true;
   }
 
+  // Tier A (docs/level2.md §30.5): if a certificate was granted since the last
+  // tick, this is the safe place (main loop task, not the MQTT client's own
+  // task) to actually stop/reconnect the client onto mTLS. No-op most ticks.
+  TierAProvisioning::getInstance().ApplyReconnectIfPending();
+
   // ── Start MQTT connection (now owned by Opp2Handler) ─────────────────
   if (!mqttClient.isConnected() && !m_bConnectionAttempted) {
+    // Tier A (docs/level2.md §30.5): if this device already holds a granted
+    // certificate, switch to mTLS on 8883 before connecting. A never-provisioned
+    // device has nothing stored, so this is a no-op and boot proceeds exactly as
+    // before (anonymous, whatever port/credentials CyranoHandler::Begin() set).
+    if (TierAProvisioning::getInstance().HasCertificate()) {
+      ESP_LOGI(OPP2_TAG, "[OPP2] Tier A certificate present — connecting via mTLS");
+      TierAProvisioning::getInstance().LoadStoredCertsIntoClient();
+    }
+
     ESP_LOGI(OPP2_TAG, "[OPP2] *** Starting MQTT connection to broker ***");
     ESP_LOGI(OPP2_TAG,
              "[OPP2] *** Will subscribe to openpiste/%s/software and "
