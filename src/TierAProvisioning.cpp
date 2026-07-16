@@ -1,10 +1,10 @@
 // Copyright (c) Piet Wauters 2026 <piet.wauters@gmail.com>
-// platformio.ini sets -DLOG_LOCAL_LEVEL=0 (ESP_LOG_NONE) globally, silencing all
-// ESP_LOGx output including errors. Overridden here, before any header that would
-// otherwise lock it in first, so this file's Tier A logging is visible while
-// debugging — does not affect any other file's log verbosity.
-#undef LOG_LOCAL_LEVEL
-#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+// platformio.ini sets -DLOG_LOCAL_LEVEL=0 (ESP_LOG_NONE) globally, silencing
+// all ESP_LOGx output including errors. Overridden here, before any header that
+// would otherwise lock it in first, so this file's Tier A logging is visible
+// while debugging — does not affect any other file's log verbosity.
+// #undef LOG_LOCAL_LEVEL
+// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "TierAProvisioning.h"
 #include "AbsoluteTime.h"
@@ -23,7 +23,8 @@
 static const char *TAG = "TIER_A";
 static const char *NVS_NAMESPACE = "tier_a";
 
-extern AtlasAsyncMqttClient &mqttClient; // shared singleton, defined in CyranoHandler.cpp
+extern AtlasAsyncMqttClient
+    &mqttClient; // shared singleton, defined in CyranoHandler.cpp
 
 std::string TierAProvisioning::GetOrCreateDeviceId() {
   if (!m_deviceId.empty())
@@ -33,8 +34,9 @@ std::string TierAProvisioning::GetOrCreateDeviceId() {
   prefs.begin(NVS_NAMESPACE, false);
   m_deviceId = prefs.getString("device_id", "").c_str();
   if (m_deviceId.empty()) {
-    // Derive a stable id from the MAC address once, persist thereafter. Sanitized
-    // to match the CMS's own device_id validation (services/provisioning.js:
+    // Derive a stable id from the MAC address once, persist thereafter.
+    // Sanitized to match the CMS's own device_id validation
+    // (services/provisioning.js:
     // ^[a-zA-Z0-9_-]{1,64}$) — a raw MAC's colons wouldn't pass that.
     std::string mac = WiFi.macAddress().c_str();
     std::string sanitized;
@@ -78,7 +80,8 @@ void TierAProvisioning::LoadStoredCertsIntoClient() {
   prefs.end();
 
   if (cert.empty() || key.empty()) {
-    ESP_LOGI(TAG, "No stored Tier A certificate — connecting anonymously as before");
+    ESP_LOGI(TAG,
+             "No stored Tier A certificate — connecting anonymously as before");
     return;
   }
 
@@ -88,8 +91,9 @@ void TierAProvisioning::LoadStoredCertsIntoClient() {
   mqttClient.setServer(mqttClient.getHost(), 8883);
 }
 
-// Standard mbedtls EC keypair + PKCS#10 CSR generation — the private key stays in
-// keyPemOut/pk the whole time; only the CSR (public information) is ever published.
+// Standard mbedtls EC keypair + PKCS#10 CSR generation — the private key stays
+// in keyPemOut/pk the whole time; only the CSR (public information) is ever
+// published.
 static bool generateKeyAndCsr(std::string &keyPemOut, std::string &csrPemOut) {
   mbedtls_pk_context pk;
   mbedtls_entropy_context entropy;
@@ -110,7 +114,8 @@ static bool generateKeyAndCsr(std::string &keyPemOut, std::string &csrPemOut) {
       ESP_LOGE(TAG, "ctr_drbg_seed failed");
       break;
     }
-    if (mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) != 0) {
+    if (mbedtls_pk_setup(&pk, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) !=
+        0) {
       ESP_LOGE(TAG, "pk_setup failed");
       break;
     }
@@ -132,7 +137,8 @@ static bool generateKeyAndCsr(std::string &keyPemOut, std::string &csrPemOut) {
     // signCertificate. Only the public key inside this CSR matters.
     mbedtls_x509write_csr_set_md_alg(&csr, MBEDTLS_MD_SHA256);
     mbedtls_x509write_csr_set_key(&csr, &pk);
-    if (mbedtls_x509write_csr_set_subject_name(&csr, "CN=openpiste-device") != 0) {
+    if (mbedtls_x509write_csr_set_subject_name(&csr, "CN=openpiste-device") !=
+        0) {
       ESP_LOGE(TAG, "set_subject_name failed");
       break;
     }
@@ -158,15 +164,16 @@ bool TierAProvisioning::GenerateAndRequest(const char *code, const char *role,
                                            const char *deviceLabel) {
   unsigned long now = millis();
   if (m_requestPending && (now - m_requestSentAtMs) < PENDING_TIMEOUT_MS) {
-    // A prior request is still awaiting a response — e.g. a browser resubmitting
-    // the /provision form on refresh. Reject rather than overwrite
+    // A prior request is still awaiting a response — e.g. a browser
+    // resubmitting the /provision form on refresh. Reject rather than overwrite
     // m_pendingKeyPem, which would silently corrupt whichever response arrives
-    // (this is exactly the failure mode a real device hit: the earlier grant for
-    // the first request was discarded because a refresh-triggered second
+    // (this is exactly the failure mode a real device hit: the earlier grant
+    // for the first request was discarded because a refresh-triggered second
     // request had already clobbered the pending key).
-    ESP_LOGW(TAG, "Tier A: a request is already in flight — ignoring this one "
-                  "(retry once the current one grants/denies, or wait %lus for "
-                  "it to expire)",
+    ESP_LOGW(TAG,
+             "Tier A: a request is already in flight — ignoring this one "
+             "(retry once the current one grants/denies, or wait %lus for "
+             "it to expire)",
              (PENDING_TIMEOUT_MS - (now - m_requestSentAtMs)) / 1000);
     return false;
   }
@@ -198,7 +205,8 @@ bool TierAProvisioning::GenerateAndRequest(const char *code, const char *role,
   mqttClient.publish("openpiste/_provision/request", 1, false, payload.c_str());
   m_requestPending = true;
   m_requestSentAtMs = now;
-  ESP_LOGI(TAG, "Tier A provisioning request published for device_id=%s role=%s",
+  ESP_LOGI(TAG,
+           "Tier A provisioning request published for device_id=%s role=%s",
            deviceId.c_str(), role);
   return true;
 }
@@ -244,7 +252,9 @@ void TierAProvisioning::HandleResponse(const char *payload, size_t length) {
   prefs.putString("ca_cert", caCert.c_str());
   prefs.end();
 
-  ESP_LOGI(TAG, "Certificate applied — reconnect staged for the next main-loop tick");
+  ESP_LOGI(
+      TAG,
+      "Certificate applied — reconnect staged for the next main-loop tick");
   mqttClient.setTlsCerts(cert.c_str(), m_pendingKeyPem.c_str(), caCert.c_str());
   mqttClient.setTLS(true, caCert);
   mqttClient.setServer(mqttClient.getHost(), 8883);

@@ -1,11 +1,12 @@
 
 // Copyright (c) Piet Wauters 2022 <piet.wauters@gmail.com>
-// platformio.ini sets -DLOG_LOCAL_LEVEL=0 (ESP_LOG_NONE) globally, silencing all
-// ESP_LOGx output including errors. Overridden here (before AtlasAsyncMqttClient.h,
-// which pulls in esp_log.h) so this file's own logging — including the new Tier A
-// fragment-reassembly/mTLS logging — is visible while debugging.
-#undef LOG_LOCAL_LEVEL
-#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+// platformio.ini sets -DLOG_LOCAL_LEVEL=0 (ESP_LOG_NONE) globally, silencing
+// all ESP_LOGx output including errors. Overridden here (before
+// AtlasAsyncMqttClient.h, which pulls in esp_log.h) so this file's own logging
+// — including the new Tier A fragment-reassembly/mTLS logging — is visible
+// while debugging.
+// #undef LOG_LOCAL_LEVEL
+// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "AtlasAsyncMqttClient.h"
 #include "esp_task_wdt.h"
@@ -84,11 +85,12 @@ void AtlasAsyncMqttClient::publishString(const char *topic, int qos,
 }
 
 // Tier A (docs/level2.md §30.5) mTLS. cert_pem/key_pem are this device's own
-// provisioned certificate + private key (TierAProvisioning persists both in NVS);
-// ca_pem, if given, overrides whatever setTLS() already set — both are equally
-// valid ways to supply the same broker CA, kept as separate parameters only
-// because that's the signature already declared in the header.
-void AtlasAsyncMqttClient::setTlsCerts(const char *cert_pem, const char *key_pem,
+// provisioned certificate + private key (TierAProvisioning persists both in
+// NVS); ca_pem, if given, overrides whatever setTLS() already set — both are
+// equally valid ways to supply the same broker CA, kept as separate parameters
+// only because that's the signature already declared in the header.
+void AtlasAsyncMqttClient::setTlsCerts(const char *cert_pem,
+                                       const char *key_pem,
                                        const char *ca_pem) {
   m_client_cert = cert_pem ? cert_pem : "";
   m_client_key = key_pem ? key_pem : "";
@@ -229,7 +231,8 @@ void AtlasAsyncMqttClient::begin() {
   // Tier A (docs/level2.md §30.5) mTLS — this device's own provisioned client
   // certificate, presented to the broker at the TLS handshake. Additive: a
   // never-provisioned device leaves these empty and connects exactly as before
-  // (anonymous, whatever setCredentials()/username-password may separately add).
+  // (anonymous, whatever setCredentials()/username-password may separately
+  // add).
   if (m_tlsEnabled && !m_client_cert.empty() && !m_client_key.empty()) {
     mqtt_cfg.client_cert_pem = m_client_cert.c_str();
     mqtt_cfg.client_key_pem = m_client_key.c_str();

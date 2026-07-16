@@ -1,0 +1,33 @@
+␛[0;33mW (327335) OPP2: [MQTT] Unknown topic prefix: ␛[0m
+␛[0;32mI (327638) AbsoluteTime: Sync #21: HW drift=1 ms over 15017 ms (66.6 ppm)␛[0m
+␛[0;32mI (327640) AbsoluteTime: Time synced: 1781114916135 (SNTP smooth mode)␛[0m
+␛[0;32mI (334760) OPP2: [UI] BEGIN button pressed␛[0m
+␛[0;32mI (334761) OPP2: [Internal] ApparatusState updated: state=1␛[0m
+␛[0;32mI (334766) OPP2: Published state HALT to openpiste/Green/apparatus/state␛[0m
+
+***ERROR*** A stack overflow in task async_udp has been detected.
+
+
+Backtrace: 0x40082dda:0x3ffdc320 0x4008a2b1:0x3ffdc340 0x4008daf2:0x3ffdc360 0x4008c3a7:0x3ffdc3e0 0x4008a3ac:0x3ffdc400 0x4008a35e:0x3ffdc31c |<-CORRUPTED
+
+
+
+
+ELF file SHA256: 10cb19f1fbe94e23
+
+Rebooting...
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6652
+ho 0 tail 12 room 4
+load:0x40078000,len:15060
+load:0x40080400,len:3836
+entry 0x4008069c
+␛[0;32mI (29) boot: ESP-IDF 4.4.6 2nd stage bootloader␛[0m
+␛[0;32mI (29) boot: compile time 13:08:32␛[0m
+␛[0;32mI (29) boot: Multicore bootloader␛[0m
+␛[0;32mI (32) boot: chip revision: v3.0␛[0m
