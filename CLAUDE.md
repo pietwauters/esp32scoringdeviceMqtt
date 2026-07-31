@@ -405,10 +405,35 @@ interchangeable — see rationale below):
   full white-panel indicator (`setWhiteRight/Left(true, true)`) instead of lighting a
   second red pixel. Works as intended per user confirmation — leave as-is.
 
-### 🟡 Concurrency / mutex discipline (not yet fixed)
-- `Opp2Handler.cpp:1120` — reads `m_State.match` directly without `m_StateMutex` inside
-  `update(FencingStateMachine*, EVENT_WEAPON)`. Only spot-checked; worth a dedicated pass
-  (206 raw `m_State.` references vs. 31 lock/unlock pairs in the file).
+### 🟡 Concurrency / mutex discipline
+- ✅ Fixed (2026-07-31) `Opp2Handler.cpp` — did the dedicated pass across the whole file
+  (206 raw `m_State.` references vs. 31 lock/unlock pairs at the time). Found and fixed
+  unguarded reads in:
+  - `update(FencingStateMachine*, ...)` — all 13 event cases (`EVENT_WEAPON`,
+    `EVENT_SCORE_LEFT/RIGHT`, `EVENT_TIMER_STATE`, `EVENT_TIMER`, `EVENT_ROUND`,
+    `EVENT_YELLOW/RED/BLACK_CARD_LEFT/RIGHT`, `EVENT_P_CARD`, `EVENT_PRIO`,
+    `EVENT_UW2F_TIMER`) copied `m_State.X` into a local before mutating and writing back
+    via `updateXInternal()`, unguarded — a concurrent writer (async_udp task processing a
+    DISP, or the new `uiEventTask`) could be overwritten (lost update).
+  - `ProcessLightsChange()` — same pattern, high-frequency (fires on every light change).
+  - `ProcessUIEvents()` `UI_INPUT_CYRANO_END` — checked `m_State.apparatus_state.state`
+    unguarded before deciding whether END is a valid transition.
+  - `CheckConnection()`'s boot-recovery-window-close block — ~15 individual unguarded
+    reads spread across FSM-sync calls; replaced with one mutex-protected snapshot at the
+    top, used for the rest of the block.
+  - `SetPisteID()` — wrote `m_State.piste_id` via `strncpy` with zero mutex protection
+    (its sibling `getPisteId()` already correctly locks). No live caller today
+    (`CyranoHandler::SetPisteID` forwards to it but is itself never called), so not an
+    active race, but fixed for consistency since it's part of the public API surface.
+
+  Everywhere else `m_State` is touched (Publish* functions, `updateXXXInternal/External`,
+  `updateFromCyranoMessage()`, `UI_SWAP_FENCERS`, `ClearIdentifyingData()`,
+  `ProcessBootRecovery()`) was already correctly bracketed by
+  `xSemaphoreTakeRecursive`/`xSemaphoreGiveRecursive` — verified, not just assumed.
+  Remaining unguarded reads are `m_State.piste_id` lookups in `CheckConnection()`,
+  `Begin()`, and `OnMqttConnectStatic()` (topic-building/logging) — left as-is: piste_id
+  is effectively write-once at boot, and these run at boot/connect time with low
+  concurrency pressure. Flagging here rather than fixing preemptively.
 - `WS2812BLedStrip.cpp` — three separate tasks (FSM-driven direct calls, `LedStripHandler`
   queue-draining task, `LedStripAnimator` task) touch `m_pixels` and status fields with no
   mutex; `m_animationRunning` is only a `volatile bool` hint, not a lock.

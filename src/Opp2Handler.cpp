@@ -327,8 +327,13 @@ void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,
 }
 
 void Opp2Handler::SetPisteID(const char *pisteId) {
-  strncpy(m_State.piste_id, pisteId, sizeof(m_State.piste_id) - 1);
-  m_State.piste_id[sizeof(m_State.piste_id) - 1] = '\0';
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    strncpy(m_State.piste_id, pisteId, sizeof(m_State.piste_id) - 1);
+    m_State.piste_id[sizeof(m_State.piste_id) - 1] = '\0';
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] SetPisteID() timeout");
+  }
 }
 
 // ── Topic Management ────────────────────────────────────────────────────────
@@ -673,7 +678,14 @@ void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
   uint32_t event_data = eventtype & SUB_TYPE_MASK;
 
   // Build lights state from event data
-  OPP2::Lights lights = m_State.lights; // Copy current state to preserve seq/ts
+  OPP2::Lights lights; // Copy current state to preserve seq/ts
+  if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    lights = m_State.lights;
+    xSemaphoreGiveRecursive(m_StateMutex);
+  } else {
+    ESP_LOGW(OPP2_TAG, "[MUTEX] ProcessLightsChange() read timeout");
+    return;
+  }
   lights.left.on_target = (event_data & MASK_RED) != 0;
   lights.right.on_target = (event_data & MASK_GREEN) != 0;
   lights.left.white = (event_data & MASK_WHITE_L) != 0;
@@ -844,9 +856,17 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
         EVENT_CYRANO_STATE_UNLOCKED); // Unlock FSM (separate from state change)
     break;
 
-  case UI_INPUT_CYRANO_END:
+  case UI_INPUT_CYRANO_END: {
     ESP_LOGI(OPP2_TAG, "[UI] END button pressed");
-    if (m_State.apparatus_state.state == OPP2::ApparatusState::WAITING) {
+    OPP2::ApparatusState currentState;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      currentState = m_State.apparatus_state.state;
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] UI_INPUT_CYRANO_END read timeout");
+      break;
+    }
+    if (currentState == OPP2::ApparatusState::WAITING) {
       // W→E is not a valid transition (spec §13). After a reboot the referee
       // must press BEGIN first (W→H), then END (H→E).
       ESP_LOGW(OPP2_TAG, "[UI] END ignored in W state — press BEGIN first");
@@ -870,6 +890,7 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
       ESP_LOGI(OPP2_TAG, "[OPP2] Published control END to %s", topicBuf);
     }
     break;
+  }
 
   default:
     // Other UI events not handled here
@@ -1132,10 +1153,18 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 
   case EVENT_WEAPON:
     ESP_LOGI(OPP2_TAG, "EVENT_WEAPON received: event_data=0x%08X", event_data);
-    ESP_LOGI(OPP2_TAG, "Weapon BEFORE update: %d",
-             static_cast<int>(m_State.match.weapon));
     {
-      OPP2::Match match = m_State.match; // Copy current state
+      OPP2::Match match;
+      if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        match = m_State.match; // Copy current state
+        xSemaphoreGiveRecursive(m_StateMutex);
+      } else {
+        ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_WEAPON read timeout");
+        bTransmit = false;
+        break;
+      }
+      ESP_LOGI(OPP2_TAG, "Weapon BEFORE update: %d",
+               static_cast<int>(match.weapon));
       switch (event_data) {
       case WEAPON_MASK_EPEE:
         match.weapon = OPP2::Weapon::EPEE;
@@ -1164,7 +1193,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_SCORE_LEFT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_SCORE_LEFT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.left.score = event_data;
     updateScoreInternal(score);
   }
@@ -1172,7 +1209,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_SCORE_RIGHT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_SCORE_RIGHT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.right.score = event_data;
     updateScoreInternal(score);
   }
@@ -1182,8 +1227,17 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
   case EVENT_TIMER_STATE:
     // Update running state
     {
-      OPP2::Clock clock = m_State.clock; // Copy current state
-      OPP2::ApparatusStateMsg apparatusState = m_State.apparatus_state;
+      OPP2::Clock clock;
+      OPP2::ApparatusStateMsg apparatusState;
+      if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        clock = m_State.clock; // Copy current state
+        apparatusState = m_State.apparatus_state;
+        xSemaphoreGiveRecursive(m_StateMutex);
+      } else {
+        ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_TIMER_STATE read timeout");
+        bTransmit = false;
+        break;
+      }
 
       if (eventtype & DATA_24BIT_MASK) {
         clock.running = true;
@@ -1240,7 +1294,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     if (centiseconds > 99)
       centiseconds = 0;
 
-    OPP2::Clock clock = m_State.clock; // Copy current state
+    OPP2::Clock clock;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      clock = m_State.clock; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_TIMER read timeout");
+      bTransmit = false;
+      break;
+    }
     clock.time_ms = (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
 
     if (bTransmit) {
@@ -1254,7 +1316,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     uint8_t currentRound = event_data & DATA_BYTE0_MASK;
     uint8_t nrOfRounds = (event_data & DATA_BYTE1_MASK) >> 8;
 
-    OPP2::Match match = m_State.match; // Copy current state
+    OPP2::Match match;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      match = m_State.match; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_ROUND read timeout");
+      bTransmit = false;
+      break;
+    }
     match.round = currentRound;
 
     // Derive phase_type and type from nrOfRounds
@@ -1282,7 +1352,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
   }
 
   case EVENT_YELLOW_CARD_LEFT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_YELLOW_CARD_LEFT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.left.yellow_card = (event_data > 0);
     updateScoreInternal(score);
   }
@@ -1290,7 +1368,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_YELLOW_CARD_RIGHT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_YELLOW_CARD_RIGHT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.right.yellow_card = (event_data > 0);
     updateScoreInternal(score);
   }
@@ -1298,7 +1384,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_RED_CARD_LEFT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_RED_CARD_LEFT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.left.red_cards = event_data;
     updateScoreInternal(score);
   }
@@ -1306,7 +1400,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_RED_CARD_RIGHT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_RED_CARD_RIGHT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.right.red_cards = event_data;
     updateScoreInternal(score);
   }
@@ -1314,7 +1416,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_BLACK_CARD_LEFT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_BLACK_CARD_LEFT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.left.black_card = (event_data != 0);
     if (event_data) {
       score.right.status = OPP2::FencerStatus::EXCLUSION;
@@ -1327,7 +1437,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_BLACK_CARD_RIGHT: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_BLACK_CARD_RIGHT read timeout");
+      bTransmit = false;
+      break;
+    }
     score.right.black_card = (event_data != 0);
     if (event_data) {
       score.left.status = OPP2::FencerStatus::EXCLUSION;
@@ -1342,7 +1460,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
   case EVENT_P_CARD: {
     mix_t PCardInfo;
     PCardInfo.theDWord = eventtype & DATA_24BIT_MASK;
-    OPP2::UW2F uw2f = m_State.uw2f; // Copy current state
+    OPP2::UW2F uw2f;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      uw2f = m_State.uw2f; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_P_CARD read timeout");
+      bTransmit = false;
+      break;
+    }
     uw2f.right.p_card = PCardInfo.theBytes[1];
     uw2f.left.p_card = PCardInfo.theBytes[0];
     updateUW2FInternal(uw2f);
@@ -1351,7 +1477,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
   }
 
   case EVENT_PRIO: {
-    OPP2::Score score = m_State.score; // Copy current state
+    OPP2::Score score;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      score = m_State.score; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_PRIO read timeout");
+      bTransmit = false;
+      break;
+    }
     switch (event_data) {
     case 2:
       score.priority = OPP2::Priority::RIGHT;
@@ -1375,7 +1509,15 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     uint32_t seconds = TimeInfo.theBytes[1];
     uint32_t centiseconds = TimeInfo.theBytes[0];
 
-    OPP2::UW2F uw2f = m_State.uw2f; // Copy current state
+    OPP2::UW2F uw2f;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      uw2f = m_State.uw2f; // Copy current state
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] EVENT_UW2F_TIMER read timeout");
+      bTransmit = false;
+      break;
+    }
     uw2f.time_ms = (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
     updateUW2FInternal(uw2f);
     bTransmit = false;
@@ -1500,16 +1642,38 @@ void Opp2Handler::CheckConnection() {
   if (s_bBootRecoveryActive && (millis() - s_BootRecoveryStartMs >= 1000)) {
     s_bBootRecoveryActive = false;
     s_bFirstConnect = false;
+
+    // Snapshot everything needed for the log line + FSM sync under the
+    // mutex, then act on the snapshot below (avoids ~15 individual
+    // unguarded m_State reads racing a concurrent writer during this
+    // window, e.g. a button press or an early DISP right as recovery closes).
+    OPP2::Score snapScore;
+    OPP2::Fencers snapFencers;
+    OPP2::Match snapMatch;
+    OPP2::Clock snapClock;
+    OPP2::UW2F snapUw2f;
+    if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      snapScore = m_State.score;
+      snapFencers = m_State.fencers;
+      snapMatch = m_State.match;
+      snapClock = m_State.clock;
+      snapUw2f = m_State.uw2f;
+      xSemaphoreGiveRecursive(m_StateMutex);
+    } else {
+      ESP_LOGW(OPP2_TAG, "[MUTEX] Boot recovery close read timeout");
+      return;
+    }
+
     ESP_LOGI(
         OPP2_TAG,
         "[OPP2] Boot recovery complete — state=W score=%d:%d fencers L:%s R:%s",
-        m_State.score.left.score, m_State.score.right.score,
-        m_State.fencers.left.fencer.name, m_State.fencers.right.fencer.name);
+        snapScore.left.score, snapScore.right.score,
+        snapFencers.left.fencer.name, snapFencers.right.fencer.name);
     // Sync FSM from restored state so all FSM observers (FPA422, LED strip,
     // TimeScoreDisplay) receive the correct values on the next FSM tick.
     if (m_pFSM) {
       weapon_t snapWeapon = UNKNOWN;
-      switch (m_State.match.weapon) {
+      switch (snapMatch.weapon) {
       case OPP2::Weapon::EPEE:
         snapWeapon = EPEE;
         break;
@@ -1522,34 +1686,33 @@ void Opp2Handler::CheckConnection() {
       default:
         break;
       }
-      m_pFSM->SetScoreLeft(m_State.score.left.score);
-      m_pFSM->SetScoreRight(m_State.score.right.score);
-      m_pFSM->SetYellowCardLeft(m_State.score.left.yellow_card ? 1 : 0);
-      m_pFSM->SetYellowCardRight(m_State.score.right.yellow_card ? 1 : 0);
-      m_pFSM->SetRedCardLeft(m_State.score.left.red_cards);
-      m_pFSM->SetRedCardRight(m_State.score.right.red_cards);
-      m_pFSM->SetClockFromMs(m_State.clock.time_ms);
+      m_pFSM->SetScoreLeft(snapScore.left.score);
+      m_pFSM->SetScoreRight(snapScore.right.score);
+      m_pFSM->SetYellowCardLeft(snapScore.left.yellow_card ? 1 : 0);
+      m_pFSM->SetYellowCardRight(snapScore.right.yellow_card ? 1 : 0);
+      m_pFSM->SetRedCardLeft(snapScore.left.red_cards);
+      m_pFSM->SetRedCardRight(snapScore.right.red_cards);
+      m_pFSM->SetClockFromMs(snapClock.time_ms);
       if (snapWeapon != UNKNOWN)
         m_pFSM->SetMachineWeapon(snapWeapon);
-      m_pFSM->SetUW2FSecondsFromMs(m_State.uw2f.time_ms);
-      m_pFSM->SetPCardLeft(m_State.uw2f.left.p_card);
-      m_pFSM->SetPCardRight(m_State.uw2f.right.p_card);
+      m_pFSM->SetUW2FSecondsFromMs(snapUw2f.time_ms);
+      m_pFSM->SetPCardLeft(snapUw2f.left.p_card);
+      m_pFSM->SetPCardRight(snapUw2f.right.p_card);
       // FSM setters only set m_StateChanged/m_WeaponChanged flags; the tick
       // emits score/card/timer events only inline, not from those flags.
       // Explicitly broadcast so WS2812B and TimeScoreDisplay update now.
-      m_pFSM->StateChanged(EVENT_SCORE_LEFT | m_State.score.left.score);
-      m_pFSM->StateChanged(EVENT_SCORE_RIGHT | m_State.score.right.score);
+      m_pFSM->StateChanged(EVENT_SCORE_LEFT | snapScore.left.score);
+      m_pFSM->StateChanged(EVENT_SCORE_RIGHT | snapScore.right.score);
       m_pFSM->StateChanged(EVENT_YELLOW_CARD_LEFT |
-                           (m_State.score.left.yellow_card ? 1 : 0));
+                           (snapScore.left.yellow_card ? 1 : 0));
       m_pFSM->StateChanged(EVENT_YELLOW_CARD_RIGHT |
-                           (m_State.score.right.yellow_card ? 1 : 0));
-      m_pFSM->StateChanged(EVENT_RED_CARD_LEFT | m_State.score.left.red_cards);
-      m_pFSM->StateChanged(EVENT_RED_CARD_RIGHT |
-                           m_State.score.right.red_cards);
-      m_pFSM->StateChanged(EVENT_P_CARD | m_State.uw2f.left.p_card |
-                           (m_State.uw2f.right.p_card << 8));
+                           (snapScore.right.yellow_card ? 1 : 0));
+      m_pFSM->StateChanged(EVENT_RED_CARD_LEFT | snapScore.left.red_cards);
+      m_pFSM->StateChanged(EVENT_RED_CARD_RIGHT | snapScore.right.red_cards);
+      m_pFSM->StateChanged(EVENT_P_CARD | snapUw2f.left.p_card |
+                           (snapUw2f.right.p_card << 8));
       m_pFSM->StateChanged(m_pFSM->MakeTimerEvent());
-      uint32_t uw2fSec = m_State.uw2f.time_ms / 1000;
+      uint32_t uw2fSec = snapUw2f.time_ms / 1000;
       m_pFSM->StateChanged(EVENT_UW2F_TIMER | (uw2fSec / 60) << 16 |
                            (uw2fSec % 60) << 8);
     }
