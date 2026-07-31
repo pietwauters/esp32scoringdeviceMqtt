@@ -43,16 +43,19 @@ void CyranoHandler::updateCachedStatus(const EFP1Message &status) {
 }
 
 void CyranoHandler::RebuildCachedStrings() {
-  // Build EFP1 message with Cyrano-specific fields
-  EFP1Message msg = m_CachedStatus;
-  msg[Command] = "INFO";
-  msg[CompetitionId] = m_CompetitionId;
+  // Mutate m_CachedStatus in place rather than copying to a local EFP1Message
+  // (~1.3KB on the stack) — this runs in UDP callback context (async_udp
+  // task, ~4KB stack) via updateFromCyranoMessage()->updateCachedStatus().
+  // Command/CompetitionId are unconditionally overwritten here on every
+  // call, so nothing depends on their prior value.
+  m_CachedStatus[Command] = "INFO";
+  m_CachedStatus[CompetitionId] = m_CompetitionId;
 
   // Build and cache the INFO, NEXT, PREV Cyrano wire strings
-  // CRITICAL: MakeNext/PrevMessageString() use msg[CompetitionId], so msg must have it set
-  msg.ToString(m_CachedCyranoString);
-  m_CachedNextCyrano = msg.MakeNextMessageString();
-  m_CachedPrevCyrano = msg.MakePrevMessageString();
+  // CRITICAL: MakeNext/PrevMessageString() use [CompetitionId], so it must be set above
+  m_CachedStatus.ToString(m_CachedCyranoString);
+  m_CachedNextCyrano = m_CachedStatus.MakeNextMessageString();
+  m_CachedPrevCyrano = m_CachedStatus.MakePrevMessageString();
 
   // Mark cache as valid
   m_CachedStatusValid = true;

@@ -75,6 +75,14 @@ void Opp2Handler::Begin() {
   }
   ESP_LOGI(OPP2_TAG, "[OPP2] State mutex created successfully");
 
+  // ── UI event queue + dedicated task (stack safety) ────────────────────
+  // update(UDPIOHandler*) runs in async_udp context (~4KB stack) and must
+  // not call ProcessUIEvents() (mutex + JSON + MQTT publish) directly.
+  // Mirrors the FPA422Handler queue+task pattern.
+  m_UIEventQueue = xQueueCreate(16, sizeof(uint32_t));
+  xTaskCreatePinnedToCore(uiEventTask, "opp2_ui_evt", 4096, this, 2, nullptr,
+                          0);
+
   m_Preferences.begin("credentials", false);
   uint32_t pisteNr = m_Preferences.getInt("pisteNr", 304);
   String pisteName = m_Preferences.getString("Pistename", "");
@@ -679,6 +687,16 @@ void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
   if (parry != m_LastParryState) {
     m_LastParryState = parry;
     PublishBladeContact(parry);
+  }
+}
+
+void Opp2Handler::uiEventTask(void *pvParam) {
+  Opp2Handler *self = static_cast<Opp2Handler *>(pvParam);
+  uint32_t eventtype;
+  while (true) {
+    if (xQueueReceive(self->m_UIEventQueue, &eventtype, portMAX_DELAY) ==
+        pdTRUE)
+      self->ProcessUIEvents(eventtype);
   }
 }
 
@@ -1874,20 +1892,24 @@ void Opp2Handler::getPisteId(char *buffer) {
 // ════════════════════════════════════════════════════════════════════════════
 
 void Opp2Handler::PushCachedStatusToCyrano() {
-  // Called after state updates (mutex already released)
-  // Safe to take mutex again for read-only copy
-  OPP2::SystemState stateCopy;
+  // Called after state updates (mutex already released).
+  // Converts directly from m_State while holding the mutex, instead of
+  // taking a full ~500-600 byte SystemState stack copy first — this runs
+  // in UDP callback context (async_udp task, ~4KB stack) via
+  // updateFromCyranoMessage(). convertOpp2ToCyrano() is a pure conversion
+  // (no calls back into Opp2Handler), so holding the recursive mutex here
+  // is safe.
+  EFP1Message cyranoStatus;
 
   if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    stateCopy = m_State;
+    convertOpp2ToCyrano(m_State, m_State.piste_id, cyranoStatus);
     xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] PushCachedStatusToCyrano() timeout");
     return;
   }
 
-  // Convert to Cyrano format and push to CyranoHandler
-  EFP1Message cyranoStatus = convertOpp2ToCyrano(stateCopy, stateCopy.piste_id);
+  // Push to CyranoHandler
   CyranoHandler::getInstance().updateCachedStatus(cyranoStatus);
 }
 
@@ -2428,9 +2450,9 @@ bool Opp2Handler::uw2fEqual(const OPP2::UW2F &a, const OPP2::UW2F &b) {
 // OPP2 to Cyrano Conversion (Phase 3)
 // ════════════════════════════════════════════════════════════════════════════
 
-EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
-                                             const char *pisteId) {
-  EFP1Message cyrano;
+void Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
+                                      const char *pisteId, EFP1Message &out) {
+  EFP1Message &cyrano = out;
 
   // ── Header fields ──────────────────────────────────────────────────────
 
@@ -2633,8 +2655,6 @@ EFP1Message Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
   snprintf(left_pcard_buf, sizeof(left_pcard_buf), "%u",
            state.uw2f.left.p_card);
   cyrano[LeftPCards] = left_pcard_buf;
-
-  return cyrano;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

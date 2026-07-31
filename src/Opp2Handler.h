@@ -9,6 +9,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <opp2.h>
 
@@ -69,9 +70,13 @@ public:
 
   /**
    * Observer pattern: receive UI events from UDPIOHandler.
+   * Runs in async_udp context (4 KB stack) — must not call ProcessUIEvents()
+   * directly (mutex + JSON + MQTT publish). Posts to queue instead;
+   * uiEventTask() does the actual work on its own dedicated stack.
    */
   void update(UDPIOHandler *subject, uint32_t eventtype) override {
-    ProcessUIEvents(eventtype);
+    if (m_UIEventQueue)
+      xQueueSend(m_UIEventQueue, &eventtype, 0);
   }
 
   /**
@@ -125,12 +130,15 @@ public:
    * Convert OPP2::SystemState to Cyrano EFP1Message format.
    * This allows CyranoHandler to read from OPP2 canonical state.
    * Static method - no instance required.
+   * Output parameter (not return-by-value) — avoids a second ~1.3KB
+   * EFP1Message stack frame; this runs in UDP callback context via
+   * PushCachedStatusToCyrano().
    * @param state OPP2 system state to convert
    * @param pisteId Piste identifier string
-   * @return EFP1Message in Cyrano format
+   * @param out EFP1Message to fill with the converted result
    */
-  static class EFP1Message convertOpp2ToCyrano(const OPP2::SystemState &state,
-                                               const char *pisteId);
+  static void convertOpp2ToCyrano(const OPP2::SystemState &state,
+                                  const char *pisteId, class EFP1Message &out);
 
   /**
    * Convert Cyrano fencer fields to OPP2::Fencers.
@@ -471,6 +479,11 @@ private:
   bool m_bWifiConnected;
   bool m_bConnectionAttempted; ///< Track if we've called mqttClient.begin()
   bool m_LastParryState = false; ///< Previous blade contact state for change detection
+
+  // ── UI event queue (stack-safety: keeps ProcessUIEvents() off the
+  //    async_udp task's ~4KB stack) ──────────────────────────────────────
+  QueueHandle_t m_UIEventQueue = nullptr;
+  static void uiEventTask(void *pvParam);
 };
 
 #endif // OPP2HANDLER_H

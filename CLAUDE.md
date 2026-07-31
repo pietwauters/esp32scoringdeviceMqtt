@@ -346,23 +346,43 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 A full-codebase review (beyond OPP2) found the following. Status markers are updated as
 items are fixed; do not silently fix items marked 🚧 — see "How to Work in This Project."
 
-### 🔴 Critical — Invariant #3 violated on the write/event path
+### 🔴 Critical — Invariant #3 violated on the write/event path — ✅ Fixed (2026-07-31)
 The push-cache discipline (Invariant #3) was applied to the **read/send** side
 (CyranoHandler UDP sends use cached strings) but not the **write/event-fan-out** side.
-Every button press and every Cyrano DISP packet runs stack-heavy code inside the
-`async_udp` task (~4KB stack):
-- `UDPIOHandler.cpp` `onPacket` lambdas → `InputChanged()` → synchronous `notify()` →
-  `Opp2Handler::update(UDPIOHandler*)` → `ProcessUIEvents()`, which takes the mutex,
-  JSON-serializes into 512+64-byte stack buffers, and does blocking `mqttClient.publish()`.
-- `Opp2Handler::updateFromCyranoMessage()` — its own comment says "CRITICAL: called from
-  UDP callback context... NO stack allocations allowed!" but it calls
-  `PublishFencers/Score/Match/Lights/UW2F/Clock` plus `PushCachedStatusToCyrano()` (a full
-  ~500-600 byte `SystemState` stack copy), contradicting its own documented guarantee.
+Every button press and every Cyrano DISP packet ran stack-heavy code inside the
+`async_udp` task (~4KB stack). Two call sites, two different fixes (they aren't
+interchangeable — see rationale below):
 
-The FPA422 path (post-to-queue + dedicated task, `Opp2Handler.cpp` ~663-757) already does
-this correctly — the fix pattern exists in the codebase; it just wasn't applied when
-`UDPIOHandler`/`updateFromCyranoMessage` were wired up. 🚧 Not fixed — needs a design
-decision on how to restructure (queue + dedicated task, like FPA422) before touching it.
+- **`UDPIOHandler.cpp` `onPacket` → `InputChanged()` → `notify()` →
+  `Opp2Handler::update(UDPIOHandler*)` → `ProcessUIEvents()`** (mutex + JSON + blocking
+  `mqttClient.publish()`). Fixed by applying the existing FPA422 queue+task pattern
+  verbatim (template actually lives at `FPA422Handler.cpp:663-757`, not
+  `Opp2Handler.cpp` — the old note had the wrong file). `update(UDPIOHandler*)` now just
+  posts to a new `m_UIEventQueue`; a dedicated `uiEventTask()` (4096 stack, core 0,
+  priority 2) calls `ProcessUIEvents()`. Safe because UDPIOHandler's observers
+  (NetWork/FSM/CyranoHandler/Opp2Handler) are independent — nothing downstream depends on
+  Opp2Handler's reaction finishing synchronously.
+
+- **`Opp2Handler::updateFromCyranoMessage()`** — could NOT use the same fire-and-forget
+  queue pattern: `CyranoHandler::ProcessMessageFromSoftware()`'s DISP branch calls it and
+  then *synchronously* calls `SendInfoMessage()`, which must reflect the state the DISP
+  just set (Invariant #7 — CMS validates INFO echoes everything DISP sent; a race would
+  silently break the CMS handshake, the exact bug class fixed 2026-05-23). Deferring to a
+  background task would have reintroduced that race. Fixed instead by cutting the stack
+  footprint in place, keeping everything synchronous:
+  - `convertOpp2ToCyrano()` changed from return-by-value to an output parameter — was
+    building one `EFP1Message` (~1.3KB, 41 `std::string` fields) locally and returning a
+    second one into the caller, up to 2 live copies without guaranteed NRVO (pre-C++17).
+    Now exactly one.
+  - `PushCachedStatusToCyrano()` no longer takes a full `OPP2::SystemState` stack copy
+    (~500-600 bytes) — converts directly from `m_State` while holding `m_StateMutex`
+    (safe: `convertOpp2ToCyrano()` is a pure conversion, no calls back into Opp2Handler).
+  - `CyranoHandler::RebuildCachedStrings()` no longer copies `m_CachedStatus` into a local
+    `EFP1Message msg` (~1.3KB) just to overwrite two fields — mutates `m_CachedStatus` in
+    place (Command/CompetitionId are unconditionally overwritten on every call anyway).
+
+  Combined, worst-case stack for a DISP round-trip dropped from an unsafe ~4-4.5KB+
+  (likely overflow) to ~2.6-3KB — no timing/ordering change, no behavior change.
 
 ### 🟡 Correctness bugs found
 - ✅ Fixed (2026-07-31) `adc_calibrator.cpp:19` — `r1_eff = 495, 6;` comma-operator bug;
