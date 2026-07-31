@@ -143,7 +143,7 @@ private:
                     uint8_t startCol, uint32_t color);
   void showNumber(uint8_t panelOffset, uint8_t number, uint32_t color,
                   uint8_t startCol);
-  uint32_t m_LedStatus; //!< Member variable "m_LedStatus"
+  uint32_t m_LedStatus = 0xFFFFFFFF; //!< Member variable "m_LedStatus"; sentinel outside all real mask combinations so the first SetLedStatus() call is never mistaken for a no-op
   NeoPixelRMT *m_pixels;
   bool m_HasBegun = false;
   uint8_t m_Brightness = BRIGHTNESS_NORMAL;

@@ -341,6 +341,77 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 
 ---
 
+## Known Issues — Whole-Codebase Architecture Audit (2026-07-31)
+
+A full-codebase review (beyond OPP2) found the following. Status markers are updated as
+items are fixed; do not silently fix items marked 🚧 — see "How to Work in This Project."
+
+### 🔴 Critical — Invariant #3 violated on the write/event path
+The push-cache discipline (Invariant #3) was applied to the **read/send** side
+(CyranoHandler UDP sends use cached strings) but not the **write/event-fan-out** side.
+Every button press and every Cyrano DISP packet runs stack-heavy code inside the
+`async_udp` task (~4KB stack):
+- `UDPIOHandler.cpp` `onPacket` lambdas → `InputChanged()` → synchronous `notify()` →
+  `Opp2Handler::update(UDPIOHandler*)` → `ProcessUIEvents()`, which takes the mutex,
+  JSON-serializes into 512+64-byte stack buffers, and does blocking `mqttClient.publish()`.
+- `Opp2Handler::updateFromCyranoMessage()` — its own comment says "CRITICAL: called from
+  UDP callback context... NO stack allocations allowed!" but it calls
+  `PublishFencers/Score/Match/Lights/UW2F/Clock` plus `PushCachedStatusToCyrano()` (a full
+  ~500-600 byte `SystemState` stack copy), contradicting its own documented guarantee.
+
+The FPA422 path (post-to-queue + dedicated task, `Opp2Handler.cpp` ~663-757) already does
+this correctly — the fix pattern exists in the codebase; it just wasn't applied when
+`UDPIOHandler`/`updateFromCyranoMessage` were wired up. 🚧 Not fixed — needs a design
+decision on how to restructure (queue + dedicated task, like FPA422) before touching it.
+
+### 🟡 Correctness bugs found
+- ✅ Fixed (2026-07-31) `adc_calibrator.cpp:19` — `r1_eff = 495, 6;` comma-operator bug;
+  only `495` was assigned, `, 6` silently discarded. Now `r1_eff = 495.6f;`.
+- ✅ Fixed (2026-07-31) `RS422_FPA_Type5_Message.cpp:35-40` — `operator=` was a stub that
+  did nothing after the self-assign check; now copies `m_message` element-wise.
+- ✅ Fixed (2026-07-31) `WS2812BLedStrip.h:146` — `m_LedStatus` had no initializer, so
+  `SetLedStatus()`'s first call could compare against uninitialized memory and silently
+  drop the first real status update. Now initialized to `0xFFFFFFFF` (a sentinel outside
+  all real mask combinations).
+- ✅ Fixed (2026-07-31) `TimeScoreDisplay.cpp:504-530` — `char text[6]; sprintf(text,
+  "P-%03d", PisteId)`; `PisteId` from NVS had no range check, so a value ≥1000 overflowed
+  the 6-byte buffer. `DisplayPisteId()` now clamps to [0, 999] before formatting.
+- **Not a bug — intentional, confirmed 2026-07-31**: `WS2812BLedStrip.cpp:320` —
+  `setParry()`'s unconditional `return;` is a deliberate temporary disable (commit
+  `1e35515`, "Temporarily disable the display of parries as it interferes with the UW2F
+  timer display"). Do not re-enable without addressing the UW2F display conflict.
+- **Not a bug — intentional, confirmed 2026-07-31**: `WS2812BLedStrip.cpp:895-934` —
+  `setRedPCardRight/Left`'s `theFillColor2` is unused by design; 2 red P-cards trigger a
+  full white-panel indicator (`setWhiteRight/Left(true, true)`) instead of lighting a
+  second red pixel. Works as intended per user confirmation — leave as-is.
+
+### 🟡 Concurrency / mutex discipline (not yet fixed)
+- `Opp2Handler.cpp:1120` — reads `m_State.match` directly without `m_StateMutex` inside
+  `update(FencingStateMachine*, EVENT_WEAPON)`. Only spot-checked; worth a dedicated pass
+  (206 raw `m_State.` references vs. 31 lock/unlock pairs in the file).
+- `WS2812BLedStrip.cpp` — three separate tasks (FSM-driven direct calls, `LedStripHandler`
+  queue-draining task, `LedStripAnimator` task) touch `m_pixels` and status fields with no
+  mutex; `m_animationRunning` is only a `volatile bool` hint, not a lock.
+- `AutoRef.cpp:303,337` — `handleDoubleHit`/`handleTimerZero` call synchronous
+  `vTaskDelay` up to ~7s total without re-feeding the task watchdog during the wait, and
+  incoming queue events aren't processed until the delay returns.
+- `foil.cpp:133` / `epee.cpp:97` — `vTaskDelay(0)` inside the Core-1 150µs ADC scan loop
+  forces a scheduler yield, injecting jitter. `sabre.cpp`'s equivalent loop has no such
+  call — unexplained inconsistency between the three weapon files.
+
+### ⚪ Minor hygiene (low priority)
+- `TimeScoreDisplay.cpp:33`, `WS2812BLedStrip.cpp:105` — glyph/digit lookup tables are
+  mutable globals instead of `const`/`constexpr`, wasting RAM on read-only data.
+- `FPA422Handler.cpp:44-55` — dead global Wi-Fi/BLE credential strings behind
+  `#ifdef ALLOW_BLUETOOTH`, unused since real credentials come from `Preferences`.
+- `EFP1Message.h:113` — `void const print() const;` is a meaningless const-qualified void
+  return.
+- `Opp2Handler.cpp` is 2734 lines — state ownership, publishing for 3 protocols, DISP
+  parsing, FSM sync, and the FPA422 queue task all live in one file. Not necessarily wrong
+  for "canonical state owner," but worth revisiting if it keeps growing.
+
+---
+
 ## Invariants — Never Violate These
 
 1. `Opp2Handler` is the ONLY owner of `OPP2::SystemState`. No other class stores a

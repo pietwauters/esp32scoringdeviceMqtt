@@ -505,7 +505,12 @@ void TimeScoreDisplay::DisplayPisteId() {
   mx.clear();
 
   char text[6];
-  sprintf(text, "P-%03d", PisteId);
+  int clampedPisteId = PisteId;
+  if (clampedPisteId < 0)
+    clampedPisteId = 0;
+  else if (clampedPisteId > 999)
+    clampedPisteId = 999;
+  sprintf(text, "P-%03d", clampedPisteId);
   uint8_t digit0 = text[0] - 'A' + 15;
   uint8_t digit1 = 11;
   uint8_t digit2 = text[2] - '0';

@@ -36,6 +36,10 @@ RS422_FPA_Type5_6_Message& RS422_FPA_Type5_6_Message::operator=(const RS422_FPA_
 {
     if (this == &rhs) return *this; // handle self assignment
     //assignment operator
+    for(int i = 0; i < TYPE5MESSAGELENGTH ;i++)
+    {
+        m_message[i]= rhs.m_message[i];
+    }
     return *this;
 }
 

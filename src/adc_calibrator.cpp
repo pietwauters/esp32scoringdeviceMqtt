@@ -16,7 +16,7 @@
 
 void ResistorDividerCalibrator::set_default_calibration() {
   v_gpio = 3.3643f;
-  r1_eff = 495, 6;
+  r1_eff = 495.6f;
   r1_Ax_eff = 87.94;
   r3_eff = 503.79;
   CalVersion = 6;
