@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Remote</title>
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+
+  <!-- Same portrait-lock fallback as the Favero_OPP2 remote (its own
+       CLAUDE.md "Mobile web / PWA gotchas" section): screen.orientation.lock()
+       needs fullscreen (and WebKit never implements it at all), so this CSS
+       overlay is the only thing that reliably catches every device/browser
+       combination. -->
+  <div id="rotateOverlay" class="rotate-overlay">
+    <div>
+      <p>Please rotate your device to portrait.</p>
+      <p class="rotate-overlay-ios-hint">On iPhone/iPad, this can't be locked
+        automatically -- enable Rotation Lock in Control Center while using
+        this page.</p>
+    </div>
+  </div>
+
+  <!-- Bottom-nav glyphs, inline as an SVG sprite -- exact path data ported
+       from Favero_OPP2/data/index.html (already validated there: rendered
+       and visually compared against the original SquareLine-kit PNGs
+       before that project switched to inline SVG). No "settings" icon
+       here -- unlike Favero_OPP2's 5-position sequence (which needed a
+       Home<->Settings toggle on the center icon), this page's center icon
+       always jumps to Main, nothing else. -->
+  <svg style="display:none" aria-hidden="true">
+    <symbol id="icon-prev" viewBox="0 0 24 24">
+      <path d="M16 5 L6 12 L16 19 Z" fill="#17375E" stroke="#17375E" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-next" viewBox="0 0 24 24">
+      <path d="M8 5 L18 12 L8 19 Z" fill="#17375E" stroke="#17375E" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24">
+      <path d="M12 4 L20 12 L15.5 12 L15.5 20 L8.5 20 L8.5 12 L4 12 Z" fill="#17375E" stroke="#17375E" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+    </symbol>
+  </svg>
+
+  <button id="btnFullscreen" class="fs-toggle" aria-label="Fullscreen">&#x26F6;</button>
+
+  <section id="viewMain" class="remote-view">
+    <div class="atlas-panel atlas-panel-main">
+      <div class="atlas-top-row">
+        <div class="atlas-score-col atlas-score-col-left">
+          <button id="btnScoreLeft" class="atlas-score atlas-score-left">--</button>
+        </div>
+        <div class="atlas-center">
+          <div id="clockText" class="atlas-timer">-:--</div>
+          <div class="atlas-round">Round <span id="roundText">--</span></div>
+        </div>
+        <div class="atlas-score-col atlas-score-col-right">
+          <button id="btnScoreRight" class="atlas-score atlas-score-right">--</button>
+        </div>
+      </div>
+
+      <!-- Extra convenience only -- hidden by default (see .atlas-pm-mini,
+           shown above a min-height breakpoint), same as Favero_OPP2. The
+           score itself (bindLongPress above) is always the primary +/-
+           control regardless of screen size; these are never the only way
+           to do it. -->
+      <div class="atlas-pm-row-mini">
+        <div class="atlas-pm-mini">
+          <button class="atlas-mini-btn" id="btnPlusLeft">+</button>
+          <button class="atlas-mini-btn" id="btnMinusLeft">-</button>
+        </div>
+        <div class="atlas-pm-mini">
+          <button class="atlas-mini-btn" id="btnPlusRight">+</button>
+          <button class="atlas-mini-btn" id="btnMinusRight">-</button>
+        </div>
+      </div>
+
+      <!-- Score itself is the +/- control (tap = point, long-press = undo),
+           same as Favero_OPP2's compact layout -- frees vertical space for
+           Start/Stop, which needs to be hit confidently without looking. -->
+      <button class="atlas-btn atlas-btn-hero" id="btnStartStop">Start/Stop</button>
+
+      <div class="atlas-secondary-row">
+        <button class="atlas-btn" id="btnNextPeriod">Next Period</button>
+        <button id="btnReset" class="atlas-btn atlas-danger">Reset</button>
+      </div>
+
+      <div id="statusLineMain" class="status-line"></div>
+    </div>
+  </section>
+
+  <section id="viewPenalties" class="remote-view">
+    <div class="atlas-panel">
+
+      <div class="atlas-status-row">
+        <span class="atlas-status-sq atlas-status-sq-yellow" id="cardStatusLeftYellow"></span>
+        <span class="atlas-status-sq atlas-status-sq-red" id="cardStatusLeftRed"></span>
+        <span class="atlas-status-sq atlas-status-sq-black" id="cardStatusLeftBlack"></span>
+        <span class="atlas-status-sq atlas-status-sq-black" id="cardStatusRightBlack"></span>
+        <span class="atlas-status-sq atlas-status-sq-red" id="cardStatusRightRed"></span>
+        <span class="atlas-status-sq atlas-status-sq-yellow" id="cardStatusRightYellow"></span>
+      </div>
+
+      <!-- Yellow/Red/Black all have a real local undo here (long-press),
+           unlike Favero_OPP2 where the Favero hardware's yellow LED is a
+           raw IR toggle with no "undo" of its own -- this device owns FSM
+           state directly (UI_INPUT_*_DECR events, FencingStateMachine.cpp),
+           so every card type gets a proper give/undo pair. -->
+      <div class="atlas-give-row atlas-give-row-first">
+        <button id="btnYellowLeft" class="atlas-btn atlas-give-btn atlas-badge-yellow">Y</button>
+        <button id="btnYellowRight" class="atlas-btn atlas-give-btn atlas-badge-yellow">Y</button>
+      </div>
+      <div class="atlas-give-row">
+        <button id="btnRedLeft" class="atlas-btn atlas-give-btn atlas-badge-red">R</button>
+        <button id="btnRedRight" class="atlas-btn atlas-give-btn atlas-badge-red">R</button>
+      </div>
+      <div class="atlas-give-row atlas-give-row-last">
+        <button id="btnBlackLeft" class="atlas-btn atlas-give-btn atlas-badge-black">B</button>
+        <button id="btnBlackRight" class="atlas-btn atlas-give-btn atlas-badge-black">B</button>
+      </div>
+
+      <!-- UW2F/P-card ordinal (1-5, opp2_types.h UW2FSide::p_card), bucketed
+           onto the same yellow/red/black status squares as row 1 -- single
+           button, both sides at once (UI_INPUT_P_CARD has no side
+           parameter in this firmware, confirmed by reading
+           UDPIOHandler.cpp's oprcp_translate(): mutual passivity is already
+           a both-sides concept here, matching Favero_OPP2's design). -->
+      <div class="atlas-status-row">
+        <span class="atlas-status-sq atlas-status-sq-yellow" id="pcardStatusLeftYellow">P</span>
+        <span class="atlas-status-sq atlas-status-sq-red" id="pcardStatusLeftRed">P</span>
+        <span class="atlas-status-sq atlas-status-sq-black" id="pcardStatusLeftBlack">P</span>
+        <span class="atlas-status-sq atlas-status-sq-black" id="pcardStatusRightBlack">P</span>
+        <span class="atlas-status-sq atlas-status-sq-red" id="pcardStatusRightRed">P</span>
+        <span class="atlas-status-sq atlas-status-sq-yellow" id="pcardStatusRightYellow">P</span>
+      </div>
+      <button id="btnUW2F" class="atlas-btn atlas-btn-auto">UW2F</button>
+
+      <!-- UI_INPUT_PRIO also has no side parameter (same file) -- it's a
+           draw/toggle, not a per-side button. -->
+      <div class="atlas-prio-row">
+        <span class="atlas-prio-sq atlas-prio-sq-left" id="prioIndicatorLeft"></span>
+        <button id="btnPrio" class="atlas-btn atlas-btn-auto">PRIO</button>
+        <span class="atlas-prio-sq atlas-prio-sq-right" id="prioIndicatorRight"></span>
+      </div>
+
+      <button id="btnRestoreUw2f" class="atlas-btn atlas-btn-auto">Undo UW2F Timer Reset</button>
+
+      <div id="statusLinePenalties" class="status-line"></div>
+    </div>
+  </section>
+
+  <!-- Match/lifecycle (OPP2) view. Fencer name/NOC entry deliberately
+       omitted (2026-08-13 explicit decision) -- it needs
+       Opp2Handler::updateFencersExternal(fencers, InputProtocol source),
+       and InputProtocol only has NONE/OPP2/CYRANO (no generic "local/web"
+       value); mislabeling the source could interact badly with the
+       Protocol Priority auto-detect system if a real CMS is also present.
+       Lifecycle (Prev/Begin/Next/End) and weapon-cycle don't have this
+       problem -- both go through the same UI_INPUT_* -> InputChanged()
+       path as every other button here. -->
+  <section id="viewMatch" class="remote-view">
+    <div class="atlas-panel">
+      <div class="match-status-line">
+        State: <span id="matchState">--</span><br>
+        Match #<span id="matchNum">--</span> &middot; Round <span id="matchRound">--</span>
+      </div>
+
+      <!-- Only a cycle action exists (Foil -> Epee -> Sabre -> ...), not a
+           direct "set weapon to X" -- FencingStateMachine has no UI_INPUT
+           event for that (confirmed by reading it), unlike Favero_OPP2's
+           three explicit weapon buttons. -->
+      <button id="btnCycleWeapon" class="atlas-btn atlas-btn-auto">Weapon: <span id="matchWeapon">--</span> (tap to cycle)</button>
+
+      <div class="atlas-secondary-row">
+        <button class="atlas-btn" id="btnCyranoPrev">&laquo; Prev</button>
+        <button class="atlas-btn" id="btnCyranoBegin">Begin</button>
+        <button class="atlas-btn" id="btnCyranoNext">Next &raquo;</button>
+      </div>
+
+      <button class="atlas-btn atlas-danger atlas-wide" id="btnCyranoEnd">End</button>
+
+      <div id="statusLineMatch" class="status-line"></div>
+    </div>
+  </section>
+
+  <!-- Fixed bottom nav, ported from Favero_OPP2's .bottom-nav structure
+       (icons, translucent-circle press feedback, position:fixed) rather
+       than the earlier text-button version -- restored per explicit
+       request once a 3rd screen (this Match view) made a linear
+       prev/center/next sequence worth it again, matching Favero_OPP2's
+       own reasoning for building it that way in the first place. Main
+       sits in the middle of the sequence (like Favero_OPP2's own "Home"),
+       Penalties before it, Match after -- center icon always jumps
+       straight to Main from anywhere. -->
+  <nav id="bottomNav" class="bottom-nav">
+    <button id="navLeft" class="bottom-nav-btn" aria-label="Previous">
+      <span class="icon-glyph"><svg class="icon" viewBox="0 0 24 24"><use href="#icon-prev" xlink:href="#icon-prev"/></svg></span>
+    </button>
+    <button id="navCenter" class="bottom-nav-btn bottom-nav-center" aria-label="Main">
+      <span class="icon-glyph"><svg class="icon" viewBox="0 0 24 24"><use href="#icon-home" xlink:href="#icon-home"/></svg></span>
+    </button>
+    <button id="navRight" class="bottom-nav-btn" aria-label="Next">
+      <span class="icon-glyph"><svg class="icon" viewBox="0 0 24 24"><use href="#icon-next" xlink:href="#icon-next"/></svg></span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+
+</body>
+</html>

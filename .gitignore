@@ -8,3 +8,4 @@ logs.txt
 build/
 bootloader/
 partition_table/
+data/

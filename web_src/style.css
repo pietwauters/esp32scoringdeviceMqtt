@@ -1,0 +1,371 @@
+/* Compact remote control -- styling ported from Favero_OPP2's atlas-*
+   classes (itself matched to github.com/pietwauters/remotecontrolapp's
+   colors.xml/activity_main.xml). First pass here approximated values
+   instead of copying them, which regressed the layout tuning Favero_OPP2
+   went through real-device testing to get right (2026-08-13 feedback) --
+   this pass ports the actual numbers directly from Favero_OPP2/data/
+   style.css instead of guessing. Where a rule below has no comment of its
+   own, assume the value was copied as-is from there.
+
+   Portable mobile-web fixes carried over verbatim -- see Favero_OPP2's own
+   CLAUDE.md "Mobile web / PWA gotchas" section for the real-device findings
+   behind each one:
+     - dvh declared after a plain vh fallback (some browsers drop the whole
+       rule if dvh is unparsed, not just ignore it)
+     - margin-based spacing instead of flexbox `gap` (silently a no-op on
+       at least one real Android WebView)
+     - width:100% instead of 100vw for full-bleed (100vw excludes the
+       desktop scrollbar, guaranteeing overflow)
+   NOT carried over: the html{display:inline-block} centering trick and its
+   associated document-vs-body touch-listener gotcha -- this page uses
+   plain viewport-filling body sizing instead, which doesn't have that
+   problem in the first place. text-align:center on body reproduces the
+   same visual centering for inline-block elements (.atlas-btn-auto)
+   without the inline-block quirk itself. Swipe listeners still attach to
+   `document` regardless (see index.html), matching the proven-safe
+   pattern.
+*/
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #0d0d0d;
+  color: #ffffff;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  overscroll-behavior: none;
+}
+
+.rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+  color: #fff;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+}
+@media (orientation: landscape) {
+  .rotate-overlay { display: flex; }
+}
+.rotate-overlay-ios-hint { font-size: 14px; color: #aaa; }
+
+.fs-toggle {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 900;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background-color: rgba(23, 55, 94, 0.6);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.remote-view { display: none; }
+.remote-view.active { display: block; }
+
+.atlas-panel {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Clearance for the fixed .bottom-nav below -- without this, the last
+     row of content would sit partly hidden behind it. Same value
+     Favero_OPP2 uses for the identical icon-based bar (up to ~64px icon +
+     4px nav padding + 8px button padding, each top/bottom). */
+  padding-bottom: 84px;
+}
+.atlas-panel-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+}
+
+.atlas-top-row {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.atlas-score {
+  /* A <button>, not a <div> -- needs the native chrome (border/background/
+     font/padding) stripped so it reads as plain score text, but has to
+     stay a real button so the clock-running disabled state (poll(), which
+     sets .disabled on every scoring/card control uniformly) actually does
+     something -- .disabled on a <div> is a silent no-op, no visual change
+     and nothing blocks the click. */
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 64px;
+  font-weight: bold;
+  cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+.atlas-score:disabled { opacity: 0.35; cursor: not-allowed; }
+.atlas-score-left { color: #E91E63; }
+.atlas-score-right { color: #4CAF50; }
+.atlas-score-col { display: flex; flex-direction: column; }
+.atlas-score-col-left { align-items: flex-start; }
+.atlas-score-col-right { align-items: flex-end; }
+.atlas-center { text-align: center; }
+.atlas-timer { font-size: 64px; font-weight: bold; }
+.atlas-round { font-size: 16px; color: #ccc; }
+
+/* Own row rather than nested under each score, so it isn't squeezed
+   against .atlas-center's width -- space-between here keeps each pair
+   under its own score. Hidden below the min-height breakpoint; the score
+   itself (tap/long-press) always works regardless of screen size. */
+.atlas-pm-row-mini {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+.atlas-pm-mini {
+  display: none;
+  gap: 10px;
+}
+@media (min-height: 700px) {
+  .atlas-pm-mini { display: flex; }
+}
+.atlas-mini-btn {
+  background-color: #17375E;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  width: 80px;
+  width: clamp(44px, (min(100vw, 480px) - 44px) / 4, 80px);
+  height: 80px;
+  height: clamp(44px, (min(100vw, 480px) - 44px) / 4, 80px);
+  font-size: 24px;
+  cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+.atlas-mini-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.atlas-btn {
+  display: block;
+  width: 100%;
+  background-color: #17375E;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 14px;
+  margin: 6px 0;
+  font-size: 16px;
+  cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+.atlas-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.atlas-btn.atlas-wide { width: 80%; }
+.atlas-btn.atlas-danger { background-color: #f44336; }
+/* UW2F/PRIO/Undo-Timer-Reset: sized to their own text via padding, not a
+   fixed-percentage bar. Relies on body's text-align:center (see top of
+   file) to actually center, same mechanism Favero_OPP2 uses. */
+.atlas-btn-auto {
+  display: inline-block;
+  width: auto;
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+.atlas-btn-hero {
+  flex: 1 1 auto;
+  max-height: 200px;
+  min-height: 140px;
+  /* Real vertical separation from the secondary row below (not just a
+     visual border) -- the referee should never be able to mistake a reach
+     for Start/Stop as a reach for Next Period or Reset. */
+  margin: 44px 0;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.atlas-secondary-row {
+  display: flex;
+  flex: 0 0 auto;
+  width: 90%;
+  margin: 0 auto 12px;
+}
+.atlas-secondary-row .atlas-btn {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+.atlas-secondary-row .atlas-btn + .atlas-btn { margin-left: 14px; }
+
+.atlas-status-row {
+  display: flex;
+  justify-content: space-between;
+  width: 90%;
+  margin: 8px auto;
+}
+.atlas-status-sq {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  width: clamp(20px, (min(100vw, 480px) * 0.9 - 40px) / 6, 32px);
+  height: 32px;
+  height: clamp(20px, (min(100vw, 480px) * 0.9 - 40px) / 6, 32px);
+  border-radius: 15%;
+  font-size: 12px;
+  font-weight: bold;
+  background-color: #222;
+  border: 1px solid #444;
+  color: #000000;
+}
+.atlas-status-sq-yellow.lit { background-color: #FFEB3B; border-color: #FFEB3B; }
+.atlas-status-sq-red.lit    { background-color: #f44336; border-color: #f44336; color: #ffffff; }
+.atlas-status-sq-black.lit  { background-color: #000000; border-color: #ffffff; color: #ffffff; }
+
+.atlas-give-row {
+  display: flex;
+  width: 90%;
+  margin: 0 auto 8px;
+}
+.atlas-give-row .atlas-give-btn {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border-radius: 10%;
+  font-size: 18px;
+  font-weight: bold;
+}
+.atlas-give-row .atlas-give-btn + .atlas-give-btn { margin-left: 14px; }
+.atlas-give-row .atlas-give-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.atlas-badge-yellow { background-color: #FFEB3B; color: #000000; }
+.atlas-badge-red { background-color: #f44336; color: #000000; }
+.atlas-badge-black { background-color: #000000; color: #ffffff; border: 2px solid #888; }
+/* Extra breathing room around the give-button group on screens tall
+   enough to spare it -- below this threshold the page is already dense
+   and correctly tight, deliberately untouched. */
+@media (min-height: 700px) {
+  .atlas-give-row-first { margin-top: 28px; }
+  .atlas-give-row-last { margin-bottom: 28px; }
+}
+
+.atlas-prio-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.atlas-prio-row .atlas-btn { flex: 0 0 auto; margin: 6px 14px; }
+.atlas-prio-sq {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  width: clamp(24px, 8vw, 36px);
+  height: 32px;
+  height: clamp(24px, 8vw, 36px);
+  border-radius: 15%;
+  font-size: 14px;
+  font-weight: bold;
+  color: #ffffff;
+  visibility: hidden;
+}
+.atlas-prio-sq.active { visibility: visible; }
+.atlas-prio-sq-left { background-color: red; }
+.atlas-prio-sq-right { background-color: #2ecc40; }
+
+.status-line {
+  text-align: center;
+  min-height: 20px;
+  font-size: 14px;
+  color: #f44336;
+  margin-top: 8px;
+}
+.match-status-line {
+  font-size: 16px;
+  color: #ccc;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+/* Fixed bottom nav -- ported directly from Favero_OPP2's .bottom-nav
+   (icons + translucent-circle press feedback), restored once a 3rd
+   screen made a linear prev/center/next sequence worth it again. */
+.bottom-nav {
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 500;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  background-color: #111;
+}
+.bottom-nav-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: none;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.bottom-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.bottom-nav-btn .icon-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  width: clamp(44px, 14vw, 64px);
+  height: 52px;
+  height: clamp(44px, 14vw, 64px);
+  border-radius: 50%;
+  background-color: transparent;
+}
+/* Sampled from Favero_OPP2's original "-pressed" art: same #17375E glyph
+   color, ~23% alpha (60/255) circle behind it. */
+.bottom-nav-btn .icon-glyph.pressed {
+  background-color: rgba(23, 55, 94, 0.23);
+}
+.bottom-nav-btn .icon {
+  display: block;
+  width: 72%;
+  height: 72%;
+}
+.bottom-nav-btn + .bottom-nav-btn { margin-left: 8px; }
+.bottom-nav-center { flex: 1.3; }

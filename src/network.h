@@ -53,6 +53,14 @@ class NetWork : public Observer<UDPIOHandler>, public SingletonMixin<NetWork>
         void FindAndSetMasterChannel(int soft_retries=5, bool restart_on_timeout=false);
         int begin();
         void DoFactoryReset();
+        // The one AsyncWebServer instance for this whole device (port 80)
+        // -- confirmed by direct hardware testing (2026-08-12) that a
+        // second concurrent AsyncWebServer instance corrupts/hangs any
+        // multi-packet response even on THIS server, not just the new one;
+        // a single-server test of the same route was byte-perfect. Any
+        // future web feature (WebRemoteHandler included) must register its
+        // routes here, never construct its own AsyncWebServer.
+        AsyncWebServer &GetServer();
 
     protected:
 
