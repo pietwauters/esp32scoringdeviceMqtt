@@ -5,8 +5,16 @@
 #include "UDPIOHandler.h"
 #include "EventDefinitions.h"
 #include <Preferences.h>
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 //#include <AsyncTCP.h>
+// WiFiManager.h removed 2026-08-13 -- CaptivePortal/AppSettings/WiFiConnect
+// replace it entirely (see those headers). It used to matter that this
+// include came before <ESPAsyncWebServer.h> (WiFiManager pulls in the
+// synchronous WebServer.h, which collides with ESPAsyncWebServer.h if the
+// latter wins the include race -- both define HTTP_GET/HTTP_POST/etc.).
+// With WiFiManager gone there's only one definition of those macros left,
+// so that ordering constraint no longer applies -- but every other header
+// in this codebase still includes network.h (not <ESPAsyncWebServer.h>
+// directly) for its own consistency; no reason to change that convention.
 #include <ESPAsyncWebServer.h>
 // It seems we should not use channels above 11
 #define CHANNEL_COUNT  12
@@ -47,7 +55,6 @@ class NetWork : public Observer<UDPIOHandler>, public SingletonMixin<NetWork>
         bool ConnectToExternalNetwork(long ConnectTimeout = 5);
         void reset_channels();
         int32_t FindFirstFreePisteID(uint32_t RequestedPiste = 0);
-        void WaitForNewSettingsViaPortal();
         void update (UDPIOHandler *subject, uint32_t eventtype);
         bool IsExternalWifiAvailable(){return bConnectedToExternalNetwork;}
         void FindAndSetMasterChannel(int soft_retries=5, bool restart_on_timeout=false);
@@ -83,6 +90,5 @@ class NetWork : public Observer<UDPIOHandler>, public SingletonMixin<NetWork>
     bool LookForExternalWiFi = false;
     int bestchannel = -1;
     //AsyncWebServer server={80};
-    WiFiManager wm;
 };
 #endif //NETWORK_H

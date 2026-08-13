@@ -2,9 +2,11 @@
 #include "network.h"
 #include "AbsoluteTime.h"
 #include "AsyncUDP.h"
+#include "CaptivePortal.h"
 #include "FlashWriteGuard.h"
 #include "MDNSResolver.h"
 #include "TierAProvisioning.h"
+#include "WiFiConnect.h"
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiAP.h>
@@ -89,17 +91,21 @@ AsyncWebServer &NetWork::GetServer() { return server; }
 
 // Register endpoints and start server
 //
-// KNOWN GAP (2026-08-12, documented not fixed): server.reset() below wipes
-// every registered route, including any WebRemoteHandler routes added
-// after boot. This function only runs at boot in normal operation, but
-// WaitForNewSettingsViaPortal() (triggered by the user's "Reconfigure
-// WiFi" action) calls GlobalStartWiFi() -> startCalibrationWebServer()
-// again at runtime -- so a live "Reconfigure WiFi" silently kills the web
-// remote (no re-registration happens afterward) until the next reboot.
-// Narrow, deliberate not-fixed-yet: WebRemoteHandler has no hook to
-// re-register itself on this event today. Fix would be either a callback
-// list this function invokes after re-registering its own routes, or
-// moving WebRemoteHandler's route registration into this function
+// FORMER KNOWN GAP (2026-08-12, fixed as a side effect 2026-08-13):
+// server.reset() below wipes every registered route, including any
+// WebRemoteHandler routes added after boot. This function only runs at
+// boot in normal operation -- the old WiFiManager-based
+// WaitForNewSettingsViaPortal() ("Reconfigure WiFi" action) used to call
+// GlobalStartWiFi() -> startCalibrationWebServer() again at runtime,
+// silently killing the web remote until the next reboot. Its replacement,
+// CaptivePortal::begin(), never calls GlobalStartWiFi() or server.reset()
+// -- it only starts DNS-redirect hijacking and lazily registers its own
+// /wifi routes once -- so this gap no longer applies to that path. Left
+// here as history/context, not because the underlying wipe-on-reset
+// behavior changed: anything else that calls startCalibrationWebServer()
+// at runtime would still hit it. Fix if that ever matters would be either
+// a callback list this function invokes after re-registering its own
+// routes, or moving WebRemoteHandler's route registration into this function
 // directly. Revisit if this proves disruptive in practice.
 void startCalibrationWebServer() {
   server.reset();
@@ -155,7 +161,6 @@ String getCalibrationHtml() {
   html += "</body></html>";
   return html;
 }
-// WiFiManager wm;
 /**
    Sets all the channels back to 0.
 */
@@ -184,9 +189,10 @@ int NetWork::begin() {
     return 0;
   networks = WiFi.scanNetworks();
 
-  if (wm.getWiFiIsSaved()) {
+  if (WiFiConnect::HasSavedNetwork()) {
+    String savedSSID = WiFiConnect::SavedSSID();
     for (int i = 0; i < networks; ++i) {
-      if (WiFi.SSID(i) == wm.getWiFiSSID(true)) {
+      if (WiFi.SSID(i) == savedSSID) {
         SavedNetworkExists = true;
         i = networks;
       }
@@ -333,36 +339,22 @@ int NetWork::findBestWifiChannel() {
 bool NetWork::ConnectToExternalNetwork(long ConnectTimeout) {
   if (bConnectedToExternalNetwork)
     return true;
-  if (!wm.getWiFiIsSaved())
+  if (!WiFiConnect::HasSavedNetwork())
     return false;
   if (!SavedNetworkExists)
     return false;
   if (!LookForExternalWiFi)
     return false;
   WiFi.disconnect();
-
-  long Stop = millis() + ConnectTimeout * 1000;
   WiFi.mode(WIFI_MODE_APSTA);
-  WiFi.begin(wm.getWiFiSSID(true).c_str(), wm.getWiFiPass(true).c_str());
-  wm.setEnableConfigPortal(false);
-  wm.setConfigPortalBlocking(false);
-  wm.setConfigPortalTimeout(5);
-  wm.setConnectTimeout(ConnectTimeout);
-
-  while (millis() < Stop) {
-    if (WiFi.status() == WL_CONNECTED) {
-      Stop = 0;
-      bConnectedToExternalNetwork = true;
-    }
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    ESP_LOGI(NETWORK_TAG, "%s", "x");
-  }
+  bConnectedToExternalNetwork =
+      WiFiConnect::ConnectToSaved(ConnectTimeout * 1000);
   if (bConnectedToExternalNetwork) // if connected with saved credentials is
                                    // successful we have to start the local AP
                                    // ourselves
   {
     WiFi.softAP(soft_ap_ssid.c_str(), soft_ap_password.c_str());
-    ESP_LOGI(NETWORK_TAG, "ESP32 IP on the WiFi network: %s", "x",
+    ESP_LOGI(NETWORK_TAG, "ESP32 IP on the WiFi network: %s",
              (WiFi.localIP().toString()).c_str());
   }
   return bConnectedToExternalNetwork;
@@ -500,8 +492,10 @@ void NetWork::update(UDPIOHandler *subject, uint32_t eventtype) {
     ConnectToExternalNetwork(45);
 
   if (UI_START_WIFI_PORTAL == subtype) {
-
-    WaitForNewSettingsViaPortal();
+    // CaptivePortal replaces WaitForNewSettingsViaPortal() -- non-blocking
+    // (FSM/scoring/MQTT keep running) and doesn't touch the AsyncWebServer
+    // routes already registered for the remote control/settings pages.
+    CaptivePortal::getInstance().begin();
   }
 
   if (UI_START_OTA_PORTAL == subtype) {
@@ -532,274 +526,6 @@ void NetWork::update(UDPIOHandler *subject, uint32_t eventtype) {
 
     break;
   }
-}
-
-WiFiManagerParameter WiFiPistId("WiFiPisteId", "PisteNr", "", 16);
-WiFiManagerParameter CyranoPisteName("Pistename", "Pistename", "", 8);
-WiFiManagerParameter WiFiAPPasswd("WiFiAPPasswd", "WiFiAPPasswd", "01041967",
-                                  64);
-WiFiManagerParameter PowerMode("PowerSaveMode", "Deep Sleep", "N", 1);
-WiFiManagerParameter TryGlobalWiFi("TryGlobalWiFi", "Look for external network",
-                                   "N", 1);
-
-WiFiManagerParameter CyranoPort("CyranoPort", "Cyrano Port", "50100", 16);
-WiFiManagerParameter CyranoBcPort("CyranoBcPort", "Cyrano Broadcast Port",
-                                  "50101", 16);
-WiFiManagerParameter UseDHCP("UseDHCP", "Use DHCP", "N", 1);
-WiFiManagerParameter FixedIPAddress("IPAddressing", "IP Addressing mode",
-                                    "172.20.255.1", 16);
-WiFiManagerParameter MqttBrokerIP("MQTTBrokerIP", "mqtt broker IP",
-                                  "10.154.1.130", 16);
-
-WiFiManagerParameter StartUpWeapon("StartUpWeapon",
-                                   "Default Weapon at start_up", "F", 8);
-WiFiManagerParameter SmallDE("SmallDE", "Have a 2 period DE", "N", 1);
-WiFiManagerParameter MuteBuzzer("MuteBuzzer", "Mute Buzzer", "N", 1);
-WiFiManagerParameter RepeaterMode("RepeaterMode", "Is this a repeater", "N", 1);
-WiFiManagerParameter MasterPisteId("MasterPiste", "Piste to repeat", "500", 3);
-WiFiManagerParameter MirrorLights("MirrorLights", "Mirror lights", "N", 1);
-WiFiManagerParameter DisableBrownout("DisableBrownOut",
-                                     "Disable Brownout detecton", "Y", 1);
-WiFiManagerParameter ForceCal("ForceCal", "Force Calibration", "N", 1);
-// Default "N" (2026-08-13, Piet's explicit call): unlike the other settings
-// here, FPA422/RS422 output has no installed base relying on it being on by
-// default -- nobody's using it right now, and the few who do know they need
-// to opt in. Gates real per-event UDP broadcast traffic (up to ~100/sec
-// while the match timer runs) that's otherwise sent unconditionally whether
-// or not a video-overlay box is even listening -- see FPA422Handler.cpp.
-WiFiManagerParameter FPA422Enabled("FPA422Enabled", "Enable Video/FPA422 output",
-                                   "N", 1);
-bool ToBool(const char *input) {
-  bool result = false;
-  switch (input[0]) {
-  case 'Y':
-  case 'y':
-  case '1':
-    result = true;
-    break;
-  }
-  return result;
-}
-
-void saveParamsCallback() {
-  FlashWriteGuard
-      guard; // enable brownout detection for all NVS writes in this callback
-
-  int newPistId = -1;
-  sscanf(WiFiPistId.getValue(), "%d", &newPistId);
-  Preferences networkpreferences;
-  networkpreferences.begin("credentials", false);
-  networkpreferences.putInt("pisteNr", newPistId);
-  auto temp = CyranoPisteName.getValue();
-  const char *cyranoValue = CyranoPisteName.getValue();
-  String pistename = "";
-  if (cyranoValue != nullptr && cyranoValue[0] != '\0') {
-    char c = cyranoValue[0];
-    switch (c) {
-    case 'R':
-    case 'r':
-      pistename = "Red";
-      break;
-    case 'B':
-    case 'b':
-      pistename = "Blue";
-      break;
-    case 'Y':
-    case 'y':
-      pistename = "Yellow";
-      break;
-    case 'G':
-    case 'g':
-      pistename = "Green";
-      break;
-    case 'P':
-    case 'p':
-      pistename = "Podium";
-      break;
-    default:
-      pistename = "";
-      break;
-    }
-  }
-
-  networkpreferences.putString("Pistename", pistename.c_str());
-
-  networkpreferences.putString("AP_Password", WiFiAPPasswd.getValue());
-  uint16_t ThePort = 0;
-  sscanf(CyranoPort.getValue(), "%d", &ThePort);
-  networkpreferences.putUShort("CyranoPort", ThePort);
-
-  uint16_t TheBroadcastPort = 0;
-  sscanf(CyranoBcPort.getValue(), "%d", &TheBroadcastPort);
-  networkpreferences.putUShort("CyranoBcPort", TheBroadcastPort);
-
-  networkpreferences.putBool("TryGlobalWiFi", ToBool(TryGlobalWiFi.getValue()));
-  networkpreferences.putBool("UseDHCP", ToBool(UseDHCP.getValue()));
-  networkpreferences.putString("BaseAddress", FixedIPAddress.getValue());
-  networkpreferences.putString("MqttBroker", MqttBrokerIP.getValue());
-
-  networkpreferences.end();
-  Preferences mypreferences;
-  mypreferences.begin("scoringdevice", false);
-  uint8_t startweapon = 1;
-  char theweapon = StartUpWeapon.getValue()[0];
-  switch (theweapon) {
-  case 'F':
-    startweapon = 0;
-    break;
-
-  case 'E':
-    startweapon = 1;
-    break;
-
-  case 'S':
-    startweapon = 2;
-    break;
-  }
-  mypreferences.putUChar("START_WEAPON", startweapon);
-  mypreferences.putBool("SmallDE", ToBool(SmallDE.getValue()));
-
-  // Code related to repeater / master mode
-  mypreferences.putBool("MuteBuzzer", ToBool(MuteBuzzer.getValue()));
-  mypreferences.putBool("RepeaterMode", ToBool(RepeaterMode.getValue()));
-  mypreferences.putBool("Powersave", ToBool(PowerMode.getValue()));
-  mypreferences.putBool("MirrorLights", ToBool(MirrorLights.getValue()));
-  mypreferences.putBool("DisableBrownout", ToBool(DisableBrownout.getValue()));
-  mypreferences.putBool("ForceCal", ToBool(ForceCal.getValue()));
-  mypreferences.putBool("FPA422Enabled", ToBool(FPA422Enabled.getValue()));
-
-  int MasterId = -1;
-  sscanf(MasterPisteId.getValue(), "%d", &MasterId);
-  mypreferences.putInt("MasterPiste", MasterId);
-
-  mypreferences.end();
-  ESP.restart();
-}
-
-void ConfigPortalTimeoutCallback() { ESP.restart(); }
-void ConfigResetCallback() {
-  ESP_LOGI(NETWORK_TAG, "%s", "In ConfigResetCallback");
-}
-char temp[2];
-char *BoolToStr(bool value) {
-  sprintf(temp, "N");
-  if (value)
-    sprintf(temp, "Y");
-  return temp;
-}
-
-void NetWork::WaitForNewSettingsViaPortal() {
-  ESP_LOGI(NETWORK_TAG, "%s", "In WaitForNewSettingsViaPortal()");
-  ESP_LOGI(NETWORK_TAG, "%s", soft_ap_ssid);
-
-  networkpreferences.begin("credentials", false);
-  int32_t PisteNr = networkpreferences.getInt("pisteNr", -1);
-  char temp[8];
-  sprintf(temp, "%d", PisteNr);
-  WiFiPistId.setValue(temp, 8);
-
-  CyranoPisteName.setValue(
-      networkpreferences.getString("Pistename", "").c_str(), 8);
-
-  String soft_ap_password =
-      networkpreferences.getString("AP_Password", "01041967");
-  WiFiAPPasswd.setValue(soft_ap_password.c_str(), 64);
-
-  uint16_t CyranoPortNr = networkpreferences.getUShort("CyranoPort", 50100);
-  sprintf(temp, "%d", CyranoPortNr);
-  CyranoPort.setValue(temp, 8);
-
-  uint16_t CyranoBcPortNr = networkpreferences.getUShort("CyranoBcPort", 50100);
-  sprintf(temp, "%d", CyranoBcPortNr);
-  CyranoBcPort.setValue(temp, 8);
-
-  TryGlobalWiFi.setValue(
-      BoolToStr(networkpreferences.getBool("TryGlobalWiFi", false)), 1);
-  UseDHCP.setValue(BoolToStr(networkpreferences.getBool("UseDHCP", false)), 1);
-  FixedIPAddress.setValue(
-      (networkpreferences.getString("BaseAddress", "172.20.255.1")).c_str(),
-      16);
-  MqttBrokerIP.setValue(
-      (networkpreferences.getString("MqttBroker", "10.154.1.130")).c_str(), 16);
-
-  networkpreferences.end();
-
-  Preferences mypreferences;
-  mypreferences.begin("scoringdevice", false);
-
-  uint8_t storedweapon = mypreferences.getUChar("START_WEAPON", 99);
-
-  switch (storedweapon) {
-  case 0:
-    sprintf(temp, "F");
-    break;
-
-  case 1:
-    sprintf(temp, "E");
-    break;
-
-  case 2:
-    sprintf(temp, "S");
-    break;
-  default:
-    sprintf(temp, "E");
-  }
-  StartUpWeapon.setValue(temp, 1);
-  SmallDE.setValue(BoolToStr(mypreferences.getBool("SmallDE", false)), 1);
-
-  PowerMode.setValue(BoolToStr(mypreferences.getBool("Powersave", false)), 1);
-  RepeaterMode.setValue(BoolToStr(mypreferences.getBool("RepeaterMode", false)),
-                        1);
-
-  MuteBuzzer.setValue(BoolToStr(mypreferences.getBool("MuteBuzzer", false)), 1);
-  MirrorLights.setValue(BoolToStr(mypreferences.getBool("MirrorLights", false)),
-                        1);
-  DisableBrownout.setValue(
-      BoolToStr(mypreferences.getBool("DisableBrownout", true)), 1);
-  ForceCal.setValue(BoolToStr(mypreferences.getBool("ForceCal", false)), 1);
-  FPA422Enabled.setValue(
-      BoolToStr(mypreferences.getBool("FPA422Enabled", false)), 1);
-
-  int32_t MasterNr = mypreferences.getInt("MasterPiste", -1);
-  sprintf(temp, "%d", MasterNr);
-  MasterPisteId.setValue(temp, 8);
-  mypreferences.end();
-
-  server.end();
-
-  wm.addParameter(&WiFiPistId);
-  wm.addParameter(&CyranoPisteName);
-  wm.addParameter(&WiFiAPPasswd);
-
-  wm.addParameter(&TryGlobalWiFi);
-  wm.addParameter(&CyranoPort);
-  wm.addParameter(&CyranoBcPort);
-  wm.addParameter(&UseDHCP);
-  wm.addParameter(&FixedIPAddress);
-  wm.addParameter(&MqttBrokerIP);
-  wm.addParameter(&StartUpWeapon);
-  wm.addParameter(&SmallDE);
-  wm.addParameter(&MuteBuzzer);
-  wm.addParameter(&PowerMode);
-  wm.addParameter(&RepeaterMode);
-  wm.addParameter(&MasterPisteId);
-  wm.addParameter(&MirrorLights);
-  wm.addParameter(&DisableBrownout);
-  wm.addParameter(&ForceCal);
-  wm.addParameter(&FPA422Enabled);
-
-  wm.setEnableConfigPortal(true);
-  wm.setConfigPortalBlocking(true);
-  wm.setConfigPortalTimeout(120);
-  wm.setSaveParamsCallback(saveParamsCallback);
-  wm.setConfigPortalTimeoutCallback(ConfigPortalTimeoutCallback);
-  wm.setConfigResetCallback(ConfigResetCallback);
-  wm.setShowInfoUpdate(false);
-  wm.setParamsPage(true);
-  wm.startConfigPortal(soft_ap_ssid.c_str(), soft_ap_password.c_str());
-  // ESP.restart();
-  m_GlobalWifiStarted = false;
-  NetWork::GlobalStartWiFi();
 }
 
 void NetWork::DoFactoryReset() {

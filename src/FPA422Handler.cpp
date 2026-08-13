@@ -22,7 +22,6 @@ static const char *FPA422_TAG = "FPA422";
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiAP.h>
-#include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 #include <esp_wifi.h>
 
 #ifdef HOMENETWORK

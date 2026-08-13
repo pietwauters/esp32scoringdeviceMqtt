@@ -5,6 +5,9 @@
 #include <Preferences.h>
 #include "esp_err.h"
 #include "esp_log.h"
+// esp_wifi_get_channel() needs this directly -- used to come in
+// transitively via network.h's now-removed <WiFiManager.h> include.
+#include <esp_wifi.h>
 static const char* REPEATER_SND_TAG = "Repeater Sender";
 
 // using namespace std;

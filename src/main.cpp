@@ -32,6 +32,7 @@
 #include "TimeScoreDisplay.h"
 #include "UDPIOHandler.h"
 #include "WS2812BLedStrip.h"
+#include "AppSettings.h"
 #include "WebRemoteHandler.h"
 #include "driver/adc.h"
 #include "esp_clk.h"
@@ -74,6 +75,7 @@ Opp2Handler *MyOpp2Handler;
 RepeaterReceiver *MyRepeaterReiver;
 RepeaterSender *MyRepeaterSender;
 WebRemoteHandler *MyWebRemoteHandler;
+AppSettings *MyAppSettings;
 
 bool bIsRepeater = false;
 bool bEnableDeepSleep = false;
@@ -132,6 +134,14 @@ void setup() {
   MyUDPIOHandler = &UDPIOHandler::getInstance();
   MyUDPIOHandler->ConnectToAP();
   MyUDPIOHandler->attach(*MyNetWork);
+
+  // Only needs NetWork::GetServer(), same as the old WiFiManager params
+  // page it replaces -- started here, before the repeater/master split,
+  // so repeater devices keep the same settings-reconfiguration reach
+  // they had before (UI_START_WIFI_PORTAL routes to NetWork regardless
+  // of bIsRepeater, see NetWork::update(UDPIOHandler*, ...)).
+  MyAppSettings = &AppSettings::getInstance();
+  MyAppSettings->begin();
 
   // In repeater mode don't start these 2 tasks
 
