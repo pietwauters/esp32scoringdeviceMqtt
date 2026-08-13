@@ -1,0 +1,13 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0x1E0000,
+app1,     app,  ota_1,   0x1F0000,0x1E0000,
+coredump, data, coredump,0x3F0000,0x10000,
+# The 0x20000 (128KB) spiffs region min_spiffs.csv had at 0x3D0000 is gone,
+# not reclaimed by anything here -- SPIFFS is no longer used anywhere in
+# this codebase (the web remote's html/js/css moved to flash-resident
+# const arrays, see WebRemoteHandler.cpp / strip_web_assets.py). Left
+# unpartitioned/unused rather than folded into app0/app1, since growing
+# those is a separate decision with its own tradeoffs (OTA rollback
+# margin), not part of this change.

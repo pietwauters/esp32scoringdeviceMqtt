@@ -20,6 +20,14 @@
 #include <ElegantOTA.h>
 static const char *NETWORK_TAG = "Network";
 
+// The only AsyncWebServer instance on this device -- do not construct a
+// second one anywhere. Confirmed by direct hardware testing (2026-08-12):
+// a second concurrent AsyncWebServer instance corrupts/hangs any
+// multi-packet response (>1 TCP segment, ~1460 bytes) on BOTH servers,
+// including this one, even though nothing here changed -- single-instance
+// operation is byte-perfect, two instances is not. All web routes
+// (calibration/provision/OTA/WebRemoteHandler/...) go through
+// NetWork::GetServer(), which returns this object.
 AsyncWebServer server(80);
 
 // Forward declaration for calibration HTML handler
@@ -77,7 +85,22 @@ String getProvisionHtml(const String &sentParam) {
   return html;
 }
 
+AsyncWebServer &NetWork::GetServer() { return server; }
+
 // Register endpoints and start server
+//
+// KNOWN GAP (2026-08-12, documented not fixed): server.reset() below wipes
+// every registered route, including any WebRemoteHandler routes added
+// after boot. This function only runs at boot in normal operation, but
+// WaitForNewSettingsViaPortal() (triggered by the user's "Reconfigure
+// WiFi" action) calls GlobalStartWiFi() -> startCalibrationWebServer()
+// again at runtime -- so a live "Reconfigure WiFi" silently kills the web
+// remote (no re-registration happens afterward) until the next reboot.
+// Narrow, deliberate not-fixed-yet: WebRemoteHandler has no hook to
+// re-register itself on this event today. Fix would be either a callback
+// list this function invokes after re-registering its own routes, or
+// moving WebRemoteHandler's route registration into this function
+// directly. Revisit if this proves disruptive in practice.
 void startCalibrationWebServer() {
   server.reset();
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {

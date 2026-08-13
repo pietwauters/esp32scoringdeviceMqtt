@@ -32,6 +32,7 @@
 #include "TimeScoreDisplay.h"
 #include "UDPIOHandler.h"
 #include "WS2812BLedStrip.h"
+#include "WebRemoteHandler.h"
 #include "driver/adc.h"
 #include "esp_clk.h"
 #include "esp_log.h"
@@ -72,6 +73,7 @@ CyranoHandler *MyCyranoHandler;
 Opp2Handler *MyOpp2Handler;
 RepeaterReceiver *MyRepeaterReiver;
 RepeaterSender *MyRepeaterSender;
+WebRemoteHandler *MyWebRemoteHandler;
 
 bool bIsRepeater = false;
 bool bEnableDeepSleep = false;
@@ -161,6 +163,14 @@ void setup() {
     MyOpp2Handler->attach(*MyCyranoHandler); // CyranoHandler observes Opp2 for
                                              // message send events
     MyOpp2Handler->Begin();
+
+    // Compact web remote control -- depends on both UDPIOHandler (button
+    // event injection) and Opp2Handler (state reads), so started after
+    // both exist. Not started in repeater mode, matching
+    // FPA422Handler/CyranoHandler/Opp2Handler above -- a repeater has no
+    // FSM of its own to send UI_INPUT_* events to.
+    MyWebRemoteHandler = &WebRemoteHandler::getInstance();
+    MyWebRemoteHandler->begin();
 
     MyRepeaterSender = &RepeaterSender::getInstance();
     MyRepeaterSender->begin();
