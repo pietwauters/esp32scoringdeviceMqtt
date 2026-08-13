@@ -343,7 +343,25 @@
     // 2026-08-12). Waiting for each poll to finish before scheduling the
     // next means this client only ever has one /api/state request in
     // flight, no matter how slow the network gets.
+    //
+    // Elapsed-time-compensated (2026-08-13): DevTools Network tab showed
+    // real fetch time swinging ~31ms-500ms+ even with the match timer
+    // stopped (Core 0 -- WiFi/lwIP, MQTT client, and this web server's task
+    // all share it -- contention, not anything clock-related). A plain
+    // `setTimeout(scheduleNextPoll, 500)` after every fetch made that
+    // jitter compound directly into the update cadence (fetch_time + 500ms
+    // between updates, so ~530ms-1000ms+ instead of a flat 500ms) --
+    // exactly the "bursty, sometimes stalls over a second" symptom this
+    // was reported for. Subtracting elapsed fetch time keeps the target a
+    // genuine ~500ms between poll *starts* while still never firing the
+    // next request before the previous one resolved (Math.max floor at 0
+    // preserves that -- a slow fetch just means the next one fires
+    // immediately, never overlapping).
     function scheduleNextPoll() {
-      poll().finally(function () { setTimeout(scheduleNextPoll, 500); });
+      const started = performance.now();
+      poll().finally(function () {
+        const elapsed = performance.now() - started;
+        setTimeout(scheduleNextPoll, Math.max(0, 500 - elapsed));
+      });
     }
     scheduleNextPoll();
