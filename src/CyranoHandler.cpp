@@ -4,7 +4,6 @@
 #include "MDNSResolver.h"
 #include "Opp2Handler.h"
 #include <esp_log.h>
-#include <sstream>
 #include <string>
 
 extern const char ca_cert_pem[];
@@ -22,6 +21,10 @@ CyranoHandler::CyranoHandler() : m_CachedStatusValid(false) {
   // ctor
   // Note: State now managed by OPP2::SystemState in Opp2Handler
   // Cached status will be populated on first state update
+  m_CompetitionId[0] = '\0';
+  m_CachedCyranoString[0] = '\0';
+  m_CachedNextCyrano[0] = '\0';
+  m_CachedPrevCyrano[0] = '\0';
 }
 
 auto &mqttClient = AtlasAsyncMqttClient::getInstance();
@@ -48,14 +51,16 @@ void CyranoHandler::RebuildCachedStrings() {
   // task, ~4KB stack) via updateFromCyranoMessage()->updateCachedStatus().
   // Command/CompetitionId are unconditionally overwritten here on every
   // call, so nothing depends on their prior value.
-  m_CachedStatus[Command] = "INFO";
-  m_CachedStatus[CompetitionId] = m_CompetitionId;
+  m_CachedStatus.Set(Command, "INFO");
+  m_CachedStatus.Set(CompetitionId, m_CompetitionId);
 
   // Build and cache the INFO, NEXT, PREV Cyrano wire strings
-  // CRITICAL: MakeNext/PrevMessageString() use [CompetitionId], so it must be set above
-  m_CachedStatus.ToString(m_CachedCyranoString);
-  m_CachedNextCyrano = m_CachedStatus.MakeNextMessageString();
-  m_CachedPrevCyrano = m_CachedStatus.MakePrevMessageString();
+  // CRITICAL: MakeNext/PrevMessageString() use CompetitionId, so it must be set above
+  m_CachedStatus.ToString(m_CachedCyranoString, sizeof(m_CachedCyranoString));
+  m_CachedStatus.MakeNextMessageString(m_CachedNextCyrano,
+                                       sizeof(m_CachedNextCyrano));
+  m_CachedStatus.MakePrevMessageString(m_CachedPrevCyrano,
+                                       sizeof(m_CachedPrevCyrano));
 
   // Mark cache as valid
   m_CachedStatusValid = true;
@@ -125,8 +130,8 @@ void CyranoHandler::SendInfoMessage() {
   }
 
   // Use cached string directly - zero stack allocations
-  const char *pCyranoMsg = m_CachedCyranoString.c_str();
-  size_t cyranoLen = m_CachedCyranoString.length();
+  const char *pCyranoMsg = m_CachedCyranoString;
+  size_t cyranoLen = strlen(m_CachedCyranoString);
 
   CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                               SoftwareIPAddress(), CyranoBroadcastPort,
@@ -154,7 +159,7 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
     // Get piste ID from canonical OPP2 state (stack-efficient)
     char pisteId[OPP2::PISTE_ID_MAX];
     Opp2Handler::getInstance().getPisteId(pisteId);
-    if (input[PisteId] != std::string(pisteId))
+    if (strcmp(input.Get(PisteId), pisteId) != 0)
       return; // wrong Piste
   }
   switch (input.GetType()) {
@@ -162,7 +167,9 @@ void CyranoHandler::ProcessMessageFromSoftware(const EFP1Message &input,
     bOKToSend = true;
     bSoftwareIsLive = true;
     LastHelloReception = millis();
-    m_CompetitionId = input[CompetitionId];
+    strncpy(m_CompetitionId, input.Get(CompetitionId),
+            sizeof(m_CompetitionId) - 1);
+    m_CompetitionId[sizeof(m_CompetitionId) - 1] = '\0';
 
     if (m_CachedStatusValid) {
       RebuildCachedStrings();
@@ -219,8 +226,8 @@ void CyranoHandler::update(Opp2Handler *subject, uint32_t eventtype) {
       return;
     }
     {
-      const char *pCyranoMsg = m_CachedNextCyrano.c_str();
-      size_t cyranoLen = m_CachedNextCyrano.length();
+      const char *pCyranoMsg = m_CachedNextCyrano;
+      size_t cyranoLen = strlen(m_CachedNextCyrano);
       CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                                   SoftwareIPAddress(), CyranoBroadcastPort,
                                   TCPIP_ADAPTER_IF_STA);
@@ -242,8 +249,8 @@ void CyranoHandler::update(Opp2Handler *subject, uint32_t eventtype) {
       return;
     }
     {
-      const char *pCyranoMsg = m_CachedPrevCyrano.c_str();
-      size_t cyranoLen = m_CachedPrevCyrano.length();
+      const char *pCyranoMsg = m_CachedPrevCyrano;
+      size_t cyranoLen = strlen(m_CachedPrevCyrano);
       CyranoHandlerudpRcv.writeTo((uint8_t *)pCyranoMsg, cyranoLen,
                                   SoftwareIPAddress(), CyranoBroadcastPort,
                                   TCPIP_ADAPTER_IF_STA);

@@ -1739,10 +1739,11 @@ bool Opp2Handler::updateFromCyranoMessage(
   // NO stack allocations allowed! EFP1Input passed by const reference.
 
   ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] (zero-copy) Received command: %s",
-           EFP1Input[Command].c_str());
+           EFP1Input.Get(Command));
 
   // ── Only process DISP/INFO commands (match setup) ───────────────────
-  if (EFP1Input[Command] != "DISP" && EFP1Input[Command] != "INFO") {
+  if (strcmp(EFP1Input.Get(Command), "DISP") != 0 &&
+      strcmp(EFP1Input.Get(Command), "INFO") != 0) {
     return false; // Not a match setup command
   }
 
@@ -1752,7 +1753,7 @@ bool Opp2Handler::updateFromCyranoMessage(
   bool lightsChanged = false;
   bool uw2fChanged = false;
   bool clockChanged = false;
-  bool isDisp = (EFP1Input[Command] == "DISP");
+  bool isDisp = (strcmp(EFP1Input.Get(Command), "DISP") == 0);
   // Snapshot for FSM sync — captured inside mutex before release
   uint8_t snapScoreLeft = 0, snapScoreRight = 0;
   bool snapYcLeft = false, snapYcRight = false;
@@ -1770,43 +1771,43 @@ bool Opp2Handler::updateFromCyranoMessage(
   // ── Fencers information (goes to FENCERS message, not SCORE) ────────
 
   // Right fencer
-  if (EFP1Input[RightFencerId] != "") {
-    strncpy(m_State.fencers.right.fencer.id, EFP1Input[RightFencerId].c_str(),
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightFencerId))) {
+    strncpy(m_State.fencers.right.fencer.id, EFP1Input.Get(RightFencerId),
             sizeof(m_State.fencers.right.fencer.id) - 1);
     m_State.fencers.right.fencer.present = true;
     fencersChanged = true;
   }
-  if (EFP1Input[RightFencerName] != "") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightFencerName))) {
     strncpy(m_State.fencers.right.fencer.name,
-            EFP1Input[RightFencerName].c_str(),
+            EFP1Input.Get(RightFencerName),
             sizeof(m_State.fencers.right.fencer.name) - 1);
     m_State.fencers.right.fencer.present = true;
     fencersChanged = true;
   }
-  if (EFP1Input[RightFencerNation] != "") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightFencerNation))) {
     strncpy(m_State.fencers.right.fencer.nation,
-            EFP1Input[RightFencerNation].c_str(),
+            EFP1Input.Get(RightFencerNation),
             sizeof(m_State.fencers.right.fencer.nation) - 1);
     m_State.fencers.right.fencer.present = true;
     fencersChanged = true;
   }
 
   // Left fencer
-  if (EFP1Input[LeftFencerId] != "") {
-    strncpy(m_State.fencers.left.fencer.id, EFP1Input[LeftFencerId].c_str(),
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftFencerId))) {
+    strncpy(m_State.fencers.left.fencer.id, EFP1Input.Get(LeftFencerId),
             sizeof(m_State.fencers.left.fencer.id) - 1);
     m_State.fencers.left.fencer.present = true;
     fencersChanged = true;
   }
-  if (EFP1Input[LeftFencerName] != "") {
-    strncpy(m_State.fencers.left.fencer.name, EFP1Input[LeftFencerName].c_str(),
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftFencerName))) {
+    strncpy(m_State.fencers.left.fencer.name, EFP1Input.Get(LeftFencerName),
             sizeof(m_State.fencers.left.fencer.name) - 1);
     m_State.fencers.left.fencer.present = true;
     fencersChanged = true;
   }
-  if (EFP1Input[LeftFencerNation] != "") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftFencerNation))) {
     strncpy(m_State.fencers.left.fencer.nation,
-            EFP1Input[LeftFencerNation].c_str(),
+            EFP1Input.Get(LeftFencerNation),
             sizeof(m_State.fencers.left.fencer.nation) - 1);
     m_State.fencers.left.fencer.present = true;
     fencersChanged = true;
@@ -1814,51 +1815,53 @@ bool Opp2Handler::updateFromCyranoMessage(
 
   // ── Scores (goes to SCORE message) ──────────────────────────────────
 
-  if (EFP1Input[RightScore] != "") {
-    m_State.score.right.score = std::atoi(EFP1Input[RightScore].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightScore))) {
+    m_State.score.right.score = std::atoi(EFP1Input.Get(RightScore));
     scoreChanged = true;
   }
-  if (EFP1Input[LeftScore] != "") {
-    m_State.score.left.score = std::atoi(EFP1Input[LeftScore].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftScore))) {
+    m_State.score.left.score = std::atoi(EFP1Input.Get(LeftScore));
     scoreChanged = true;
   }
 
   // ── Cards ────────────────────────────────────────────────────────────
 
-  if (EFP1Input[RightYCard] != "") {
-    m_State.score.right.yellow_card = (EFP1Input[RightYCard] == "1");
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightYCard))) {
+    m_State.score.right.yellow_card =
+        (strcmp(EFP1Input.Get(RightYCard), "1") == 0);
     scoreChanged = true;
   }
-  if (EFP1Input[LeftYCard] != "") {
-    m_State.score.left.yellow_card = (EFP1Input[LeftYCard] == "1");
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftYCard))) {
+    m_State.score.left.yellow_card =
+        (strcmp(EFP1Input.Get(LeftYCard), "1") == 0);
     scoreChanged = true;
   }
-  if (EFP1Input[RightRCard] != "") {
-    m_State.score.right.red_cards = std::atoi(EFP1Input[RightRCard].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightRCard))) {
+    m_State.score.right.red_cards = std::atoi(EFP1Input.Get(RightRCard));
     scoreChanged = true;
   }
-  if (EFP1Input[LeftRCard] != "") {
-    m_State.score.left.red_cards = std::atoi(EFP1Input[LeftRCard].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftRCard))) {
+    m_State.score.left.red_cards = std::atoi(EFP1Input.Get(LeftRCard));
     scoreChanged = true;
   }
 
   // ── P-Cards (UW2F) ───────────────────────────────────────────────────
 
-  if (EFP1Input[RightPCards] != "") {
-    m_State.uw2f.right.p_card = std::atoi(EFP1Input[RightPCards].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightPCards))) {
+    m_State.uw2f.right.p_card = std::atoi(EFP1Input.Get(RightPCards));
     uw2fChanged = true;
   }
-  if (EFP1Input[LeftPCards] != "") {
-    m_State.uw2f.left.p_card = std::atoi(EFP1Input[LeftPCards].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftPCards))) {
+    m_State.uw2f.left.p_card = std::atoi(EFP1Input.Get(LeftPCards));
     uw2fChanged = true;
   }
 
   // ── Priority ─────────────────────────────────────────────────────────
 
-  if (EFP1Input[Priority] != "") {
-    if (EFP1Input[Priority] == "R") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(Priority))) {
+    if (strcmp(EFP1Input.Get(Priority), "R") == 0) {
       m_State.score.priority = OPP2::Priority::RIGHT;
-    } else if (EFP1Input[Priority] == "L") {
+    } else if (strcmp(EFP1Input.Get(Priority), "L") == 0) {
       m_State.score.priority = OPP2::Priority::LEFT;
     } else {
       m_State.score.priority = OPP2::Priority::NONE;
@@ -1868,12 +1871,12 @@ bool Opp2Handler::updateFromCyranoMessage(
 
   // ── Weapon ───────────────────────────────────────────────────────────
 
-  if (EFP1Input[Weapon] != "") {
-    if (EFP1Input[Weapon] == "E") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(Weapon))) {
+    if (strcmp(EFP1Input.Get(Weapon), "E") == 0) {
       m_State.match.weapon = OPP2::Weapon::EPEE;
-    } else if (EFP1Input[Weapon] == "S") {
+    } else if (strcmp(EFP1Input.Get(Weapon), "S") == 0) {
       m_State.match.weapon = OPP2::Weapon::SABRE;
-    } else if (EFP1Input[Weapon] == "F") {
+    } else if (strcmp(EFP1Input.Get(Weapon), "F") == 0) {
       m_State.match.weapon = OPP2::Weapon::FOIL;
     }
     matchChanged = true;
@@ -1881,31 +1884,31 @@ bool Opp2Handler::updateFromCyranoMessage(
 
   // ── Round number ─────────────────────────────────────────────────────
 
-  if (EFP1Input[RoundNumber] != "") {
-    m_State.match.round = std::atoi(EFP1Input[RoundNumber].c_str());
+  if (!EFP1FieldEmpty(EFP1Input.Get(RoundNumber))) {
+    m_State.match.round = std::atoi(EFP1Input.Get(RoundNumber));
     matchChanged = true;
   }
 
   // ── Match identification fields (echoed back in INFO) ────────────────
-  if (EFP1Input[PhaseNumber] != "") {
-    strncpy(m_State.match.phase, EFP1Input[PhaseNumber].c_str(),
+  if (!EFP1FieldEmpty(EFP1Input.Get(PhaseNumber))) {
+    strncpy(m_State.match.phase, EFP1Input.Get(PhaseNumber),
             sizeof(m_State.match.phase) - 1);
     m_State.match.phase[sizeof(m_State.match.phase) - 1] = '\0';
     matchChanged = true;
   }
-  if (EFP1Input[Poule_Tableau_Id] != "") {
-    strncpy(m_State.match.poule, EFP1Input[Poule_Tableau_Id].c_str(),
+  if (!EFP1FieldEmpty(EFP1Input.Get(Poule_Tableau_Id))) {
+    strncpy(m_State.match.poule, EFP1Input.Get(Poule_Tableau_Id),
             sizeof(m_State.match.poule) - 1);
     m_State.match.poule[sizeof(m_State.match.poule) - 1] = '\0';
     matchChanged = true;
   }
-  if (EFP1Input[MatchNumber] != "") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(MatchNumber))) {
     m_State.match.match_num =
-        (uint16_t)std::atoi(EFP1Input[MatchNumber].c_str());
+        (uint16_t)std::atoi(EFP1Input.Get(MatchNumber));
     matchChanged = true;
   }
-  if (EFP1Input[CompetitionType] != "") {
-    if (EFP1Input[CompetitionType] == "T")
+  if (!EFP1FieldEmpty(EFP1Input.Get(CompetitionType))) {
+    if (strcmp(EFP1Input.Get(CompetitionType), "T") == 0)
       m_State.match.type = OPP2::MatchType::TEAM;
     else
       m_State.match.type = OPP2::MatchType::INDIVIDUAL;
@@ -1913,9 +1916,9 @@ bool Opp2Handler::updateFromCyranoMessage(
   }
 
   // ── StopWatch (initial clock value from DISP) ────────────────────────
-  if (EFP1Input[StopWatch] != "") {
+  if (!EFP1FieldEmpty(EFP1Input.Get(StopWatch))) {
     uint32_t minutes = 0, seconds = 0;
-    sscanf(EFP1Input[StopWatch].c_str(), "%u:%u", &minutes, &seconds);
+    sscanf(EFP1Input.Get(StopWatch), "%u:%u", &minutes, &seconds);
     uint32_t new_time_ms = (minutes * 60000) + (seconds * 1000);
     if (m_State.clock.time_ms != new_time_ms) {
       m_State.clock.time_ms = new_time_ms;
@@ -1925,20 +1928,24 @@ bool Opp2Handler::updateFromCyranoMessage(
 
   // ── Lights (if present in INFO messages) ────────────────────────────
 
-  if (EFP1Input[RightLight] != "") {
-    m_State.lights.right.on_target = (EFP1Input[RightLight] == "1");
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightLight))) {
+    m_State.lights.right.on_target =
+        (strcmp(EFP1Input.Get(RightLight), "1") == 0);
     lightsChanged = true;
   }
-  if (EFP1Input[LeftLight] != "") {
-    m_State.lights.left.on_target = (EFP1Input[LeftLight] == "1");
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftLight))) {
+    m_State.lights.left.on_target =
+        (strcmp(EFP1Input.Get(LeftLight), "1") == 0);
     lightsChanged = true;
   }
-  if (EFP1Input[RightWhiteLight] != "") {
-    m_State.lights.right.white = (EFP1Input[RightWhiteLight] == "1");
+  if (!EFP1FieldEmpty(EFP1Input.Get(RightWhiteLight))) {
+    m_State.lights.right.white =
+        (strcmp(EFP1Input.Get(RightWhiteLight), "1") == 0);
     lightsChanged = true;
   }
-  if (EFP1Input[LeftWhiteLight] != "") {
-    m_State.lights.left.white = (EFP1Input[LeftWhiteLight] == "1");
+  if (!EFP1FieldEmpty(EFP1Input.Get(LeftWhiteLight))) {
+    m_State.lights.left.white =
+        (strcmp(EFP1Input.Get(LeftWhiteLight), "1") == 0);
     lightsChanged = true;
   }
 
@@ -1954,7 +1961,7 @@ bool Opp2Handler::updateFromCyranoMessage(
     snapRcLeft = m_State.score.left.red_cards;
     snapRcRight = m_State.score.right.red_cards;
     snapClockMs = m_State.clock.time_ms;
-    if (EFP1Input[Weapon] != "") {
+    if (!EFP1FieldEmpty(EFP1Input.Get(Weapon))) {
       switch (m_State.match.weapon) {
       case OPP2::Weapon::EPEE:
         snapWeapon = EPEE;
@@ -1979,7 +1986,7 @@ bool Opp2Handler::updateFromCyranoMessage(
   if (fencersChanged || scoreChanged || matchChanged || lightsChanged ||
       uw2fChanged || clockChanged) {
     ESP_LOGI(OPP2_TAG, "[Cyrano→OPP2] Publishing updated state from %s",
-             EFP1Input[Command].c_str());
+             EFP1Input.Get(Command));
 
     if (fencersChanged)
       PublishFencers();
@@ -1997,7 +2004,7 @@ bool Opp2Handler::updateFromCyranoMessage(
     StateChanged(EVENT_STATE_CHANGED);
     PushCachedStatusToCyrano();
   } else {
-    if (EFP1Input[Command] == "INFO") {
+    if (strcmp(EFP1Input.Get(Command), "INFO") == 0) {
       StateChanged(EVENT_STATE_CHANGED);
     }
   }
@@ -2619,45 +2626,44 @@ void Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
 
   // ── Header fields ──────────────────────────────────────────────────────
 
-  cyrano[Protocol] =
-      "EFP1.1"; // Cyrano protocol identifier (required by software!)
-  cyrano[PisteId] = pisteId ? pisteId : state.piste_id;
+  cyrano.Set(Protocol, "EFP1.1"); // Cyrano protocol identifier (required by software!)
+  cyrano.Set(PisteId, pisteId ? pisteId : state.piste_id);
 
   // Weapon: OPP2::Weapon to Cyrano (E/F/S)
   switch (state.match.weapon) {
   case OPP2::Weapon::EPEE:
-    cyrano[Weapon] = "E";
+    cyrano.Set(Weapon, "E");
     break;
   case OPP2::Weapon::FOIL:
-    cyrano[Weapon] = "F";
+    cyrano.Set(Weapon, "F");
     break;
   case OPP2::Weapon::SABRE:
-    cyrano[Weapon] = "S";
+    cyrano.Set(Weapon, "S");
     break;
   default:
-    cyrano[Weapon] = "F"; // Default to foil
+    cyrano.Set(Weapon, "F"); // Default to foil
     break;
   }
 
   // State: OPP2::ApparatusState to Cyrano (W/F/H/P/E)
   switch (state.apparatus_state.state) {
   case OPP2::ApparatusState::WAITING:
-    cyrano[State] = "W";
+    cyrano.Set(State, "W");
     break;
   case OPP2::ApparatusState::FENCING:
-    cyrano[State] = "F";
+    cyrano.Set(State, "F");
     break;
   case OPP2::ApparatusState::HALT:
-    cyrano[State] = "H";
+    cyrano.Set(State, "H");
     break;
   case OPP2::ApparatusState::PAUSE:
-    cyrano[State] = "P";
+    cyrano.Set(State, "P");
     break;
   case OPP2::ApparatusState::ENDING:
-    cyrano[State] = "E";
+    cyrano.Set(State, "E");
     break;
   default:
-    cyrano[State] = "W";
+    cyrano.Set(State, "W");
     break;
   }
 
@@ -2667,157 +2673,157 @@ void Opp2Handler::convertOpp2ToCyrano(const OPP2::SystemState &state,
   uint32_t seconds = total_seconds % 60;
   char time_buf[8];
   snprintf(time_buf, sizeof(time_buf), "%02u:%02u", minutes, seconds);
-  cyrano[StopWatch] = time_buf;
+  cyrano.Set(StopWatch, time_buf);
 
   // Round number
   char round_buf[8];
   snprintf(round_buf, sizeof(round_buf), "%u", state.match.round);
-  cyrano[RoundNumber] = round_buf;
+  cyrano.Set(RoundNumber, round_buf);
 
   // Match identification fields (echoed back from DISP)
   if (state.match.phase[0] != '\0')
-    cyrano[PhaseNumber] = state.match.phase;
+    cyrano.Set(PhaseNumber, state.match.phase);
   if (state.match.poule[0] != '\0')
-    cyrano[Poule_Tableau_Id] = state.match.poule;
+    cyrano.Set(Poule_Tableau_Id, state.match.poule);
   char match_num_buf[8];
   snprintf(match_num_buf, sizeof(match_num_buf), "%u", state.match.match_num);
-  cyrano[MatchNumber] = match_num_buf;
+  cyrano.Set(MatchNumber, match_num_buf);
   switch (state.match.type) {
   case OPP2::MatchType::TEAM:
-    cyrano[CompetitionType] = "T";
+    cyrano.Set(CompetitionType, "T");
     break;
   default:
-    cyrano[CompetitionType] = "I";
+    cyrano.Set(CompetitionType, "I");
     break;
   }
 
   // Priority: OPP2::Priority to Cyrano (L/R/N)
   switch (state.score.priority) {
   case OPP2::Priority::LEFT:
-    cyrano[Priority] = "L";
+    cyrano.Set(Priority, "L");
     break;
   case OPP2::Priority::RIGHT:
-    cyrano[Priority] = "R";
+    cyrano.Set(Priority, "R");
     break;
   default:
-    cyrano[Priority] = "N";
+    cyrano.Set(Priority, "N");
     break;
   }
 
   // ── Right fencer fields ────────────────────────────────────────────────
 
   if (state.fencers.right.fencer.present) {
-    cyrano[RightFencerId] = state.fencers.right.fencer.id;
-    cyrano[RightFencerName] = state.fencers.right.fencer.name;
-    cyrano[RightFencerNation] = state.fencers.right.fencer.nation;
+    cyrano.Set(RightFencerId, state.fencers.right.fencer.id);
+    cyrano.Set(RightFencerName, state.fencers.right.fencer.name);
+    cyrano.Set(RightFencerNation, state.fencers.right.fencer.nation);
   }
 
   // Right score
   char right_score_buf[8];
   snprintf(right_score_buf, sizeof(right_score_buf), "%d",
            state.score.right.score);
-  cyrano[RightScore] = right_score_buf;
+  cyrano.Set(RightScore, right_score_buf);
 
   // Right status (U=undefined/active, V=victory, D=defeat, A=abandonment,
   // E=exclusion)
   switch (state.score.right.status) {
   case OPP2::FencerStatus::VICTORY:
-    cyrano[RightStatus] = "V";
+    cyrano.Set(RightStatus, "V");
     break;
   case OPP2::FencerStatus::DEFEAT:
-    cyrano[RightStatus] = "D";
+    cyrano.Set(RightStatus, "D");
     break;
   case OPP2::FencerStatus::ABANDONMENT:
-    cyrano[RightStatus] = "A";
+    cyrano.Set(RightStatus, "A");
     break;
   case OPP2::FencerStatus::EXCLUSION:
-    cyrano[RightStatus] = "E";
+    cyrano.Set(RightStatus, "E");
     break;
   case OPP2::FencerStatus::DNS:
-    cyrano[RightStatus] = "DNS";
+    cyrano.Set(RightStatus, "DNS");
     break;
   default:
-    cyrano[RightStatus] = "U";
+    cyrano.Set(RightStatus, "U");
     break;
   }
 
   // Right cards
-  cyrano[RightYCard] = state.score.right.yellow_card ? "1" : "0";
+  cyrano.Set(RightYCard, state.score.right.yellow_card ? "1" : "0");
   char right_red_buf[8];
   snprintf(right_red_buf, sizeof(right_red_buf), "%u",
            state.score.right.red_cards);
-  cyrano[RightRCard] = right_red_buf;
+  cyrano.Set(RightRCard, right_red_buf);
 
   // Right lights
-  cyrano[RightLight] = state.lights.right.on_target ? "1" : "0";
-  cyrano[RightWhiteLight] = state.lights.right.white ? "1" : "0";
+  cyrano.Set(RightLight, state.lights.right.on_target ? "1" : "0");
+  cyrano.Set(RightWhiteLight, state.lights.right.white ? "1" : "0");
 
   // Right medical and reserve (known gaps — 0/N for individual competitions)
-  cyrano[RightMedicalIntervention] = "0";
-  cyrano[RightReserveIntroduction] = "N";
+  cyrano.Set(RightMedicalIntervention, "0");
+  cyrano.Set(RightReserveIntroduction, "N");
 
   // Right P-cards
   char right_pcard_buf[8];
   snprintf(right_pcard_buf, sizeof(right_pcard_buf), "%u",
            state.uw2f.right.p_card);
-  cyrano[RightPCards] = right_pcard_buf;
+  cyrano.Set(RightPCards, right_pcard_buf);
 
   // ── Left fencer fields ─────────────────────────────────────────────────
 
   if (state.fencers.left.fencer.present) {
-    cyrano[LeftFencerId] = state.fencers.left.fencer.id;
-    cyrano[LeftFencerName] = state.fencers.left.fencer.name;
-    cyrano[LeftFencerNation] = state.fencers.left.fencer.nation;
+    cyrano.Set(LeftFencerId, state.fencers.left.fencer.id);
+    cyrano.Set(LeftFencerName, state.fencers.left.fencer.name);
+    cyrano.Set(LeftFencerNation, state.fencers.left.fencer.nation);
   }
 
   // Left score
   char left_score_buf[8];
   snprintf(left_score_buf, sizeof(left_score_buf), "%d",
            state.score.left.score);
-  cyrano[LeftScore] = left_score_buf;
+  cyrano.Set(LeftScore, left_score_buf);
 
   // Left status
   switch (state.score.left.status) {
   case OPP2::FencerStatus::VICTORY:
-    cyrano[LeftStatus] = "V";
+    cyrano.Set(LeftStatus, "V");
     break;
   case OPP2::FencerStatus::DEFEAT:
-    cyrano[LeftStatus] = "D";
+    cyrano.Set(LeftStatus, "D");
     break;
   case OPP2::FencerStatus::ABANDONMENT:
-    cyrano[LeftStatus] = "A";
+    cyrano.Set(LeftStatus, "A");
     break;
   case OPP2::FencerStatus::EXCLUSION:
-    cyrano[LeftStatus] = "E";
+    cyrano.Set(LeftStatus, "E");
     break;
   case OPP2::FencerStatus::DNS:
-    cyrano[LeftStatus] = "DNS";
+    cyrano.Set(LeftStatus, "DNS");
     break;
   default:
-    cyrano[LeftStatus] = "U";
+    cyrano.Set(LeftStatus, "U");
     break;
   }
 
   // Left cards
-  cyrano[LeftYCard] = state.score.left.yellow_card ? "1" : "0";
+  cyrano.Set(LeftYCard, state.score.left.yellow_card ? "1" : "0");
   char left_red_buf[8];
   snprintf(left_red_buf, sizeof(left_red_buf), "%u",
            state.score.left.red_cards);
-  cyrano[LeftRCard] = left_red_buf;
+  cyrano.Set(LeftRCard, left_red_buf);
 
   // Left lights
-  cyrano[LeftLight] = state.lights.left.on_target ? "1" : "0";
-  cyrano[LeftWhiteLight] = state.lights.left.white ? "1" : "0";
+  cyrano.Set(LeftLight, state.lights.left.on_target ? "1" : "0");
+  cyrano.Set(LeftWhiteLight, state.lights.left.white ? "1" : "0");
 
   // Left medical and reserve (known gaps — 0/N for individual competitions)
-  cyrano[LeftMedicalIntervention] = "0";
-  cyrano[LeftReserveIntroduction] = "N";
+  cyrano.Set(LeftMedicalIntervention, "0");
+  cyrano.Set(LeftReserveIntroduction, "N");
 
   // Left P-cards
   char left_pcard_buf[8];
   snprintf(left_pcard_buf, sizeof(left_pcard_buf), "%u",
            state.uw2f.left.p_card);
-  cyrano[LeftPCards] = left_pcard_buf;
+  cyrano.Set(LeftPCards, left_pcard_buf);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2829,34 +2835,36 @@ Opp2Handler::convertCyranoToOpp2Fencers(const EFP1Message &cyrano) {
   OPP2::Fencers fencers = {};
 
   // ── Right fencer ──────────────────────────────────────────────────────
-  const std::string &rightId = cyrano[RightFencerId];
-  const std::string &rightName = cyrano[RightFencerName];
-  const std::string &rightNation = cyrano[RightFencerNation];
+  const char *rightId = cyrano.Get(RightFencerId);
+  const char *rightName = cyrano.Get(RightFencerName);
+  const char *rightNation = cyrano.Get(RightFencerNation);
 
-  if (!rightId.empty() || !rightName.empty() || !rightNation.empty()) {
+  if (!EFP1FieldEmpty(rightId) || !EFP1FieldEmpty(rightName) ||
+      !EFP1FieldEmpty(rightNation)) {
     fencers.right.fencer.present = true;
-    strncpy(fencers.right.fencer.id, rightId.c_str(),
+    strncpy(fencers.right.fencer.id, rightId,
             sizeof(fencers.right.fencer.id) - 1);
-    strncpy(fencers.right.fencer.name, rightName.c_str(),
+    strncpy(fencers.right.fencer.name, rightName,
             sizeof(fencers.right.fencer.name) - 1);
-    strncpy(fencers.right.fencer.nation, rightNation.c_str(),
+    strncpy(fencers.right.fencer.nation, rightNation,
             sizeof(fencers.right.fencer.nation) - 1);
   } else {
     fencers.right.fencer.present = false;
   }
 
   // ── Left fencer ───────────────────────────────────────────────────────
-  const std::string &leftId = cyrano[LeftFencerId];
-  const std::string &leftName = cyrano[LeftFencerName];
-  const std::string &leftNation = cyrano[LeftFencerNation];
+  const char *leftId = cyrano.Get(LeftFencerId);
+  const char *leftName = cyrano.Get(LeftFencerName);
+  const char *leftNation = cyrano.Get(LeftFencerNation);
 
-  if (!leftId.empty() || !leftName.empty() || !leftNation.empty()) {
+  if (!EFP1FieldEmpty(leftId) || !EFP1FieldEmpty(leftName) ||
+      !EFP1FieldEmpty(leftNation)) {
     fencers.left.fencer.present = true;
-    strncpy(fencers.left.fencer.id, leftId.c_str(),
+    strncpy(fencers.left.fencer.id, leftId,
             sizeof(fencers.left.fencer.id) - 1);
-    strncpy(fencers.left.fencer.name, leftName.c_str(),
+    strncpy(fencers.left.fencer.name, leftName,
             sizeof(fencers.left.fencer.name) - 1);
-    strncpy(fencers.left.fencer.nation, leftNation.c_str(),
+    strncpy(fencers.left.fencer.nation, leftNation,
             sizeof(fencers.left.fencer.nation) - 1);
   } else {
     fencers.left.fencer.present = false;
@@ -2869,21 +2877,21 @@ OPP2::Match Opp2Handler::convertCyranoToOpp2Match(const EFP1Message &cyrano) {
   OPP2::Match match = {};
 
   // ── Weapon conversion: E/F/S → OPP2::Weapon ───────────────────────────
-  const std::string &weaponStr = cyrano[Weapon];
-  if (weaponStr == "E") {
+  const char *weaponStr = cyrano.Get(Weapon);
+  if (strcmp(weaponStr, "E") == 0) {
     match.weapon = OPP2::Weapon::EPEE;
-  } else if (weaponStr == "F") {
+  } else if (strcmp(weaponStr, "F") == 0) {
     match.weapon = OPP2::Weapon::FOIL;
-  } else if (weaponStr == "S") {
+  } else if (strcmp(weaponStr, "S") == 0) {
     match.weapon = OPP2::Weapon::SABRE;
   } else {
     match.weapon = OPP2::Weapon::EPEE; // Default
   }
 
   // ── Round number ──────────────────────────────────────────────────────
-  const std::string &roundStr = cyrano[RoundNumber];
-  if (!roundStr.empty()) {
-    match.round = static_cast<uint8_t>(std::stoi(roundStr));
+  const char *roundStr = cyrano.Get(RoundNumber);
+  if (!EFP1FieldEmpty(roundStr)) {
+    match.round = static_cast<uint8_t>(std::atoi(roundStr));
   } else {
     match.round = 1; // Default
   }
@@ -2897,17 +2905,17 @@ OPP2::Clock Opp2Handler::convertCyranoToOpp2Clock(const EFP1Message &cyrano) {
   clock.running = false; // Cyrano doesn't indicate if clock is running
 
   // ── Parse MM:SS format → milliseconds ─────────────────────────────────
-  const std::string &stopwatchStr = cyrano[StopWatch];
-  if (!stopwatchStr.empty()) {
-    size_t colonPos = stopwatchStr.find(':');
-    if (colonPos != std::string::npos) {
+  const char *stopwatchStr = cyrano.Get(StopWatch);
+  if (!EFP1FieldEmpty(stopwatchStr)) {
+    const char *colon = strchr(stopwatchStr, ':');
+    if (colon) {
       // Format is "MM:SS"
-      int minutes = std::stoi(stopwatchStr.substr(0, colonPos));
-      int seconds = std::stoi(stopwatchStr.substr(colonPos + 1));
+      int minutes = std::atoi(stopwatchStr);
+      int seconds = std::atoi(colon + 1);
       clock.time_ms = (minutes * 60 + seconds) * 1000;
     } else {
       // If no colon, assume it's just seconds
-      int seconds = std::stoi(stopwatchStr);
+      int seconds = std::atoi(stopwatchStr);
       clock.time_ms = seconds * 1000;
     }
   } else {

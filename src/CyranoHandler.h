@@ -69,20 +69,27 @@ private:
   /** Default constructor */
   CyranoHandler();
 
-  // Cyrano-specific fields not in OPP2::SystemState
-  std::string m_CompetitionId; //!< Software-provided competition ID
+  // Cyrano-specific fields not in OPP2::SystemState. Fixed char[] (matches
+  // EFP1Message::CompetitionId's own width) -- not std::string. Traced
+  // 2026-08-12/13: this field and the three cached strings below were
+  // std::string, rebuilt on every state change regardless of whether a
+  // Cyrano CMS was even connected, and were part of what crashed this
+  // device under ordinary traffic. See docs/HEAP_FIX_IMPLEMENTATION_PLAN.md.
+  char m_CompetitionId[65]; //!< Software-provided competition ID
 
   // ── Cached strings for UDP callback stack safety ──────────────────────
   // Phase 6 lesson: String building (ToString(), JSON conversion) in
   // UDP callbacks causes stack overflow in async_udp task (~4KB stack).
   // Solution: Pre-build and cache ALL final strings (INFO, NEXT, PREV).
   // Rebuild only when state or CompetitionId changes.
-  // SendInfoMessage() and ProcessUIEvents() use cached strings - NO stack.
-  EFP1Message m_CachedStatus;       //!< Updated when Opp2Handler state changes
-  std::string m_CachedCyranoString; //!< Pre-built INFO Cyrano string
-  std::string m_CachedNextCyrano;   //!< Pre-built NEXT Cyrano string
-  std::string m_CachedPrevCyrano;   //!< Pre-built PREV Cyrano string
-  bool m_CachedStatusValid;         //!< True when cache is synchronized
+  // SendInfoMessage() and ProcessUIEvents() use cached strings - NO stack,
+  // no heap (fixed char[] sized from EFP1Message::kMax*Length -- see
+  // EFP1Message.h for the derivation).
+  EFP1Message m_CachedStatus; //!< Updated when Opp2Handler state changes
+  char m_CachedCyranoString[EFP1Message::kMaxWireMessageLength]; //!< Pre-built INFO Cyrano string
+  char m_CachedNextCyrano[EFP1Message::kMaxNextPrevMessageLength]; //!< Pre-built NEXT Cyrano string
+  char m_CachedPrevCyrano[EFP1Message::kMaxNextPrevMessageLength]; //!< Pre-built PREV Cyrano string
+  bool m_CachedStatusValid; //!< True when cache is synchronized
 
   /**
    * Rebuild cached strings from m_CachedStatus and m_CompetitionId.

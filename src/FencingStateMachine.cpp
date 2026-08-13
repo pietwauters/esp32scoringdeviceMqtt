@@ -103,7 +103,7 @@ void FencingStateMachine::update(MultiWeaponSensor *subject,
 void FencingStateMachine::update(CyranoHandler *subject,
                                  const std::string &eventtype) {
 
-  EFP1Message input(eventtype);
+  EFP1Message input(eventtype.c_str());
   ProcessDisplayMessage(input);
 }
 
@@ -907,32 +907,32 @@ void FencingStateMachine::ProcessDisplayMessage(const EFP1Message &input) {
   m_UW2FTimer.Reset();
   StateChanged(EVENT_UW2F_TIMER);
 
-  if (input[Start_time] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(Start_time))) {
     // Do Something with input[Start_time];
   }
 
-  if (input[StopWatch] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(StopWatch))) {
     // Do Something with input[StopWatch];
     uint8_t minutes = 3;
     uint8_t seconds = 0;
-    sscanf(input[StopWatch].c_str(), "%d:%d", &minutes, &seconds);
+    sscanf(input.Get(StopWatch), "%d:%d", &minutes, &seconds);
     m_Timer.SetMinutes(minutes);
     m_Timer.SetSeconds(seconds);
     m_Timer.SetHundredths(0);
 
     StateChanged(MakeTimerEvent());
   }
-  if (input[CompetitionType] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(CompetitionType))) {
     // Do Something with input[CompetitionType];
-    if ("T" == input[CompetitionType]) {
+    if (strcmp(input.Get(CompetitionType), "T") == 0) {
       m_nrOfRounds = 9;
     }
   }
 
-  if (input[RoundNumber] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RoundNumber))) {
     // Do Something with input[RoundNumber];
     int temp;
-    sscanf(input[RoundNumber].c_str(), "%d", &temp);
+    sscanf(input.Get(RoundNumber), "%d", &temp);
     if (temp == m_currentRound + 1) {
       SetNextTimerStateAndRoundAndNewTimeOnTimerZero();
       StateChanged(EVENT_TIMER_STATE);
@@ -942,139 +942,139 @@ void FencingStateMachine::ProcessDisplayMessage(const EFP1Message &input) {
       StateChanged(EVENT_ROUND | m_currentRound | m_nrOfRounds << 8);
     }
   }
-  if (input[Weapon] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(Weapon))) {
     // Do Something with input[Weapon];
     m_TheSensor->Setweapon_detection_mode(MANUAL);
-    if ("F" == input[Weapon]) {
+    if (strcmp(input.Get(Weapon), "F") == 0) {
       m_MachineWeapon = FOIL;
       StateChanged(EVENT_WEAPON | WEAPON_MASK_FOIL);
       m_TheSensor->SetActualWeapon(FOIL);
     }
-    if ("E" == input[Weapon]) {
+    if (strcmp(input.Get(Weapon), "E") == 0) {
       m_MachineWeapon = EPEE;
       StateChanged(EVENT_WEAPON | WEAPON_MASK_EPEE);
       m_TheSensor->SetActualWeapon(EPEE);
     }
-    if ("S" == input[Weapon]) {
+    if (strcmp(input.Get(Weapon), "S") == 0) {
       m_MachineWeapon = SABRE;
       StateChanged(EVENT_WEAPON | WEAPON_MASK_SABRE);
       m_TheSensor->SetActualWeapon(SABRE);
     }
   }
 
-  if (input[Priority] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(Priority))) {
     // Do Something with input[Priority];
-    if ("L" == input[Priority]) {
+    if (strcmp(input.Get(Priority), "L") == 0) {
       m_Priority = PRIO_LEFT;
       StateChanged(EVENT_PRIO | 1);
     }
-    if ("R" == input[Priority]) {
+    if (strcmp(input.Get(Priority), "R") == 0) {
       m_Priority = PRIO_RIGHT;
       StateChanged(EVENT_PRIO | 2);
     }
-    if ("N" == input[Priority]) {
+    if (strcmp(input.Get(Priority), "N") == 0) {
       m_Priority = NO_PRIO;
       StateChanged(EVENT_PRIO);
     }
   }
 
-  if (input[State] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(State))) {
     // Do Something with input[State];
   }
 
-  if (input[RightFencerId] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightFencerId))) {
     // Do Something with input[RightFencerId];
   }
 
-  if (input[RightFencerName] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightFencerName))) {
     // Do Something with input[RightFencerName];
   }
 
-  if (input[RightFencerNation] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightFencerNation))) {
     // Do Something with input[RightFencerNation];
   }
 
-  if (input[RightScore] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightScore))) {
     // Do Something with input[RightScore];
-    sscanf(input[RightScore].c_str(), "%d", &m_ScoreRight);
+    sscanf(input.Get(RightScore), "%d", &m_ScoreRight);
     StateChanged(EVENT_SCORE_RIGHT | m_ScoreRight);
   }
 
-  if (input[RightStatus] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightStatus))) {
     // Do Something with input[RightStatus];
   }
 
-  if (input[RightYCard] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightYCard))) {
     // Do Something with input[RightYCard];
-    sscanf(input[RightYCard].c_str(), "%d", &m_YellowCardRight);
+    sscanf(input.Get(RightYCard), "%d", &m_YellowCardRight);
     StateChanged(m_YellowCardRight | EVENT_YELLOW_CARD_RIGHT);
   }
 
-  if (input[RightRCard] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightRCard))) {
     // Do Something with input[RightRCard];
-    sscanf(input[RightRCard].c_str(), "%d", &m_RedCardRight);
+    sscanf(input.Get(RightRCard), "%d", &m_RedCardRight);
     StateChanged(m_RedCardRight | EVENT_RED_CARD_RIGHT);
   }
 
-  if (input[RightMedicalIntervention] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightMedicalIntervention))) {
     // Do Something with input[RightMedicalIntervention];
   }
 
-  if (input[RightReserveIntroduction] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightReserveIntroduction))) {
     // Do Something with input[RightReserveIntroduction];
   }
 
-  if (input[RightPCards] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(RightPCards))) {
     // Do Something with input[RightPCards];
-    sscanf(input[RightPCards].c_str(), "%d", &m_PCardRight);
+    sscanf(input.Get(RightPCards), "%d", &m_PCardRight);
     StateChanged(EVENT_P_CARD | m_PCardLeft | m_PCardRight << 8);
   }
 
-  if (input[LeftFencerId] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftFencerId))) {
     // Do Something with input[LeftFencerId];
   }
 
-  if (input[LeftFencerName] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftFencerName))) {
     // Do Something with input[LeftFencerName];
   }
 
-  if (input[LeftFencerNation] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftFencerNation))) {
     // Do Something with input[LeftFencerNation];
   }
 
-  if (input[LeftScore] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftScore))) {
     // Do Something with input[LeftScore];
-    sscanf(input[LeftScore].c_str(), "%d", &m_ScoreLeft);
+    sscanf(input.Get(LeftScore), "%d", &m_ScoreLeft);
     StateChanged(EVENT_SCORE_LEFT | m_ScoreLeft);
   }
 
-  if (input[LeftStatus] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftStatus))) {
     // Do Something with input[LeftStatus];
   }
 
-  if (input[LeftYCard] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftYCard))) {
     // Do Something with input[LeftYCard];
-    sscanf(input[LeftYCard].c_str(), "%d", &m_YellowCardLeft);
+    sscanf(input.Get(LeftYCard), "%d", &m_YellowCardLeft);
     StateChanged(m_YellowCardLeft | EVENT_YELLOW_CARD_LEFT);
   }
 
-  if (input[LeftRCard] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftRCard))) {
     // Do Something with input[LeftRCard];
-    sscanf(input[LeftRCard].c_str(), "%d", &m_RedCardLeft);
+    sscanf(input.Get(LeftRCard), "%d", &m_RedCardLeft);
     StateChanged(m_RedCardLeft | EVENT_RED_CARD_LEFT);
   }
 
-  if (input[LeftMedicalIntervention] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftMedicalIntervention))) {
     // Do Something with input[LeftMedicalIntervention];
   }
 
-  if (input[LeftReserveIntroduction] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftReserveIntroduction))) {
     // Do Something with input[LeftReserveIntroduction];
   }
 
-  if (input[LeftPCards] != emptystring) {
+  if (!EFP1FieldEmpty(input.Get(LeftPCards))) {
     // Do Something with input[LeftPCards];
-    sscanf(input[LeftPCards].c_str(), "%d", &m_PCardLeft);
+    sscanf(input.Get(LeftPCards), "%d", &m_PCardLeft);
     StateChanged(EVENT_P_CARD | m_PCardLeft | m_PCardRight << 8);
   }
 }
