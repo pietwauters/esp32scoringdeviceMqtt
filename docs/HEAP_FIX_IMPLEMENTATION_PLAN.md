@@ -328,32 +328,65 @@ use) that this plan otherwise leaves open.
 This is a real decision for you, not something I should default silently — happy to
 proceed with A as soon as you confirm, or discuss B/C further first.
 
-### Step 1 — Implementation (once direction is chosen)
+### Step 1 — Implementation (once direction is chosen) — **Done, Option A**
 
-- **If A:** change `bblanchon/ArduinoJson @ ^7.0.0` to `bblanchon/ArduinoJson @ ^6.21.0`
-  (or whatever the latest 6.x is) in `platformio.ini`. Rebuild, check for any compile
-  breakage elsewhere in this repo that might depend on v7-only ArduinoJson API (grep
-  turned up no direct `JsonDocument`/`StaticJsonDocument` usage in this repo's own
-  `src/*.cpp` except `TierAProvisioning.cpp`'s two `JsonDocument doc;` uses — those use
-  the real v7 `JsonDocument` name, not the deprecated alias, so **those two call sites
-  would need updating** to whatever v6's equivalent construction looks like, or judged
-  low-priority enough to leave heap-backed since they only fire during the rare
-  provisioning handshake, not every state change).
-- **If B or C:** work happens in a local clone of `opp2-library`, on its own branch
-  there; this repo's `platformio.ini` temporarily points `lib_deps` at that local
-  branch/path for testing before anything is merged/tagged upstream.
+Chose A per Piet's explicit call (2026-08-13): pin now, revisit B/C later rather than
+decide on them today.
 
-### Step 2 — Verification protocol
+- `platformio.ini`: `bblanchon/ArduinoJson @ ^7.0.0` → `^6.21.0`.
+- **Not actually zero opp2-library changes, unlike this plan originally claimed.**
+  Rebuilding surfaced one real compile break: `opp2_serialize.h`'s `VideoReview`
+  serializer used `JsonArray::add<JsonObject>()`, a v7-only no-arg template form (the
+  earlier grep for `StaticJsonDocument`/`JsonDocument`/`Allocator`/`shrinkToFit` didn't
+  cover this — it's a different part of the v7 API surface). Confirmed `VideoReview` is
+  never called anywhere in this project (matches `CLAUDE.md`'s own
+  "❌ Not started: Medical and VideoReview publishing"), so this was a dead-code-only
+  compile break, not a behavior risk. Fixed in `opp2-library` itself
+  (`~/esp-idfProjects/opp2-library`, branch `fix/videoreview-v6-compat`, committed there
+  — not merged) by swapping to `createNestedObject()`, confirmed present in **both** v6
+  and v7 (deprecated-but-functional in v7, per ArduinoJson's own
+  `compatibility.hpp`) — a genuinely version-agnostic fix, not a v6-only shim. This
+  repo's `platformio.ini` temporarily points at that local branch via
+  `symlink:///home/piet/esp-idfProjects/opp2-library` until the fix is merged/tagged
+  upstream and a real released version can be pinned again.
+- `TierAProvisioning.cpp`'s two real `JsonDocument` (v7-only name) uses, exactly as
+  anticipated below: ported to `DynamicJsonDocument(N)` (heap, not
+  `StaticJsonDocument<N>`/stack) — this path carries a CSR and, on response, two PEM
+  certificates (a few KB), and runs inside the MQTT client's own event-handler task, so
+  sizing that on the stack isn't a safe default regardless of the task's actual budget.
+  Fires at most once per device lifetime (or on cert renewal) — a rare one-time
+  allocation, unlike the OPP2/Cyrano publish paths this whole pin exists to fix, which
+  fire on every state change.
+
+### Step 2 — Verification protocol — **Done**
 
 - Confirm OPP2 JSON payloads are byte-identical (or at least schema-identical — same
   fields, same types) before/after, for every message type in `opp2_serialize.h` —
   spot-check against `docs/level2.md`'s field definitions, since v6→v7 (or
   ArduinoJson→hand-rolled) could subtly change float formatting, escaping, or key
-  ordering even when semantically equivalent.
+  ordering even when semantically equivalent. **Done** — captured a real boot +
+  MQTT-boot-recovery + `Publish*()` cycle on hardware with logging temporarily enabled;
+  JSON payloads (e.g. the `Match` publish) are byte-for-byte identical in schema to the
+  v7 capture from earlier the same session.
 - Same soak-test discipline as Branch 1: hundreds of cycles of state changes that
   trigger OPP2 publishes, sampling `/heap` periodically, not just a short burst.
+  **Partially superseded** — see below; the actual verification done here is stronger
+  than a heap-delta soak test for this specific question.
 - Confirm `mqttClient.isConnected()` gating still short-circuits correctly (i.e. the fix
   doesn't accidentally publish when disconnected, or vice versa skip when connected).
+  **Done** — unchanged code path, not touched by this fix; confirmed still present by
+  reading `PublishClock()` etc., not re-derived.
+
+**Additional verification beyond what this plan called for:** a standalone host-side
+test (`test/host_opp2_json/`) that overrides global `operator new`/`delete` to count
+allocations around real calls to `OPP2::Serializer::serialize()` for every message type
+this project actually publishes. This directly proves the zero-heap claim rather than
+inferring it from documentation or from a heap-delta soak test (which can be confounded
+by concurrent activity) — **zero allocations across all 11 message types actually
+used**, `VideoReview` excluded (unused, see above). Arguably stronger evidence for this
+specific question than the live-hardware soak test the plan originally called for, in
+the same way the EFP1 branch's standalone test caught something a live test would have
+struggled to pin down.
 
 ---
 

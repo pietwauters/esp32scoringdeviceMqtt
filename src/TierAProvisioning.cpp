@@ -188,7 +188,15 @@ bool TierAProvisioning::GenerateAndRequest(const char *code, const char *role,
   std::string responseTopic = "openpiste/_provision/response/" + deviceId;
   mqttClient.subscribe(responseTopic.c_str(), 1);
 
-  JsonDocument doc;
+  // DynamicJsonDocument (heap), not StaticJsonDocument<N> (stack) -- this
+  // holds a CSR PEM (a few hundred bytes) and this function's caller
+  // (network.cpp) doesn't run in a stack-constrained context, but sizing a
+  // multi-KB buffer on the stack here would still be the wrong default.
+  // This whole path fires at most once per device lifetime (or on cert
+  // renewal) -- a rare one-time allocation, unlike the OPP2/Cyrano publish
+  // paths this ArduinoJson v6 pin exists to fix (see
+  // docs/HEAP_MEMORY_ANALYSIS.md), which fire on every state change.
+  DynamicJsonDocument doc(2048);
   doc["protocol"] = "OPP2";
   doc["version"] = "1.0";
   doc["seq"] = 1;
@@ -212,7 +220,13 @@ bool TierAProvisioning::GenerateAndRequest(const char *code, const char *role,
 }
 
 void TierAProvisioning::HandleResponse(const char *payload, size_t length) {
-  JsonDocument doc;
+  // DynamicJsonDocument (heap) -- this response carries two PEM
+  // certificates (cert + ca_cert), a few KB combined, and this function
+  // runs inside the MQTT client's own event-handler task (see the
+  // ApplyReconnectIfPending() comment below); sizing that on the stack
+  // isn't a safe default here regardless of the task's actual budget. Same
+  // "rare, one-time" reasoning as GenerateAndRequest()'s doc above.
+  DynamicJsonDocument doc(4096);
   DeserializationError err = deserializeJson(doc, payload, length);
   if (err) {
     ESP_LOGE(TAG, "Tier A response: JSON parse error: %s", err.c_str());
