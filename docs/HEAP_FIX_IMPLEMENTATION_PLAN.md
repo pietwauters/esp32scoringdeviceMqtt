@@ -102,17 +102,26 @@ the SPIFFS partition dependency entirely, not just the boot-time heap buffer.
 - The generated header is a build artifact (regenerated every build from `web_src/`),
   same as `data/` is today — stays git-ignored, not checked in.
 
-### Verification
+### Verification — Done (2026-08-13), all on real hardware
 
-- Confirm `/remote`, `/style.css`, `/app.js` still serve byte-identical gzipped content
-  (same `gunzip`-and-diff check used earlier this session).
-- Confirm `/heap` shows the expected ~5.7KB free-heap improvement immediately after
-  boot, before any state changes — a clean, isolated before/after comparison since
-  nothing else changes in this branch.
-- Confirm boot succeeds with no SPIFFS partition present at all (no more
-  `SPIFFS.begin(true)` call means no dependency on that partition existing, but worth
-  confirming the partition table change itself doesn't break anything else that assumed
-  its presence, e.g. OTA size calculations).
+- ✅ `/remote`, `/style.css`, `/app.js` served content decompressed and diffed against
+  locally-recomputed expected output (`strip_html`/`strip_css`/`terser --compress
+  --mangle` run standalone, byte-for-byte match all three — not just size/syntax
+  spot-checks).
+- ✅ `/heap` immediately after boot: `free=21500 largest_block=18432`, vs. ~9-15KB
+  typical on the SPIFFS-backed version — confirms the expected headroom gain (actual
+  gain somewhat higher than the estimated ~5.7KB, likely due to reduced heap
+  fragmentation from removing the permanent boot-time allocation, not just its size).
+- ✅ Boot succeeds cleanly with `no_spiffs.csv` (no SPIFFS partition at all) — no
+  dependency on the removed partition found elsewhere.
+- ✅ Stress test: 20 rounds of 7-way concurrent mixed load (state polls, all three asset
+  routes, UI button routes) — no crashes, heap stable (21500→19992 free, no leak trend)
+  across the run, device remained pingable/responsive throughout. A few individual
+  requests failed under peak concurrency (`curl` exit 52/28) — expected, matches the
+  pre-existing `AcquireRequestSlot()` cap of 3 concurrent requests, not a regression
+  introduced by this branch.
+
+Committed on `fix/web-remote-progmem` (not merged — see plan-level merge note).
 
 ---
 
