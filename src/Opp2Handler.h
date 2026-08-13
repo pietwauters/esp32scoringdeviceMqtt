@@ -343,8 +343,27 @@ private:
   /**   * Push cached Cyrano status to CyranoHandler (stack safety
    * optimization). Called after internal state updates to keep CyranoHandler
    * cache synchronized. Avoids mutex reads from UDP callback contexts.
+   *
+   * Skips the rebuild when no Cyrano CMS is actually live
+   * (CyranoHandler::SoftwareIsLive() -- set true only once a real HELLO has
+   * been received, false again after 40s of silence), unless force=true.
+   * Confirmed 2026-08-13: this was unconditional at every one of its ~20
+   * call sites, rebuilding a full 41-field EFP1Message plus 3 wire strings
+   * on every state change -- including every FSM clock tick while the
+   * timer runs -- with zero gate on whether Cyrano is even in use. No
+   * longer a heap concern since the EFP1 fixed-buffer refactor, but still
+   * real, pointless CPU work in an OPP2-only deployment.
+   *
+   * force=true is for exactly one call site: updateFromCyranoMessage()'s
+   * DISP-processing path, where SendInfoMessage() is called synchronously
+   * right after and must reflect what DISP just set (Invariant #7 -- the
+   * CMS validates every field it sent in DISP reappears in INFO). That
+   * path only ever runs when Cyrano is already sending us traffic, so the
+   * gate wouldn't save anything there anyway -- force=true just makes the
+   * exemption explicit rather than relying on SoftwareIsLive() happening
+   * to already be true.
    */
-  void PushCachedStatusToCyrano();
+  void PushCachedStatusToCyrano(bool force = false);
 
   /**   * Publish a match message.
    */

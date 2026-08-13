@@ -2002,7 +2002,11 @@ bool Opp2Handler::updateFromCyranoMessage(
       PublishClock();
 
     StateChanged(EVENT_STATE_CHANGED);
-    PushCachedStatusToCyrano();
+    // force=true: SendInfoMessage() is called synchronously right after
+    // this by the caller (ProcessMessageFromSoftware()'s DISP branch) and
+    // must reflect what DISP just set -- Invariant #7. Only call site that
+    // needs this; every other one is safe to skip when Cyrano isn't live.
+    PushCachedStatusToCyrano(/*force=*/true);
   } else {
     if (strcmp(EFP1Input.Get(Command), "INFO") == 0) {
       StateChanged(EVENT_STATE_CHANGED);
@@ -2061,7 +2065,13 @@ void Opp2Handler::getPisteId(char *buffer) {
 // Cache Synchronization (Phase 6 stack safety)
 // ════════════════════════════════════════════════════════════════════════════
 
-void Opp2Handler::PushCachedStatusToCyrano() {
+void Opp2Handler::PushCachedStatusToCyrano(bool force) {
+  // Skip the rebuild entirely when no Cyrano CMS is live and the caller
+  // isn't forcing it (see the header doc comment for the full rationale
+  // and why exactly one call site needs force=true).
+  if (!force && !CyranoHandler::getInstance().SoftwareIsLive())
+    return;
+
   // Called after state updates (mutex already released).
   // Converts directly from m_State while holding the mutex, instead of
   // taking a full ~500-600 byte SystemState stack copy first — this runs
