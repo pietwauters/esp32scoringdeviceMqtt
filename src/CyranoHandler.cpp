@@ -349,21 +349,29 @@ void CyranoHandler::CheckConnection() {
       bCyranoConnected = true;
     }
 
-    if (!budpCyranoConnected) { // Somehow we should call this only once. It
-                                // will
-                                // keep on trying for ever.
-
+    if (!budpCyranoConnected) {
+      // budpCyranoConnected is only set true on an actual successful
+      // listen() -- traced 2026-08-13: it was previously set unconditionally
+      // here regardless of listen()'s return value, so a single failed
+      // attempt (e.g. a timing race right after boot, before the network
+      // stack is fully ready) permanently blocked this retry guard for the
+      // rest of the boot session -- CheckConnection() runs every main-loop
+      // iteration, but this block would never be entered again. Confirmed
+      // on real hardware: nothing was bound to CyranoPort at all (verified
+      // via ICMP port-unreachable), consistent with this exact failure mode.
       if (CyranoHandlerudpRcv.listen(CyranoPort)) {
         ESP_LOGI(CYRANO_TAG, "%s", "Cyrano Listening on IP: ");
         ESP_LOGI(CYRANO_TAG, "%s", (WiFi.localIP().toString()).c_str());
         CyranoHandlerudpRcv.onPacket(
             [](AsyncUDPPacket packet) { ProcessCyranoPacket(packet); });
+
+        // NOTE: MQTT connection now started by Opp2Handler
+
+        budpCyranoConnected = true;
+        bCyranoConnected = true;
+      } else {
+        ESP_LOGW(CYRANO_TAG, "[Cyrano] listen(%u) failed, will retry", CyranoPort);
       }
-
-      // NOTE: MQTT connection now started by Opp2Handler
-
-      budpCyranoConnected = true;
-      bCyranoConnected = true;
     }
   }
 }
