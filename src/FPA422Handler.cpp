@@ -18,27 +18,12 @@ static const char *FPA422_TAG = "FPA422";
 #include <HardwareSerial.h>
 #endif
 
-#ifdef ALLOW_BLUETOOTH
-#include "BluetoothSerial.h"
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
-
-BluetoothSerial SerialBT;
-#endif
-
 #include "AsyncUDP.h"
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiAP.h>
 #include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 #include <esp_wifi.h>
-#ifdef ALLOW_BLE
-#include <BLE2902.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#endif
 
 #ifdef HOMENETWORK
 const char Myssid[] = "YourHomeSSID";
@@ -55,62 +40,6 @@ const char *soft_ap_ssid = "ESP32_01";
 const char *soft_ap_password = "010419671";
 AsyncUDP udp;
 
-#ifdef ALLOW_BLE
-BLEServer *pServer = NULL;
-BLECharacteristic *pCharacteristic = NULL;
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-#define SERVICE_UUID "6f000000-b5a3-f393-e0a9-e50e24dcca9e"
-#define CHARACTERISTIC_UUID "6f000000-b5a3-f393-e0a9-e50e24dcca9e"
-
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) {
-    deviceConnected = true;
-    BLEDevice::startAdvertising();
-    ESP_LOGI(FPA422_TAG, "%s", "BLE Connected");
-  };
-
-  void onDisconnect(BLEServer *pServer) {
-    deviceConnected = false;
-    ESP_LOGI(FPA422_TAG, "%s", "BLE Disconnected");
-  }
-};
-
-void StartBLE() {
-  BLEDevice::init("SFS-Link-FPA");
-
-  // Create the BLE Server
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-
-  // Create the BLE Service
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-
-  // Create a BLE Characteristic
-  pCharacteristic = pService->createCharacteristic(
-      CHARACTERISTIC_UUID,
-      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
-
-  // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
-  // Create a BLE Descriptor
-  pCharacteristic->addDescriptor(new BLE2902());
-
-  // Start the service
-  pService->start();
-
-  // Start advertising
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(
-      0x06); // set value to 0x00 to not advertise this parameter
-  pAdvertising->setMaxPreferred(
-      0x12); // set value to 0x00 to not advertise this parameter
-  BLEDevice::startAdvertising();
-}
-
-#endif
-
 FPA422Handler::FPA422Handler() {
   Message5.SetTypeToLeft();
   Message5.SetName("Left fencer", 11);
@@ -126,15 +55,6 @@ FPA422Handler::FPA422Handler() {
 FPA422Handler::~FPA422Handler() {
   // dtor
 }
-
-#ifdef ALLOW_BLUETOOTH
-void FPA422Handler::StartBluetooth() {
-  SerialBT.begin("ESP32ScoringDevice1"); // Bluetooth device name
-  m_BlueToothStarted = true;
-  TimeForNext1_2s = millis() + 1200;
-  TimeForNext12s = millis() + 12500;
-}
-#endif
 
 #ifdef ALLOW_HARDWARESERIAL
 HardwareSerial MySerial(2);
@@ -176,34 +96,11 @@ void FPA422Handler::StartWiFi() {
   if (MyNetWork.IsExternalWifiAvailable()) {
     SetCyranoStatus('1');
   }
-#ifdef ALLOW_BLE
-  StartBLE();
-#endif
 #ifdef ALLOW_HARDWARESERIAL
   StartHWSerial();
 #endif
 }
 
-#ifdef ALLOW_BLUETOOTH
-void FPA422Handler::BTTPeriodicalUpdate() {
-  if (millis() > TimeForNext1_2s) {
-    BTTransmitMessage(1);
-    BTTransmitMessage(2);
-    BTTransmitMessage(3);
-    TimeForNext1_2s = millis() + 1200;
-    return;
-  }
-  if (millis() > TimeForNext12s) {
-    BTTransmitMessage(4);
-    BTTransmitMessage(5);
-    BTTransmitMessage(6);
-    BTTransmitMessage(7);
-    BTTransmitMessage(8);
-    TimeForNext12s = millis() + 12000;
-    return;
-  }
-}
-#endif
 void FPA422Handler::WifiPeriodicalUpdate() {
   if (millis() > TimeForNext1_2s) {
     if (0 == m_WifiPeriodicalUpdateCounter) {
@@ -220,18 +117,6 @@ void FPA422Handler::WifiPeriodicalUpdate() {
       return;
     }
     m_WifiPeriodicalUpdateCounter++;
-#ifdef ALLOW_BLE
-    if (!deviceConnected && oldDeviceConnected) {
-
-      pServer->startAdvertising(); // restart advertising
-      oldDeviceConnected = deviceConnected;
-    }
-    // connecting
-    if (deviceConnected && !oldDeviceConnected) {
-      // do stuff here on connecting
-      oldDeviceConnected = deviceConnected;
-    }
-#endif
     return;
   }
 
@@ -271,62 +156,6 @@ void FPA422Handler::WifiPeriodicalUpdate() {
     return;
   }
 }
-
-/*void FPA422Handler::BTTransmitMessage(int Type)
-{
-  return;
-#ifdef ALLOW_BLUETOOTH
-  if((Type < 1) || (Type > MAX_MESSAGE_TYPE))
-    return;
-  if(m_BlueToothStarted)
-  {
-    switch(Type)
-    {
-      case 1:
-      SerialBT.write(Message1.GetBuffer(),Message1.GetCurrentSize());
-
-      break;
-
-      case 2:
-      SerialBT.write(Message2.GetBuffer(),Message2.GetCurrentSize());
-
-      break;
-
-      case 3:
-      SerialBT.write(Message3.GetBuffer(),Message3.GetCurrentSize());
-      break;
-
-      case 4:
-      SerialBT.write(Message4.GetBuffer(),Message4.GetCurrentSize());
-      break;
-
-      case 5:
-      SerialBT.write(Message5.GetBuffer(),Message5.GetCurrentSize());
-      break;
-
-      case 6:
-      SerialBT.write(Message6.GetBuffer(),Message6.GetCurrentSize());
-      break;
-
-      case 7:
-      //SerialBT.write(Message7.GetBuffer(),Message7.GetCurrentSize());
-      break;
-
-      case 8:
-      SerialBT.write(Message8.GetBuffer(),Message8.GetCurrentSize());
-      break;
-
-      case 9:
-      //SerialBT.write(Message9.GetBuffer(),Message9.GetCurrentSize());
-      break;
-
-      default:
-      ;
-    }
-  }
-#endif
-}
-*/
 
 /*void FPA422Handler::WifiTransmitMessage(int Type)
 {
@@ -436,17 +265,6 @@ void FPA422Handler::WifiTransmitMessage(int Type) {
   }
 }
 
-#ifdef ALLOW_BLUETOOTH
-void FPA422Handler::BTTransmitMessage(int Type) {
-  if ((Type < 1) || (Type > MAX_MESSAGE_TYPE))
-    return;
-  if (m_BlueToothStarted) {
-    SerialBT.write(Meassages[Type - 1]->GetBuffer(),
-                   Meassages[Type - 1]->GetCurrentSize());
-  }
-}
-#endif
-
 void FPA422Handler::AllProtocolsTransmitMessage(int Type) {
   if ((Type < 1) || (Type > MAX_MESSAGE_TYPE))
     return;
@@ -460,20 +278,6 @@ void FPA422Handler::AllProtocolsTransmitMessage(int Type) {
                       Meassages[Type - 1]->GetCurrentSize(), UDPPort,
                       TCPIP_ADAPTER_IF_STA);
   }
-#ifdef ALLOW_BLUETOOTH
-  if (m_BlueToothStarted) {
-    SerialBT.write(Meassages[Type - 1]->GetBuffer(),
-                   Meassages[Type - 1]->GetCurrentSize());
-  }
-#endif
-#ifdef ALLOW_BLE
-  if (deviceConnected) {
-    pCharacteristic->setValue((uint8_t *)Meassages[Type - 1]->GetBuffer(),
-                              Meassages[Type - 1]->GetCurrentSize());
-    pCharacteristic->notify();
-    // Meassages[Type-1]->Print();
-  }
-#endif
 #ifdef ALLOW_HARDWARESERIAL
   MySerial.write(Meassages[Type - 1]->GetBuffer(),
                  Meassages[Type - 1]->GetCurrentSize());

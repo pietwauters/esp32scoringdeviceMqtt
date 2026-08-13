@@ -18,8 +18,6 @@
 #include <freertos/queue.h>
 
 #define MAX_MESSAGE_TYPE 11
-// #define ALLOW_BLE
-// #define ALLOW_BLUETOOTH
 // #define ALLOW_HARDWARESERIAL
 
 class Opp2Handler;
@@ -35,14 +33,6 @@ public:
   void update(FencingStateMachine *subject, uint32_t eventtype);
   void update(Opp2Handler *subject, uint32_t eventtype);
   void ProcessLightsChange(uint32_t eventtype);
-#ifdef ALLOW_BLUETOOTH
-  void StartBluetooth();
-  void BTTPeriodicalUpdate();
-  void BTTransmitMessage(int Type);
-#endif
-#ifdef ALLOW_BLE
-
-#endif
   void StartWiFi();
 #ifdef ALLOW_HARDWARESERIAL
   void StartHWSerial();
@@ -73,7 +63,6 @@ private:
   uint8_t m_seconds;
   uint8_t m_hundredths;
   int previous_seconds;
-  bool m_BlueToothStarted = false;
   bool m_WifiStarted = false;
   bool m_HWSerialStarted = false;
   long TimeForNext1_2s = 0;
