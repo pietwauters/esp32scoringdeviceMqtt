@@ -390,7 +390,7 @@ struggled to pin down.
 
 ---
 
-## Integration testing (after all three branches pass individually)
+## Integration testing (after all three branches pass individually) — Done (2026-08-13)
 
 Merge all three into a combined test branch (not `main` yet) and re-run the soak test
 with everything firing together — real operation always has the OPP2 and Cyrano paths
@@ -403,6 +403,39 @@ real gate before merging to `main`, not a formality. Branch 0 doesn't need to be
 this specific soak test's *logic* (it doesn't touch the publish paths), but merging it
 first means the other two get soak-tested with realistic headroom from the start rather
 than the artificially tighter margin that exists on `main` today.
+
+**Result: pass, on real hardware.** All four branches (Branch 0 included, per the note
+above) merged into `integration/heap-fixes-combined` (branched from `fix/web-remote-progmem`,
+merging in `fix/cyrano-udp-listener-retry` and `fix/opp2-json-heap`; only doc-comment
+conflicts in this plan file, resolved by keeping both branches' own "Done" write-ups
+rather than picking one side — no source conflicts). Built and flashed clean.
+
+- Baseline idle heap post-boot: `free=21172 largest_block=16384`.
+- 500-cycle soak test: every cycle fired one state-changing UI route (cycling through
+  `toggle_timer`, score incr/decr, yellow/red/black cards, P-card, priority, weapon —
+  each one triggers the full mandatory Opp2Handler sequence, exercising the OPP2 JSON
+  publish path and the Cyrano cache push simultaneously) concurrently with an
+  `/api/state` poll and, every 3rd cycle, a `/remote` asset fetch — matching real
+  operation where all paths run together, not a synthetic single-path test.
+- 3 non-200 HTTP responses out of 500 (0.6%) — consistent with the pre-existing
+  `AcquireRequestSlot()` cap of 3 concurrent requests under transient peak load, the same
+  class of expected failure seen in Branch 0's isolated stress test, not a regression.
+- Device remained pingable and responsive for the entire run, no crash, no reboot.
+- Heap fluctuated during the run (12.5–21.2KB free) but did not trend monotonically
+  downward — repeatedly recovered after dips (e.g. 14232 at cycle 325 → 20776 at cycle
+  350). After load stopped, heap settled and stayed flat across 20s of sampling
+  (`free=19928` → `19940`, `largest_block=10240` unchanged) — the settled state is
+  slightly below pristine-boot baseline (21172→19940 free, 16384→10240 largest block),
+  consistent with normal fragmentation from sustained mixed traffic reaching a new stable
+  high-water mark, not an active leak. This is the discipline the plan called for
+  specifically because a short burst test gave false confidence once already this
+  session (the `reserve()` fix looked clean at 20 rounds and crashed later) — 500 cycles
+  plus a post-load settling check is meaningfully stronger evidence than that.
+
+Not yet done: an actual Cyrano CMS DISP→INFO→ACK cycle under this combined soak (still
+blocked on the parked UDP-listener mystery, same gap noted in Branch 1's own
+verification). This soak test exercised the Cyrano *cache-push* path (state changes →
+`PushCachedStatusToCyrano()`) but not a real CMS round-trip over the wire.
 
 ## Rollback
 
