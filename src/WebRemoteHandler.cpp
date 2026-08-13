@@ -6,10 +6,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "network.h"
-#include <SPIFFS.h>
+#include "web_assets_generated.h"
 #include <cstdio>
-#include <exception>
-#include <new>
 
 static const char *WEB_REMOTE_TAG = "WebRemote";
 
@@ -33,8 +31,8 @@ static volatile int s_activeRequests = 0;
 
 // Returns true if the caller should proceed handling the request. Returns
 // false if a 503 has already been sent and the caller must return
-// immediately without touching state or SPIFFS. Only call once per
-// request, before any allocation-heavy work.
+// immediately without touching state. Only call once per request, before
+// any allocation-heavy work.
 static bool AcquireRequestSlot(AsyncWebServerRequest *request) {
   if (s_activeRequests >= kMaxConcurrentRequests) {
     ESP_LOGW(WEB_REMOTE_TAG, "[slot] REJECT %s (active=%d)",
@@ -67,59 +65,40 @@ Guarded(std::function<void(AsyncWebServerRequest *)> inner) {
   return inner;
 }
 
-// Loads a SPIFFS .gz file ONCE into a heap buffer that is never freed, and
-// registers a route that serves that SAME persistent buffer on every
-// request, gzip-encoded, via beginResponse(code, type, const uint8_t*,
-// len) -> AsyncProgmemResponse (explicit length, binary-safe -- gzip
-// output contains embedded NUL bytes, confirmed by scanning it, which
-// rules out the NUL-terminated-string response class used everywhere
-// else in this file).
+// Registers a route serving one flash-resident gzipped asset (a
+// static const uint8_t[] array in src/web_assets_generated.h, .rodata --
+// no SPIFFS, no heap buffer, nothing to load at boot). beginResponse(code,
+// type, const uint8_t*, len) -> AsyncProgmemResponse (explicit length,
+// binary-safe -- gzip output contains embedded NUL bytes, confirmed by
+// scanning it, which rules out the NUL-terminated-string response class
+// used everywhere else in this file).
 //
-// Real root cause, found via direct measurement, not assumption -- this
-// device has a hard reliable single-response-size ceiling around 4KB
-// (confirmed with a binary-search diagnostic route returning a
-// configurable-size plain payload: 4000 bytes always came back intact,
-// 5000+ came back empty or truncated), independent of which
-// AsyncWebServer response class serves it or whether the content is
-// compressed. Several earlier fixes attempted tonight (freeing the buffer
-// in onDisconnect() instead of synchronously, making the buffer
-// persistent instead of per-request, switching to plain text +
-// AsyncBasicResponse) were all real bugs worth fixing in their own right,
-// but none of them were the actual reason index.html kept failing once it
-// grew past ~4KB -- they just moved the failure point around. The actual
-// fix was getting every individual response comfortably under that
-// ceiling: index.html's inline <script> now lives in its own app.js (see
+// This response class/ceiling combination was found the hard way, on real
+// hardware, before this function existed in this form -- this device has
+// a hard reliable single-response-size ceiling around 4KB (confirmed with
+// a binary-search diagnostic route returning a configurable-size plain
+// payload: 4000 bytes always came back intact, 5000+ came back empty or
+// truncated), independent of which AsyncWebServer response class serves
+// it or whether the content is compressed. The fix that matters is
+// keeping every individual response comfortably under that ceiling:
+// index.html's inline <script> lives in its own app.js (see
 // WebRemoteHandler::begin()), and app.js is minified with terser before
 // gzip (strip_web_assets.py) -- comment-stripping alone wasn't enough
 // (JS alone gzipped to ~5.2KB, still over; terser's mangling + dead-code
-// elimination got it to ~2.4KB).
-void WebRemoteHandler::serveSpiffsFile(const char *routePath,
-                                        const char *filePath,
+// elimination got it to ~2.4KB). Switching from a SPIFFS-loaded heap
+// buffer to this flash-resident array (2026-08-13, Branch 0 of
+// docs/HEAP_FIX_IMPLEMENTATION_PLAN.md) didn't touch any of that -- same
+// response class, same ceiling, only where the pointer comes from changed.
+void WebRemoteHandler::serveFlashAsset(const char *routePath,
+                                        const uint8_t *data, size_t len,
                                         const char *contentType) {
-  File f = SPIFFS.open(filePath, "r");
-  if (!f) {
-    ESP_LOGE(WEB_REMOTE_TAG, "serveSpiffsFile: %s not found in SPIFFS",
-             filePath);
-    return;
-  }
-  size_t size = f.size();
-  char *buf = new (std::nothrow) char[size];
-  if (!buf) {
-    ESP_LOGE(WEB_REMOTE_TAG, "serveSpiffsFile: out of memory loading %s (%u bytes)",
-             filePath, (unsigned)size);
-    f.close();
-    return;
-  }
-  size_t n = f.readBytes(buf, size);
-  f.close();
-
   NetWork::getInstance().GetServer().on(
       routePath, HTTP_GET,
-      Guarded([buf, n, contentType](AsyncWebServerRequest *request) {
+      Guarded([data, len, contentType](AsyncWebServerRequest *request) {
         if (!AcquireRequestSlot(request))
           return;
         AsyncWebServerResponse *response =
-            request->beginResponse(200, contentType, (const uint8_t *)buf, n);
+            request->beginResponse(200, contentType, data, len);
         response->addHeader("Content-Encoding", "gzip");
         request->send(response);
       }));
@@ -184,18 +163,13 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
 }
 
 void WebRemoteHandler::begin() {
-  if (!SPIFFS.begin(true)) {
-    ESP_LOGE(WEB_REMOTE_TAG, "SPIFFS mount failed -- web remote unavailable");
-    return;
-  }
-
   // Not "/" -- network.cpp's startCalibrationWebServer() already owns the
   // exact path "/" (its own health-check handler, "Hi! I am ESP32."),
   // registered first at boot; a duplicate exact-match registration here
   // never won (confirmed: GET / kept returning the health-check text).
-  serveSpiffsFile("/remote", "/index.html.gz", "text/html");
-  serveSpiffsFile("/style.css", "/style.css.gz", "text/css");
-  serveSpiffsFile("/app.js", "/app.js.gz", "application/javascript");
+  serveFlashAsset("/remote", index_html_gz, index_html_gz_len, "text/html");
+  serveFlashAsset("/style.css", style_css_gz, style_css_gz_len, "text/css");
+  serveFlashAsset("/app.js", app_js_gz, app_js_gz_len, "application/javascript");
 
   registerUiRoute("/ui/toggle_timer", UI_INPUT_TOGGLE_TIMER);
   registerUiRoute("/ui/incr_score_left", UI_INPUT_INCR_SCORE_LEFT);

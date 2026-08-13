@@ -1,9 +1,13 @@
 // Copyright (c) Piet Wauters 2026 <piet.wauters@gmail.com>
 // Compact web remote control (Atlas-app-style Main/Penalties layout),
-// served from SPIFFS. Every button route translates directly into the same
-// UI_INPUT_* event physical buttons and the existing OPRCP UDP remote
-// protocol already produce (UDPIOHandler::InputChanged()) -- no new input
-// path, no OPP2 spec change. See CLAUDE.md before touching this file.
+// served from flash-resident const arrays (src/web_assets_generated.h,
+// regenerated from web_src/ by strip_web_assets.py at build time -- not
+// SPIFFS; see that generated header's own comment and
+// docs/HEAP_FIX_IMPLEMENTATION_PLAN.md's Branch 0 for why). Every button
+// route translates directly into the same UI_INPUT_* event physical
+// buttons and the existing OPRCP UDP remote protocol already produce
+// (UDPIOHandler::InputChanged()) -- no new input path, no OPP2 spec
+// change. See CLAUDE.md before touching this file.
 //
 // Registers its routes on NetWork::GetServer() (the device's one and only
 // AsyncWebServer, port 80) -- NOT its own instance. A dedicated second
@@ -29,12 +33,12 @@
 
 class WebRemoteHandler : public SingletonMixin<WebRemoteHandler> {
 public:
-  // Mounts SPIFFS and registers routes on NetWork::GetServer(). Call once
-  // at boot, after NetWork::GlobalStartWiFi() (so startCalibrationWebServer
-  // ()'s server.reset() has already run and won't wipe these routes) and
-  // after UDPIOHandler/Opp2Handler exist (routes call both). Not started
-  // in repeater mode, matching FPA422Handler/CyranoHandler/Opp2Handler
-  // (see main.cpp).
+  // Registers routes on NetWork::GetServer(). Call once at boot, after
+  // NetWork::GlobalStartWiFi() (so startCalibrationWebServer()'s
+  // server.reset() has already run and won't wipe these routes) and after
+  // UDPIOHandler/Opp2Handler exist (routes call both). Not started in
+  // repeater mode, matching FPA422Handler/CyranoHandler/Opp2Handler (see
+  // main.cpp). No filesystem to mount -- assets are compiled in.
   void begin();
 
 private:
@@ -44,17 +48,16 @@ private:
   // Registers a POST route that does nothing but inject one UI_INPUT_*
   // event -- every button on the page is one of these.
   void registerUiRoute(const char *path, uint32_t eventtype);
-  // Loads one plain-text SPIFFS file ONCE (call from begin(), not
-  // per-request) into a heap buffer that is intentionally never freed, and
-  // registers a route that serves that same persistent buffer on every
-  // request via request->send() (AsyncBasicResponse). NOT
-  // AsyncFileResponse/serveStatic()/AsyncProgmemResponse, and NOT gzip --
-  // see the long comment above this function's definition in the .cpp for
-  // the full history of what actually went wrong with those on real
-  // hardware (not assumed, decoded crash backtraces and byte-level
-  // evidence throughout).
-  void serveSpiffsFile(const char *routePath, const char *filePath,
-                        const char *contentType);
+  // Registers a GET route serving one flash-resident gzipped asset
+  // (src/web_assets_generated.h's arrays -- .rodata, not heap, not
+  // SPIFFS). request->beginResponse(code, type, const uint8_t*, len)
+  // resolves to AsyncProgmemResponse, which reads via memcpy_P (plain
+  // memcpy on ESP32) -- confirmed by reading ESPAsyncWebServer's own
+  // source that it genuinely does not care whether that pointer is heap
+  // or flash, so this needed no response-class change from the prior
+  // SPIFFS-backed version, only where the pointer comes from.
+  void serveFlashAsset(const char *routePath, const uint8_t *data,
+                        size_t len, const char *contentType);
   void handleState(AsyncWebServerRequest *request);
 };
 

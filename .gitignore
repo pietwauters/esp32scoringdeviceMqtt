@@ -9,3 +9,4 @@ build/
 bootloader/
 partition_table/
 data/
+src/web_assets_generated.h
