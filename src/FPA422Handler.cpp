@@ -68,6 +68,13 @@ void FPA422Handler::StartHWSerial() {
 #endif
 
 void FPA422Handler::StartWiFi() {
+  {
+    Preferences fpa422preferences;
+    fpa422preferences.begin("scoringdevice", true);
+    m_FPA422Enabled = fpa422preferences.getBool("FPA422Enabled", false);
+    fpa422preferences.end();
+  }
+
   NetWork &MyNetWork = NetWork::getInstance();
   MyNetWork.GlobalStartWiFi();
   IPAddress localip = WiFi.localIP();
@@ -102,6 +109,8 @@ void FPA422Handler::StartWiFi() {
 }
 
 void FPA422Handler::WifiPeriodicalUpdate() {
+  if (!m_FPA422Enabled)
+    return;
   if (millis() > TimeForNext1_2s) {
     if (0 == m_WifiPeriodicalUpdateCounter) {
       AllProtocolsTransmitMessage(1);
@@ -467,7 +476,12 @@ void SetNOC(const char* NOC);*/
 void FPA422Handler::update(Opp2Handler *subject, uint32_t eventtype) {
   // Runs in async_udp context (4 KB stack) — must not allocate or call
   // getStateCopy(). Post to queue; fpa422Task does the actual work.
-  if (m_EventQueue)
+  // Skip entirely when FPA422/video output is disabled (default) -- this
+  // is the ~100/sec-while-the-timer-runs path (every Opp2Handler state
+  // change, including every clock tick), so not queuing it at all here
+  // means processOpp2Event()'s getStateCopy() + 6-message rebuild + up to
+  // 12 UDP broadcasts never run, not just that their output goes unsent.
+  if (m_FPA422Enabled && m_EventQueue)
     xQueueSend(m_EventQueue, &eventtype, 0);
 }
 

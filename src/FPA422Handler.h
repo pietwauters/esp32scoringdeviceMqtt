@@ -65,6 +65,15 @@ private:
   int previous_seconds;
   bool m_WifiStarted = false;
   bool m_HWSerialStarted = false;
+  // "FPA422Enabled" Preferences flag ("scoringdevice" namespace, default
+  // false -- Piet's explicit call 2026-08-13: nobody's using the FPA422/
+  // video-overlay output right now, and the few who do know to opt in via
+  // the WiFiManager config portal, same pattern as MuteBuzzer/RepeaterMode/
+  // etc. in network.cpp). Read once in StartWiFi(), gates the two places
+  // that actually put traffic on the wire (update(Opp2Handler*, ...) and
+  // WifiPeriodicalUpdate()) -- see FPA422Handler.cpp for what this was
+  // costing unconditionally before this flag existed.
+  bool m_FPA422Enabled = false;
   long TimeForNext1_2s = 0;
   long TimeForNext12s = 0;
   int UDPPort = 50112;

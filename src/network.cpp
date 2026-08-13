@@ -561,6 +561,14 @@ WiFiManagerParameter MirrorLights("MirrorLights", "Mirror lights", "N", 1);
 WiFiManagerParameter DisableBrownout("DisableBrownOut",
                                      "Disable Brownout detecton", "Y", 1);
 WiFiManagerParameter ForceCal("ForceCal", "Force Calibration", "N", 1);
+// Default "N" (2026-08-13, Piet's explicit call): unlike the other settings
+// here, FPA422/RS422 output has no installed base relying on it being on by
+// default -- nobody's using it right now, and the few who do know they need
+// to opt in. Gates real per-event UDP broadcast traffic (up to ~100/sec
+// while the match timer runs) that's otherwise sent unconditionally whether
+// or not a video-overlay box is even listening -- see FPA422Handler.cpp.
+WiFiManagerParameter FPA422Enabled("FPA422Enabled", "Enable Video/FPA422 output",
+                                   "N", 1);
 bool ToBool(const char *input) {
   bool result = false;
   switch (input[0]) {
@@ -658,6 +666,7 @@ void saveParamsCallback() {
   mypreferences.putBool("MirrorLights", ToBool(MirrorLights.getValue()));
   mypreferences.putBool("DisableBrownout", ToBool(DisableBrownout.getValue()));
   mypreferences.putBool("ForceCal", ToBool(ForceCal.getValue()));
+  mypreferences.putBool("FPA422Enabled", ToBool(FPA422Enabled.getValue()));
 
   int MasterId = -1;
   sscanf(MasterPisteId.getValue(), "%d", &MasterId);
@@ -748,6 +757,8 @@ void NetWork::WaitForNewSettingsViaPortal() {
   DisableBrownout.setValue(
       BoolToStr(mypreferences.getBool("DisableBrownout", true)), 1);
   ForceCal.setValue(BoolToStr(mypreferences.getBool("ForceCal", false)), 1);
+  FPA422Enabled.setValue(
+      BoolToStr(mypreferences.getBool("FPA422Enabled", false)), 1);
 
   int32_t MasterNr = mypreferences.getInt("MasterPiste", -1);
   sprintf(temp, "%d", MasterNr);
@@ -775,6 +786,7 @@ void NetWork::WaitForNewSettingsViaPortal() {
   wm.addParameter(&MirrorLights);
   wm.addParameter(&DisableBrownout);
   wm.addParameter(&ForceCal);
+  wm.addParameter(&FPA422Enabled);
 
   wm.setEnableConfigPortal(true);
   wm.setConfigPortalBlocking(true);
