@@ -11,6 +11,8 @@
 #include "CyranoHandler.h"
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
+#include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include "TierAProvisioning.h"
 #include <cstring>
 #include <esp_log.h>
@@ -18,6 +20,17 @@
 static const char *OPP2_TAG = "OPP2";
 extern const char *mdnsName;             // Defined in CyranoHandler.cpp
 extern AtlasAsyncMqttClient &mqttClient; // Shared MQTT client singleton
+
+// Queue item for m_MqttPublishQueue -- fixed-size, no dynamic allocation,
+// matching this codebase's general no-heap-in-hot-paths convention. Sized
+// to match the topicBuf[64]/payloadBuf[160] locals already used at each
+// NEXT/PREV/END call site.
+struct MqttPublishRequest {
+  uint8_t qos;
+  bool retain;
+  char topic[64];
+  char payload[160];
+};
 
 // Boot recovery state — used by CheckConnection() and OnMqttMessageStatic()
 // to intercept the apparatus's own retained topics on the first MQTT connect
@@ -80,8 +93,21 @@ void Opp2Handler::Begin() {
   // not call ProcessUIEvents() (mutex + JSON + MQTT publish) directly.
   // Mirrors the FPA422Handler queue+task pattern.
   m_UIEventQueue = xQueueCreate(16, sizeof(uint32_t));
-  xTaskCreatePinnedToCore(uiEventTask, "opp2_ui_evt", 4096, this, 2, nullptr,
-                          0);
+  TaskHandle_t uiEventTaskHandle = nullptr;
+  xTaskCreatePinnedToCore(uiEventTask, "opp2_ui_evt", STACK_UI_EVENT, this,
+                          PRIORITY_UI_EVENT, &uiEventTaskHandle,
+                          CORE_UI_EVENT);
+  TaskDiagnostics::Register(uiEventTaskHandle, "opp2_ui_evt");
+
+  // ── Control-message publish queue + dedicated task (latency) ──────────
+  // See Opp2Handler.h's comment on m_MqttPublishQueue for why this exists.
+  m_MqttPublishQueue = xQueueCreate(QUEUE_DEPTH_MQTT_PUBLISH,
+                                    sizeof(MqttPublishRequest));
+  TaskHandle_t mqttPublishTaskHandle = nullptr;
+  xTaskCreatePinnedToCore(mqttPublishTask, "opp2_mqtt_pub",
+                          STACK_MQTT_PUBLISH, this, PRIORITY_MQTT_PUBLISH,
+                          &mqttPublishTaskHandle, CORE_MQTT_PUBLISH);
+  TaskDiagnostics::Register(mqttPublishTaskHandle, "opp2_mqtt_pub");
 
   m_Preferences.begin("credentials", false);
   uint32_t pisteNr = m_Preferences.getInt("pisteNr", 304);
@@ -712,6 +738,39 @@ void Opp2Handler::uiEventTask(void *pvParam) {
   }
 }
 
+void Opp2Handler::mqttPublishTask(void *pvParam) {
+  Opp2Handler *self = static_cast<Opp2Handler *>(pvParam);
+  MqttPublishRequest req;
+  while (true) {
+    if (xQueueReceive(self->m_MqttPublishQueue, &req, portMAX_DELAY) ==
+        pdTRUE) {
+      // The blocking QoS>0 esp-mqtt call happens here, off opp2_ui_evt --
+      // see Opp2Handler.h's comment on m_MqttPublishQueue.
+      mqttClient.publish(req.topic, req.qos, req.retain, req.payload);
+    }
+  }
+}
+
+void Opp2Handler::EnqueueControlPublish(const char *topic, uint8_t qos,
+                                        bool retain, const char *payload) {
+  if (!m_MqttPublishQueue)
+    return;
+  MqttPublishRequest req;
+  req.qos = qos;
+  req.retain = retain;
+  strncpy(req.topic, topic, sizeof(req.topic) - 1);
+  req.topic[sizeof(req.topic) - 1] = '\0';
+  strncpy(req.payload, payload, sizeof(req.payload) - 1);
+  req.payload[sizeof(req.payload) - 1] = '\0';
+  // Short bounded wait, not 0 -- see RTOSSettings.h's QUEUE_DEPTH_MQTT_PUBLISH
+  // comment on why dropping silently isn't acceptable here the way it is for
+  // the uint32_t event queues elsewhere in this file.
+  if (xQueueSend(m_MqttPublishQueue, &req, pdMS_TO_TICKS(100)) != pdTRUE) {
+    ESP_LOGW(OPP2_TAG, "[OPP2] Control publish queue full, dropped: %s",
+             topic);
+  }
+}
+
 void Opp2Handler::ProcessUIEvents(uint32_t event) {
   // Handle UI button presses from UDPIOHandler
   // Remote control buttons update canonical state here, then notify Cyrano
@@ -821,8 +880,8 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
       char topicBuf[64];
       OPP2::Serializer::serialize(ctrl, payloadBuf, sizeof(payloadBuf));
       BuildTopic(OPP2::MessageType::CONTROL, topicBuf, sizeof(topicBuf));
-      mqttClient.publish(topicBuf, 1, false, payloadBuf);
-      ESP_LOGI(OPP2_TAG, "[OPP2] Published control NEXT to %s", topicBuf);
+      EnqueueControlPublish(topicBuf, 1, false, payloadBuf);
+      ESP_LOGI(OPP2_TAG, "[OPP2] Queued control NEXT to %s", topicBuf);
     }
     break;
 
@@ -839,8 +898,8 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
       char topicBuf[64];
       OPP2::Serializer::serialize(ctrl, payloadBuf, sizeof(payloadBuf));
       BuildTopic(OPP2::MessageType::CONTROL, topicBuf, sizeof(topicBuf));
-      mqttClient.publish(topicBuf, 1, false, payloadBuf);
-      ESP_LOGI(OPP2_TAG, "[OPP2] Published control PREV to %s", topicBuf);
+      EnqueueControlPublish(topicBuf, 1, false, payloadBuf);
+      ESP_LOGI(OPP2_TAG, "[OPP2] Queued control PREV to %s", topicBuf);
     }
     break;
 
@@ -886,8 +945,8 @@ void Opp2Handler::ProcessUIEvents(uint32_t event) {
       char topicBuf[64];
       OPP2::Serializer::serialize(ctrl, payloadBuf, sizeof(payloadBuf));
       BuildTopic(OPP2::MessageType::CONTROL, topicBuf, sizeof(topicBuf));
-      mqttClient.publish(topicBuf, 1, false, payloadBuf);
-      ESP_LOGI(OPP2_TAG, "[OPP2] Published control END to %s", topicBuf);
+      EnqueueControlPublish(topicBuf, 1, false, payloadBuf);
+      ESP_LOGI(OPP2_TAG, "[OPP2] Queued control END to %s", topicBuf);
     }
     break;
   }

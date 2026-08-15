@@ -503,6 +503,19 @@ private:
   //    async_udp task's ~4KB stack) ──────────────────────────────────────
   QueueHandle_t m_UIEventQueue = nullptr;
   static void uiEventTask(void *pvParam);
+
+  // ── Control-message publish queue (latency: keeps NEXT/PREV/END's
+  //    mqttClient.publish() -- a QoS 1 call that can block for seconds --
+  //    off opp2_ui_evt, so a slow/unreachable broker doesn't stall button
+  //    processing). Confirmed necessary on real hardware (2026-08-15): a
+  //    single blocking END publish was the multi-second UI stall reported
+  //    after the mqtt_task stack-overflow fix made the underlying slow
+  //    publish survive instead of crashing. QoS/retained/topic unchanged --
+  //    this only moves *where* the blocking publish call happens. ─────────
+  QueueHandle_t m_MqttPublishQueue = nullptr;
+  static void mqttPublishTask(void *pvParam);
+  void EnqueueControlPublish(const char *topic, uint8_t qos, bool retain,
+                             const char *payload);
 };
 
 #endif // OPP2HANDLER_H

@@ -41,6 +41,10 @@
 #define CORE_LED_ANIMATOR 0    // LedStripAnimator     — animations
 #define CORE_STARTUP_DISPLAY 0 // StartupDisplayTask   — one-shot startup
 #define CORE_ARDUINO_TASK 0    // setup() + loop()     — main Arduino task
+#define CORE_UI_EVENT 0        // Opp2Handler::uiEventTask — UI event queue drain
+#define CORE_FPA422 0        // FPA422Handler::fpa422Task — FPA422/RS422 output queue drain
+#define CORE_WIFI_SETUP_REBOOT 0 // WifiSetupMode's deferred-restart task
+#define CORE_MQTT_PUBLISH 0 // Opp2Handler::mqttPublishTask — control-message publish drain
 
 // ---------------------------------------------------------------------------
 // Task priorities  (higher number = higher priority)
@@ -52,26 +56,71 @@
 #define PRIORITY_LED_HANDLER 4     // LedStripHandler   — display updates
 #define PRIORITY_STATE_MACHINE 6   // StateMachineHandler — 10 ms tick
 #define PRIORITY_ARDUINO_TASK 3    // setup() + loop()  — below FSM/LED tasks
+#define PRIORITY_UI_EVENT 2          // Opp2Handler::uiEventTask
+#define PRIORITY_FPA422 2            // FPA422Handler::fpa422Task
+#define PRIORITY_WIFI_SETUP_REBOOT 1 // WifiSetupMode's deferred-restart task
+#define PRIORITY_MQTT_PUBLISH 2      // Opp2Handler::mqttPublishTask
 
 // ---------------------------------------------------------------------------
 // Stack sizes (bytes)
-// Measured worst-case usage (uxTaskGetStackHighWaterMark returns bytes here):
-//   LedStripAnimator  : ~1592 B used  → 4096 B (2.5 KB headroom)
-//   LedStripHandler   : not yet measured → 8192 B (conservative)
-//   StateMachineHandler: ~2412 B used  → 8192 B (5.8 KB headroom)
-//   AutoRefHandler    : ~1768 B used  → 4096 B (2.3 KB headroom)
+// Real measurements via ENABLE_STACK_HWM_LOGGING, a full session with a CMS
+// attached including an END/match-completion cycle (2026-08-15) --
+// uxTaskGetStackHighWaterMark, in bytes, i.e. free remaining at the deepest
+// point seen, not bytes used:
+//   LedStripAnimator   : 792 B used  (16384 → 4096, ~20x margin before, ~4x after)
+//   LedStripHandler    : 568 B used  (16384 → 4096, ~7x margin after)
+//   StateMachineHandler: 2800 B used (32768 → 8192, ~2.9x margin after,
+//                        matches this file's own prior 8192 estimate)
+//   arduino_task       : 3688 B used (16384 → 12288 -- cut less aggressively
+//                        than the three above: loop() has branches this one
+//                        session didn't exercise, e.g. repeater mode)
+//   opp2_ui_evt        : 2692 B used, only 1404 B (34%) free at 4096 -- too
+//                        tight, not oversized; raised to 8192 instead of
+//                        shrunk. See Opp2Handler.cpp's UI_INPUT_CYRANO_END.
+// opp2_mqtt_pub/AutoRefHandler/fpa422_upd already had healthy margins
+// (3-9x) at their existing sizes, left unchanged.
 // ---------------------------------------------------------------------------
 #define STACK_AUTOREF 4096
-#define STACK_LED_ANIMATOR 16384 // was 16384 — verified headroom OK
-#define STACK_LED_HANDLER 16384  // was 16384 — not yet measured, conservative
-#define STACK_STATE_MACHINE 32768 // was 32768 — verified headroom OK
+#define STACK_LED_ANIMATOR 4096
+#define STACK_LED_HANDLER 4096
+#define STACK_STATE_MACHINE 8192
 #define STACK_STARTUP_DISPLAY 2048
-#define STACK_ARDUINO_TASK 16384 // setup() + loop() — conservative
+#define STACK_ARDUINO_TASK 12288 // setup() + loop()
+#define STACK_UI_EVENT 8192          // Opp2Handler::uiEventTask
+#define STACK_FPA422 4096            // FPA422Handler::fpa422Task
+#define STACK_WIFI_SETUP_REBOOT 2048 // vTaskDelay(500ms) + ESP.restart() only
+// Opp2Handler::mqttPublishTask — drains m_MqttPublishQueue, calls
+// mqttClient.publish() with pre-built topic/payload buffers only (no JSON,
+// no string building). Sized the same as STACK_UI_EVENT since the work
+// shape is nearly identical, minus the mutex/notify overhead.
+#define STACK_MQTT_PUBLISH 4096
+
+// esp-mqtt's own internal "mqtt_task" (esp_mqtt_client_config_t::task_stack,
+// mqtt_client.h) -- NOT one of ours, but never explicitly set either, so it
+// was silently running at ESP-IDF's documented default of 6144 bytes.
+// Confirmed overflowing that default on real hardware (2026-08-15):
+// "***ERROR*** A stack overflow in task mqtt_task has been detected",
+// reproducible on ending a match with a CMS attached (Tier A mTLS handshake
+// + control publish, both stack-heavy, on the same task). Bumped well past
+// the observed failure point rather than tuned to a measured minimum --
+// unlike the STACK_* values above, there is no in-app TaskDiagnostics
+// visibility into this task (it's not ours to Register()), so there's no
+// cheap way to get a real headroom number here the way we did for the others.
+#define STACK_MQTT_TASK 12288
 
 // ---------------------------------------------------------------------------
-// Stack high-water mark logging — set to 1 to enable, 0 to disable
-// Reports minimum free stack ever seen for each task every ~5 seconds.
-// Disable once stack sizes are tuned.
+// Stack high-water mark logging — set to 1 to enable, 0 to disable.
+// TaskDiagnostics.h/.cpp implements this: every task created above calls
+// TaskDiagnostics::Register(handle, name) right after creation (a no-op
+// when this is 0, so zero cost to leave the calls in place); main.cpp
+// calls TaskDiagnostics::Begin() once, at the end of setup(), to start a
+// dedicated low-priority logger task that reports each registered task's
+// uxTaskGetStackHighWaterMark() (minimum free stack ever seen, in bytes)
+// every ~5 seconds via printf/Serial — deliberately not ESP_LOGI, so this
+// stays visible regardless of CORE_DEBUG_LEVEL/LOG_LOCAL_LEVEL (both 0 in
+// normal builds). Was enabled 2026-08-14/15 to size the STACK_* values
+// above from real measurements (see that section's comment) -- settled now,
+// back to 0. Flip back to 1 any time those need re-verifying.
 // ---------------------------------------------------------------------------
 #define ENABLE_STACK_HWM_LOGGING 0
 
@@ -84,5 +133,12 @@
 #define QUEUE_DEPTH_LED_STRIP 64          // WS2812B_LedStrip main event queue
 #define QUEUE_DEPTH_LED_ANIMATION 64      // WS2812B_LedStrip animation queue
 #define QUEUE_DEPTH_AUTOREF 64            // AutoRef hit-event queue
+// Small on purpose -- carries whole {topic,payload} structs (~230 bytes
+// each), not bare uint32_t events, and NEXT/PREV/END are human-paced
+// button presses, never realistically faster than this can drain even at
+// 5s/publish worst case. Sender uses a short bounded timeout (not 0 like
+// the queues above) since dropping a control command is a real missed
+// user action, not a superseded stale value -- see EnqueueControlPublish().
+#define QUEUE_DEPTH_MQTT_PUBLISH 4
 
 #endif // RTOS_SETTINGS_H

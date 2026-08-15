@@ -3,6 +3,7 @@
 #include "DoubleHitDetector.h"
 #include "EventDefinitions.h"
 #include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include "WS2812BLedStrip.h"
 #include "esp_task_wdt.h"
 
@@ -63,6 +64,7 @@ void AutoRef::begin() {
   xTaskCreatePinnedToCore(AutoRefHandler, "AutoRefHandler", STACK_AUTOREF, NULL,
                           PRIORITY_AUTOREF, &AutoRefTask, CORE_AUTOREF);
   esp_task_wdt_add(AutoRefTask);
+  TaskDiagnostics::Register(AutoRefTask, "AutoRefHandler");
   m_HasBegun = true;
   // printf("Autoref launched\n");
 }

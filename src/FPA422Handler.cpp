@@ -2,6 +2,8 @@
 #include "FPA422Handler.h"
 #include "AbsoluteTime.h"
 #include "Opp2Handler.h"
+#include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include "RS422_FPA_Message.h"
 #include "RS422_FPA_Type1_Message.h"
 #include "RS422_FPA_Type2_Message.h"
@@ -48,7 +50,10 @@ FPA422Handler::FPA422Handler() {
   Message6.SetNOC("FRA");
 
   m_EventQueue = xQueueCreate(16, sizeof(uint32_t));
-  xTaskCreatePinnedToCore(fpa422Task, "fpa422_upd", 4096, this, 2, nullptr, 0);
+  TaskHandle_t fpa422TaskHandle = nullptr;
+  xTaskCreatePinnedToCore(fpa422Task, "fpa422_upd", STACK_FPA422, this,
+                          PRIORITY_FPA422, &fpa422TaskHandle, CORE_FPA422);
+  TaskDiagnostics::Register(fpa422TaskHandle, "fpa422_upd");
 }
 
 FPA422Handler::~FPA422Handler() {

@@ -1,5 +1,6 @@
 #include "WS2812BLedStrip.h"
 #include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include "driver/gpio.h"
 #include <stdint.h>
 // 8x8 bitmap for a question mark
@@ -157,6 +158,8 @@ void WS2812B_LedStrip::begin() {
                           &LedStripTask,        /* Task handle. */
                           CORE_LED_HANDLER);
   esp_task_wdt_add(LedStripTask);
+  TaskDiagnostics::Register(LedStripAnimationTask, "LedStripAnimator");
+  TaskDiagnostics::Register(LedStripTask, "LedStripHandler");
   startAnimation(EVENT_WS2812_WELCOME);
   m_HasBegun = true;
 }

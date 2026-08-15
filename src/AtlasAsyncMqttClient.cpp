@@ -9,6 +9,7 @@
 // #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "AtlasAsyncMqttClient.h"
+#include "RTOSSettings.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
 #include <cstring>
@@ -171,6 +172,10 @@ void AtlasAsyncMqttClient::begin() {
     return;
 
   esp_mqtt_client_config_t mqtt_cfg = {};
+
+  // ESP-IDF default (6144) overflows under real mTLS + publish load -- see
+  // RTOSSettings.h's STACK_MQTT_TASK comment for the crash that found this.
+  mqtt_cfg.task_stack = STACK_MQTT_TASK;
 
   mqtt_cfg.host = m_host.c_str();
   mqtt_cfg.port = m_port;

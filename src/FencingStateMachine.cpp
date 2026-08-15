@@ -2,6 +2,7 @@
 #include "FencingStateMachine.h"
 #include "FlashWriteGuard.h"
 #include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
@@ -84,6 +85,7 @@ void FencingStateMachine::begin() {
                           &StateMachineTask,      /* Task handle. */
                           CORE_STATE_MACHINE);
   esp_task_wdt_add(StateMachineTask);
+  TaskDiagnostics::Register(StateMachineTask, "StateMachineHandler");
 }
 FencingStateMachine::~FencingStateMachine() {
   // dtor

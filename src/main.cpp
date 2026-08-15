@@ -29,6 +29,7 @@
 #include "RepeaterReceiver.h"
 #include "RepeaterSender.h"
 #include "ResetHandler.h"
+#include "TaskDiagnostics.h"
 #include "TimeScoreDisplay.h"
 #include "UDPIOHandler.h"
 #include "WS2812BLedStrip.h"
@@ -81,6 +82,7 @@ AppSettings *MyAppSettings;
 bool bIsRepeater = false;
 bool bEnableDeepSleep = false;
 int FactoryResetCounter = 50;
+static TaskHandle_t ArduinoTaskHandle = nullptr;
 
 void setup() {
 
@@ -252,6 +254,11 @@ void setup() {
   int freq_mhz = esp_clk_cpu_freq() / 1000000;
   printf("CPU frequency: %d MHz\n", freq_mhz);
   MyStatemachine->update(MyUDPIOHandler, EVENT_UI_INPUT | UI_INPUT_RESET);
+
+  // Last, once every other component above has had the chance to
+  // Register() its own task -- see RTOSSettings.h's ENABLE_STACK_HWM_LOGGING.
+  TaskDiagnostics::Register(ArduinoTaskHandle, "arduino_task");
+  TaskDiagnostics::Begin();
 }
 
 // extern HardwareSerial MySerial;
@@ -349,5 +356,6 @@ extern "C" void app_main() {
   // Pin setup()/loop() to Core 0 alongside all other application tasks.
   // Core 1 is then exclusively used by the sensor (esp_timer, pri 22).
   xTaskCreatePinnedToCore(arduino_task, "arduino_task", STACK_ARDUINO_TASK,
-                          NULL, PRIORITY_ARDUINO_TASK, NULL, CORE_ARDUINO_TASK);
+                          NULL, PRIORITY_ARDUINO_TASK, &ArduinoTaskHandle,
+                          CORE_ARDUINO_TASK);
 }
