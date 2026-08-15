@@ -2,11 +2,11 @@
 #include "network.h"
 #include "AbsoluteTime.h"
 #include "AsyncUDP.h"
-#include "CaptivePortal.h"
 #include "FlashWriteGuard.h"
 #include "MDNSResolver.h"
 #include "TierAProvisioning.h"
 #include "WiFiConnect.h"
+#include "WifiSetupMode.h"
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiAP.h>
@@ -91,22 +91,19 @@ AsyncWebServer &NetWork::GetServer() { return server; }
 
 // Register endpoints and start server
 //
-// FORMER KNOWN GAP (2026-08-12, fixed as a side effect 2026-08-13):
-// server.reset() below wipes every registered route, including any
-// WebRemoteHandler routes added after boot. This function only runs at
-// boot in normal operation -- the old WiFiManager-based
-// WaitForNewSettingsViaPortal() ("Reconfigure WiFi" action) used to call
-// GlobalStartWiFi() -> startCalibrationWebServer() again at runtime,
-// silently killing the web remote until the next reboot. Its replacement,
-// CaptivePortal::begin(), never calls GlobalStartWiFi() or server.reset()
-// -- it only starts DNS-redirect hijacking and lazily registers its own
-// /wifi routes once -- so this gap no longer applies to that path. Left
-// here as history/context, not because the underlying wipe-on-reset
-// behavior changed: anything else that calls startCalibrationWebServer()
-// at runtime would still hit it. Fix if that ever matters would be either
-// a callback list this function invokes after re-registering its own
-// routes, or moving WebRemoteHandler's route registration into this function
-// directly. Revisit if this proves disruptive in practice.
+// KNOWN GAP (2026-08-12, not fixed): server.reset() below wipes every
+// registered route, including any WebRemoteHandler routes added after
+// boot. This function only runs at boot in normal operation, so this is
+// dormant today -- nothing left at runtime calls startCalibrationWebServer()
+// again (the old WiFiManager-based WaitForNewSettingsViaPortal() did;
+// its eventual replacement, WifiSetupMode, sidesteps this differently --
+// it reboots into a separate minimal mode that never starts this
+// AsyncWebServer at all, rather than calling into this function while
+// the live app is running). Still worth fixing properly if anything else
+// ever calls startCalibrationWebServer() at runtime: either a callback
+// list this function invokes after re-registering its own routes, or
+// moving WebRemoteHandler's route registration into this function
+// directly.
 void startCalibrationWebServer() {
   server.reset();
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -492,10 +489,13 @@ void NetWork::update(UDPIOHandler *subject, uint32_t eventtype) {
     ConnectToExternalNetwork(45);
 
   if (UI_START_WIFI_PORTAL == subtype) {
-    // CaptivePortal replaces WaitForNewSettingsViaPortal() -- non-blocking
-    // (FSM/scoring/MQTT keep running) and doesn't touch the AsyncWebServer
-    // routes already registered for the remote control/settings pages.
-    CaptivePortal::getInstance().begin();
+    // WifiSetupMode::RequestAndReboot() -- sets a flag and reboots into a
+    // dedicated minimal mode (see WifiSetupMode.h). Replaces
+    // CaptivePortal, which tried to scan WiFi networks while the live app
+    // (this AsyncWebServer included) kept running -- real-world testing
+    // 2026-08-14 confirmed that approach was fundamentally unreliable,
+    // not just buggy in the specific fix attempts tried.
+    WifiSetupMode::RequestAndReboot();
   }
 
   if (UI_START_OTA_PORTAL == subtype) {

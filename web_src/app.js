@@ -46,7 +46,10 @@
     // fires opts.long instead (opts.onTapOnly, if given, replaces the tap
     // action with a plain JS callback -- used by Reset, which only warns on
     // a tap and needs long-press to actually confirm). Ported from
-    // Favero_OPP2's bindLongPress().
+    // Favero_OPP2's bindLongPress(). opts.onLongFire is optional (added
+    // 2026-08-14 for the WiFi button, which needs a persistent status
+    // message on top of the normal fire-and-forget ui() POST) -- every
+    // existing caller omits it, so this is purely additive.
     function bindLongPress(el, opts) {
       const LONG_PRESS_MS = 500;
       let timer = null;
@@ -58,6 +61,7 @@
         timer = setTimeout(function () {
           firedLong = true;
           if (opts.long) ui(opts.long, opts.longFeedbackMs);
+          if (opts.onLongFire) opts.onLongFire();
         }, LONG_PRESS_MS);
       }
       function cancel() {
@@ -117,23 +121,39 @@
     document.getElementById('btnPrio').addEventListener('click', function () { ui('prio'); });
     document.getElementById('btnRestoreUw2f').addEventListener('click', function () { ui('restore_uw2f_timer'); });
 
-    // ── Three-screen navigation (Penalties <-> Main <-> Match) ───────────
-    // Main sits in the middle of the sequence, matching Favero_OPP2's own
-    // linear-sequence placement of its "Home" position. Center icon always
-    // jumps straight to Main from anywhere -- no "settings"-style second
-    // destination the way Favero_OPP2's center icon has, since this page
-    // has no equivalent screen to toggle to.
-    const NAV_SEQUENCE = ['penalties', 'main', 'match'];
+    // ── Four-screen navigation (Penalties <-> Main <-> Match <-> Menu) ───
+    // Main sits in the middle of the original three, matching Favero_OPP2's
+    // own linear-sequence placement of its "Home" position. Menu was
+    // appended at the end 2026-08-13 -- reachable by stepping/swiping past
+    // Match, or via the center icon's Home<->Settings toggle while on
+    // Main, matching Favero_OPP2's own 5-position center-icon behavior
+    // (this page just has one settings-style screen, not several).
+    const NAV_SEQUENCE = ['penalties', 'main', 'match', 'menu'];
     let navIndex = NAV_SEQUENCE.indexOf('main');
     function showView(name) {
       document.getElementById('viewMain').classList.toggle('active', name === 'main');
       document.getElementById('viewPenalties').classList.toggle('active', name === 'penalties');
       document.getElementById('viewMatch').classList.toggle('active', name === 'match');
+      document.getElementById('viewMenu').classList.toggle('active', name === 'menu');
+    }
+    // Center icon shows the cog and jumps to Menu only while on Main;
+    // everywhere else (including Menu itself) it shows home and jumps to
+    // Main -- so Menu is always one tap from Main, and Main is always one
+    // tap from anywhere else, same "always a way back to Main" guarantee
+    // the plain always-home version had before Menu existed.
+    function updateCenterButton() {
+      const onMain = NAV_SEQUENCE[navIndex] === 'main';
+      const use = document.querySelector('#navCenter .icon use');
+      const iconId = onMain ? '#icon-cog' : '#icon-home';
+      use.setAttribute('href', iconId);
+      use.setAttribute('xlink:href', iconId);
+      document.getElementById('navCenter').setAttribute('aria-label', onMain ? 'Menu' : 'Main');
     }
     function applyNavPosition() {
       showView(NAV_SEQUENCE[navIndex]);
       document.getElementById('navLeft').disabled = navIndex <= 0;
       document.getElementById('navRight').disabled = navIndex >= NAV_SEQUENCE.length - 1;
+      updateCenterButton();
     }
     function showNavPosition(name) {
       const idx = NAV_SEQUENCE.indexOf(name);
@@ -152,7 +172,9 @@
     }
     document.getElementById('navLeft').addEventListener('click', function () { navStep(-1); });
     document.getElementById('navRight').addEventListener('click', function () { navStep(1); });
-    document.getElementById('navCenter').addEventListener('click', function () { showNavPosition('main'); });
+    document.getElementById('navCenter').addEventListener('click', function () {
+      showNavPosition(NAV_SEQUENCE[navIndex] === 'main' ? 'menu' : 'main');
+    });
     applyNavPosition();
 
     // Visual press feedback: toggles .pressed on the button's own
@@ -178,6 +200,48 @@
     document.getElementById('btnCyranoNext').addEventListener('click', function () { ui('cyrano_next'); });
     document.getElementById('btnCyranoEnd').addEventListener('click', function () { ui('cyrano_end'); });
     document.getElementById('btnCycleWeapon').addEventListener('click', function () { ui('cycle_weapon'); });
+
+    // WiFi reboots the device into a separate, dedicated setup mode
+    // (WifiSetupMode.h) rather than serving a scan/connect page from
+    // this same running app -- an earlier version tried the latter and
+    // real-world testing found it fundamentally unreliable (WiFi
+    // scanning conflicts with this AsyncWebServer being alive at all).
+    // /wifi won't exist on *this* server afterward, so there's nothing
+    // to navigate to here -- just tell the user where to go once they've
+    // rejoined the device's own network. Same long-press-to-confirm
+    // pattern as Full Reset below, since this is now also an
+    // unconditional reboot.
+    bindLongPress(document.getElementById('btnMenuWifi'), {
+      long: 'start_wifi_portal', longFeedbackMs: 200,
+      onTapOnly: function () {
+        const el = document.getElementById('statusLineMenu');
+        el.textContent = 'Long-press to reconfigure WiFi (reboots the device)';
+        setTimeout(function () { el.textContent = ''; }, 1500);
+      },
+      onLongFire: function () {
+        document.getElementById('statusLineMenu').textContent =
+          'Rebooting into WiFi setup mode -- reconnect to this device\'s own WiFi network, then go to 192.168.4.1/wifi';
+      }
+    });
+    document.getElementById('btnMenuSettings').addEventListener('click', function () {
+      window.location.href = '/settings';
+    });
+    document.getElementById('btnMenuOta').addEventListener('click', function () {
+      fetch('/ui/start_ota_portal', { method: 'POST' }).then(function () {
+        window.location.href = '/update';
+      });
+    });
+    // Same long-press-to-confirm pattern as btnReset -- a plain tap only
+    // warns, since this reboots the device (no NVS wipe, see
+    // WebRemoteHandler.cpp's comment on UI_FULL_RESET vs DoFactoryReset()).
+    bindLongPress(document.getElementById('btnMenuFullReset'), {
+      long: 'full_reset', longFeedbackMs: 200,
+      onTapOnly: function () {
+        const el = document.getElementById('statusLineMenu');
+        el.textContent = 'Long-press to restart device';
+        setTimeout(function () { el.textContent = ''; }, 1500);
+      }
+    });
 
     // Swipe between screens -- ported from Favero_OPP2's compact nav swipe
     // handling (same horizontal-lock-with-deadzone technique, same
@@ -225,12 +289,22 @@
     // Feature-detected, vendor-prefixed fallbacks included -- ported from
     // Favero_OPP2 (see its CLAUDE.md for the real-device findings behind
     // this: older Chromium/WebKit only expose prefixed methods, iOS Safari
-    // gates it behind an off-by-default Feature Flag entirely). Trimmed to
-    // just the toggle -- no auto-fullscreen-on-first-tap or persisted
-    // preference here, this page has no Settings view to hold that
-    // checkbox.
+    // gates it behind an off-by-default Feature Flag entirely).
+    //
+    // No floating per-page toggle button anymore -- "we almost always just
+    // want it fullscreen" made a manual button on every screen feel wrong.
+    // Instead: auto-request fullscreen on the very first tap/click anywhere
+    // on the page (browsers require a real user gesture, so this can't
+    // happen on load -- first interaction is the earliest legal moment).
+    // btnMenuFullscreen (Menu view) is a plain session-only toggle, nothing
+    // more -- an earlier version persisted "user exited" to localStorage
+    // so it wouldn't auto-retry next time, but that meant exiting
+    // fullscreen for *any* reason (even just to check something in the
+    // browser chrome) silently disabled auto-fullscreen forever after,
+    // which is the opposite of "we almost always want it." No persisted
+    // state at all now -- every fresh page load gets one auto-attempt on
+    // first tap, unconditionally.
     (function () {
-      const btn = document.getElementById('btnFullscreen');
       const docEl = document.documentElement;
       function requestFn(el) {
         return el.requestFullscreen || el.webkitRequestFullscreen ||
@@ -244,14 +318,48 @@
         return document.fullscreenElement || document.webkitFullscreenElement ||
                document.mozFullScreenElement || document.msFullscreenElement;
       }
-      if (!requestFn(docEl)) { btn.style.display = 'none'; return; }
-      btn.addEventListener('click', function () {
-        if (currentFsElement()) {
-          try { exitFn().call(document); } catch (e) {}
-        } else {
-          try { requestFn(docEl).call(docEl); } catch (e) {}
+      const menuBtn = document.getElementById('btnMenuFullscreen');
+      if (!requestFn(docEl)) {
+        if (menuBtn) menuBtn.style.display = 'none';
+        return;
+      }
+
+      function enter() {
+        try {
+          const p = requestFn(docEl).call(docEl);
+          // Fullscreen APIs return a Promise (or nothing, on older
+          // prefixed implementations) -- catch the rejection instead of
+          // letting it surface only as an unhandled-rejection console
+          // warning, since there's no user-facing error path here.
+          if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+      }
+      function exit() { try { exitFn().call(document); } catch (e) {} }
+
+      // Deliberately 'click', not 'pointerdown'/'mousedown' -- Chrome (and
+      // others) only honor Fullscreen requests as a direct result of a
+      // "real" click/touchend-derived gesture, not the earlier
+      // pointerdown. First attempt used pointerdown and silently never
+      // entered fullscreen anywhere except the Menu button (which already
+      // used 'click') -- found 2026-08-14 after real-device testing showed
+      // the auto-trigger never fired.
+      document.addEventListener('click', function firstTap() {
+        document.removeEventListener('click', firstTap);
+        if (!currentFsElement()) enter();
+      }, { once: true });
+
+      if (menuBtn) {
+        function refreshLabel() {
+          menuBtn.textContent = currentFsElement() ? 'Exit Fullscreen' : 'Enter Fullscreen';
         }
-      });
+        refreshLabel();
+        document.addEventListener('fullscreenchange', refreshLabel);
+        document.addEventListener('webkitfullscreenchange', refreshLabel);
+        menuBtn.addEventListener('click', function () {
+          if (currentFsElement()) exit(); else enter();
+          setTimeout(refreshLabel, 200);
+        });
+      }
     })();
 
     // ── State polling ────────────────────────────────────────────────────

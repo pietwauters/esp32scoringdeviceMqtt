@@ -23,13 +23,14 @@
     </div>
   </div>
 
-  <!-- Bottom-nav glyphs, inline as an SVG sprite -- exact path data ported
-       from Favero_OPP2/data/index.html (already validated there: rendered
-       and visually compared against the original SquareLine-kit PNGs
-       before that project switched to inline SVG). No "settings" icon
-       here -- unlike Favero_OPP2's 5-position sequence (which needed a
-       Home<->Settings toggle on the center icon), this page's center icon
-       always jumps to Main, nothing else. -->
+  <!-- Bottom-nav glyphs, inline as an SVG sprite -- exact path data for
+       prev/next/home ported from Favero_OPP2/data/index.html (already
+       validated there: rendered and visually compared against the
+       original SquareLine-kit PNGs before that project switched to
+       inline SVG). icon-cog added 2026-08-13 (standard Material Design
+       glyph, not Favero_OPP2-sourced) to give the center nav button the
+       same Home<->Settings toggle Favero_OPP2's own 5-position sequence
+       has -- see app.js's updateCenterButton(). -->
   <svg style="display:none" aria-hidden="true">
     <symbol id="icon-prev" viewBox="0 0 24 24">
       <path d="M16 5 L6 12 L16 19 Z" fill="#17375E" stroke="#17375E" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
@@ -40,9 +41,15 @@
     <symbol id="icon-home" viewBox="0 0 24 24">
       <path d="M12 4 L20 12 L15.5 12 L15.5 20 L8.5 20 L8.5 12 L4 12 Z" fill="#17375E" stroke="#17375E" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
     </symbol>
+    <!-- Standard Material Design "settings" gear glyph (Apache-2.0) --
+         filled path, no stroke (unlike the others -- stroking this one
+         would blob the teeth together). Shown on the center nav button
+         only while on Main, replacing the home icon -- see app.js
+         updateCenterButton(). -->
+    <symbol id="icon-cog" viewBox="0 0 24 24">
+      <path fill="#17375E" d="M19.14,12.94c0.04,-0.3,0.06,-0.61,0.06,-0.94c0,-0.32,-0.02,-0.64,-0.07,-0.94l2.03,-1.58c0.18,-0.14,0.23,-0.41,0.12,-0.61l-1.92,-3.32c-0.12,-0.22,-0.37,-0.29,-0.59,-0.22l-2.39,0.96c-0.5,-0.38,-1.03,-0.7,-1.62,-0.94L14.4,2.81c-0.04,-0.24,-0.24,-0.41,-0.48,-0.41h-3.84c-0.24,0,-0.43,0.17,-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22,-0.08,-0.47,0,-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14,-0.23,0.41,-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39,-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44,-0.17,0.47,-0.41l0.36,-2.54c0.59,-0.24,1.13,-0.56,1.62,-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59,-0.22l1.92,-3.32c0.12,-0.22,0.07,-0.47,-0.12,-0.61L19.14,12.94z M12,15.6c-1.98,0,-3.6,-1.62,-3.6,-3.6s1.62,-3.6,3.6,-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+    </symbol>
   </svg>
-
-  <button id="btnFullscreen" class="fs-toggle" aria-label="Fullscreen">&#x26F6;</button>
 
   <section id="viewMain" class="remote-view">
     <div class="atlas-panel atlas-panel-main">
@@ -183,15 +190,41 @@
     </div>
   </section>
 
+  <!-- Admin/config menu -- reachable by swiping/nav-stepping past Match
+       (end of NAV_SEQUENCE, see app.js), or via the cogwheel that
+       replaces the center nav icon while on Main. WiFi/Settings/OTA
+       navigate the browser to a page served elsewhere
+       (WifiSetupMode/AppSettings/ElegantOTA respectively); Full reset
+       reboots the device. No live state to poll here, unlike the other
+       three views. btnMenuFullscreen is the replacement for the old
+       always-visible floating toggle button (see app.js's Fullscreen
+       IIFE) -- fullscreen is now entered automatically on first tap
+       elsewhere on the page, this button is only the opt-out/opt-back-in
+       escape hatch, so it lives here instead of floating on top of every
+       screen. -->
+  <section id="viewMenu" class="remote-view">
+    <div class="atlas-panel">
+      <button class="atlas-btn atlas-wide" id="btnMenuWifi">WiFi</button>
+      <button class="atlas-btn atlas-wide" id="btnMenuSettings">Settings</button>
+      <button class="atlas-btn atlas-wide" id="btnMenuOta">OTA Update</button>
+      <button class="atlas-btn atlas-wide" id="btnMenuFullscreen">Exit Fullscreen</button>
+      <button class="atlas-btn atlas-danger atlas-wide" id="btnMenuFullReset">Full Reset</button>
+      <div id="statusLineMenu" class="status-line"></div>
+    </div>
+  </section>
+
   <!-- Fixed bottom nav, ported from Favero_OPP2's .bottom-nav structure
        (icons, translucent-circle press feedback, position:fixed) rather
        than the earlier text-button version -- restored per explicit
        request once a 3rd screen (this Match view) made a linear
        prev/center/next sequence worth it again, matching Favero_OPP2's
        own reasoning for building it that way in the first place. Main
-       sits in the middle of the sequence (like Favero_OPP2's own "Home"),
-       Penalties before it, Match after -- center icon always jumps
-       straight to Main from anywhere. -->
+       sits in the middle of the original three (like Favero_OPP2's own
+       "Home"), Penalties before it, Match after; Menu was appended at the
+       end 2026-08-13, reachable by stepping/swiping past Match, or via
+       the center icon's cog shortcut while on Main. Center icon jumps to
+       Main from Penalties/Match/Menu, and to Menu from Main -- see
+       app.js's updateCenterButton()/navCenter handler. -->
   <nav id="bottomNav" class="bottom-nav">
     <button id="navLeft" class="bottom-nav-btn" aria-label="Previous">
       <span class="icon-glyph"><svg class="icon" viewBox="0 0 24 24"><use href="#icon-prev" xlink:href="#icon-prev"/></svg></span>

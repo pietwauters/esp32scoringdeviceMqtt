@@ -170,14 +170,22 @@ static void WriteValue(const SettingDescriptor &d, const String &value) {
   prefs.end();
 }
 
+// Same visual language as the rest of the remote (/style.css's
+// .atlas-panel/.atlas-btn, dark theme, centered/responsive layout) --
+// reachable via the same AsyncWebServer that already serves /style.css,
+// so this just links it rather than duplicating anything. .settings-row
+// (style.css) is the one addition that page didn't need before this --
+// plain form inputs, nothing else on the remote has any.
 void AppSettings::handleGet(AsyncWebServerRequest *request) {
-  String html = "<html><head><title>Settings</title></head><body>";
+  String html = "<html><head><title>Settings</title>"
+                "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                "<link rel='stylesheet' type='text/css' href='/style.css'></head><body>";
+  html += "<div class='atlas-panel' style='padding-bottom:24px'>";
   html += "<h2>Device Settings</h2><form method='POST' action='/settings'>";
-  html += "<table>";
   for (size_t i = 0; i < kNumSettings; i++) {
     const SettingDescriptor &d = kSettings[i];
     String value = ReadValue(d);
-    html += "<tr><td>" + String(d.label) + "</td><td>";
+    html += "<div class='settings-row'><label>" + String(d.label) + "</label>";
     if (d.type == SettingType::BOOL) {
       html += "<input type='checkbox' name='" + String(d.key) + "'" +
               (value == "Y" ? " checked" : "") + ">";
@@ -185,7 +193,7 @@ void AppSettings::handleGet(AsyncWebServerRequest *request) {
       html += "<input type='text' name='" + String(d.key) + "' value='" +
               value + "' maxlength='" + String((unsigned)d.maxLen - 1) + "'>";
     }
-    html += "</td></tr>";
+    html += "</div>";
   }
   // Two special-case fields, rendered the same way the generic ones are,
   // just sourced/saved through their own encode/decode instead of
@@ -195,9 +203,9 @@ void AppSettings::handleGet(AsyncWebServerRequest *request) {
     prefs.begin("scoringdevice", true);
     String weapon = ReadStartUpWeapon(prefs);
     prefs.end();
-    html += "<tr><td>Default Weapon at start-up (F/E/S)</td><td>"
+    html += "<div class='settings-row'><label>Default Weapon at start-up (F/E/S)</label>"
             "<input type='text' name='StartUpWeapon' value='" +
-            weapon + "' maxlength='8'></td></tr>";
+            weapon + "' maxlength='8'></div>";
   }
   {
     // Pre-fills with the stored full color name (e.g. "Red"), not the
@@ -210,12 +218,13 @@ void AppSettings::handleGet(AsyncWebServerRequest *request) {
     prefs.begin("credentials", true);
     String pistename = prefs.getString("Pistename", "");
     prefs.end();
-    html += "<tr><td>Cyrano Piste Colour (R/B/Y/G/P)</td><td>"
+    html += "<div class='settings-row'><label>Cyrano Piste Colour (R/B/Y/G/P)</label>"
             "<input type='text' name='CyranoPisteName' value='" +
-            pistename + "' maxlength='8'></td></tr>";
+            pistename + "' maxlength='8'></div>";
   }
-  html += "</table><br><input type='submit' value='Save and Restart'>";
-  html += "</form></body></html>";
+  html += "<button type='submit' class='atlas-btn atlas-wide'>Save and Restart</button>";
+  html += "</form><a class='atlas-btn atlas-wide' style='text-decoration:none;display:block;box-sizing:border-box' href='/remote'>&larr; Back to Remote</a>";
+  html += "</div></body></html>";
   request->send(200, "text/html; charset=utf-8", html);
 }
 

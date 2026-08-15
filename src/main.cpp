@@ -34,6 +34,7 @@
 #include "WS2812BLedStrip.h"
 #include "AppSettings.h"
 #include "WebRemoteHandler.h"
+#include "WifiSetupMode.h"
 #include "driver/adc.h"
 #include "esp_clk.h"
 #include "esp_log.h"
@@ -82,6 +83,13 @@ bool bEnableDeepSleep = false;
 int FactoryResetCounter = 50;
 
 void setup() {
+
+  // Checked before anything else starts -- if set, this call never
+  // returns (it runs its own loop and always ends in ESP.restart()). See
+  // WifiSetupMode.h for why reconfiguring WiFi is a dedicated boot mode
+  // now rather than something the live app does while running.
+  if (WifiSetupMode::IsPending())
+    WifiSetupMode::Run();
 
   Serial.begin(115200);
   esp_task_wdt_init(20, true);

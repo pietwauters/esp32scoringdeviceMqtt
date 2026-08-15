@@ -56,21 +56,6 @@ html, body {
 }
 .rotate-overlay-ios-hint { font-size: 14px; color: #aaa; }
 
-.fs-toggle {
-  position: fixed;
-  top: 8px;
-  right: 8px;
-  z-index: 900;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background-color: rgba(23, 55, 94, 0.6);
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-}
-
 .remote-view { display: none; }
 .remote-view.active { display: block; }
 
@@ -189,7 +174,13 @@ html, body {
   touch-action: none;
 }
 .atlas-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.atlas-btn.atlas-wide { width: 80%; }
+/* width alone left it flush against .atlas-panel's align-items:stretch
+   start edge -- an explicit width on a stretched flex child doesn't
+   self-center, it needs its own auto margins. Pre-existing bug, not
+   specific to any one page: also affected the End button on the Match
+   view, not just the new Settings/Menu pages -- fixed here once since
+   every .atlas-wide use case wants centering. */
+.atlas-btn.atlas-wide { width: 80%; margin-left: auto; margin-right: auto; }
 .atlas-btn.atlas-danger { background-color: #f44336; }
 /* UW2F/PRIO/Undo-Timer-Reset: sized to their own text via padding, not a
    fixed-percentage bar. Relies on body's text-align:center (see top of
@@ -311,6 +302,34 @@ html, body {
   font-size: 14px;
   color: #f44336;
   margin-top: 8px;
+}
+
+/* Settings page (AppSettings.cpp) -- the one place on the remote with
+   plain form inputs (text/checkbox), nothing else needed this before.
+   Kept in the same dark/atlas- visual language as everything else. */
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  margin: 10px 0;
+  gap: 12px;
+}
+.settings-row label { flex: 1; font-size: 15px; }
+.settings-row input[type='text'] {
+  flex: 1;
+  max-width: 55%;
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+.settings-row input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+  accent-color: #17375E;
 }
 .match-status-line {
   font-size: 16px;

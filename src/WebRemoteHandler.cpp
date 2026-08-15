@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "network.h"
 #include "web_assets_generated.h"
+#include <WiFi.h>
 #include <cstdio>
 
 static const char *WEB_REMOTE_TAG = "WebRemote";
@@ -211,6 +212,19 @@ void WebRemoteHandler::begin() {
   // has no "set weapon to X" UI_INPUT event, only cycle (confirmed by
   // reading FencingStateMachine.cpp's UI_INPUT_CYCLE_WEAPON case).
   registerUiRoute("/ui/cycle_weapon", UI_INPUT_CYCLE_WEAPON);
+
+  // Menu page (WiFi/Settings/OTA/Full reset) -- WiFi and OTA route
+  // through the exact same UI_INPUT_* -> NetWork::update(UDPIOHandler*)
+  // path as every button above (UI_START_WIFI_PORTAL/UI_START_OTA_PORTAL
+  // already existed as events, just had no live trigger before this).
+  // Settings needs no route of its own -- AppSettings::begin() already
+  // registers /settings directly. Full reset is a plain reboot
+  // (UI_FULL_RESET's existing handler is just ESP.restart(), no NVS
+  // wipe -- that's DoFactoryReset(), a different, boot-pin-triggered
+  // path, deliberately not exposed here).
+  registerUiRoute("/ui/start_wifi_portal", UI_START_WIFI_PORTAL);
+  registerUiRoute("/ui/start_ota_portal", UI_START_OTA_PORTAL);
+  registerUiRoute("/ui/full_reset", UI_FULL_RESET);
 
   NetWork::getInstance().GetServer().on(
       "/api/state", HTTP_GET,
