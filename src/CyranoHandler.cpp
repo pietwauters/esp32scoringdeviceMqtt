@@ -129,6 +129,14 @@ void CyranoHandler::SendInfoMessage() {
     return;
   }
 
+  // Logged here, not at the EVENT_CYRANO_SEND_INFO call site -- moved
+  // 2026-08-14: that call site logged "Sending INFO message"
+  // unconditionally, before either of the two early-returns above, so it
+  // fired (misleadingly) on every state change even with no CMS ever
+  // connected (bOKToSend stays false until a real HELLO arrives) --
+  // nothing was actually going out despite the log claiming otherwise.
+  ESP_LOGI(CYRANO_TAG, "[Opp2→Cyrano] Sending INFO message");
+
   // Use cached string directly - zero stack allocations
   const char *pCyranoMsg = m_CachedCyranoString;
   size_t cyranoLen = strlen(m_CachedCyranoString);
@@ -213,8 +221,8 @@ void CyranoHandler::update(Opp2Handler *subject, uint32_t eventtype) {
   // Handle message send requests from Opp2Handler
   switch (eventtype) {
   case EVENT_CYRANO_SEND_INFO:
-    // Send INFO message with current state
-    ESP_LOGI(CYRANO_TAG, "[Opp2→Cyrano] Sending INFO message");
+    // Send INFO message with current state -- SendInfoMessage() itself
+    // logs, only once it knows it's actually past the bOKToSend gate.
     SendInfoMessage();
     break;
 
