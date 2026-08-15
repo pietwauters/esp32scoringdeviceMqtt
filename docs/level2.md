@@ -61,6 +61,7 @@ This is a working proposal, not a ratified standard. It is published in the hope
 23. [Versioning and compatibility](#23-versioning-and-compatibility)
 24. [Security](#24-security)
 25. [Open items](#25-open-items)
+30. [Device provisioning and security tiers](#30-device-provisioning-and-security-tiers)
 
 ---
 
@@ -1103,6 +1104,118 @@ A formal security specification will be added in a future revision.
 **ACK/NAK state machine.** ~~Not yet specified.~~ Resolved: the full state machine is defined in Section 13. ACK transitions E→W; NAK transitions E→H. END is only valid from H, F, or P — W→E is explicitly forbidden.
 
 **JSON Schema.** A machine-readable JSON Schema for all message types is planned as a separate document at `schemas/opp2/` in the OpenPiste repository. Not yet published.
+
+---
+
+## 30. Device provisioning and security tiers
+
+> Numbered 30 rather than immediately following Section 25 — this section documents one specific, already-implemented tier (30.5) of what is expected to be a broader set of provisioning/authentication tiers. Sections 26–29 and the rest of 30 are reserved for those; not yet written.
+
+Section 24 flags automated credential deployment "at scale" as an unresolved operational concern. Tier A is the first concrete answer to that: a self-service, operator-gated enrollment flow requiring no manual per-device credential provisioning step outside entering a short ticket code.
+
+### 30.1 Trust model
+
+Tier A devices connect to the broker via a pre-resolved IP address rather than a hostname (see Section 4), and the broker's own server certificate's SAN does not list arbitrary LAN IP addresses. Hostname/CN verification is therefore disabled on the client side for this connection; the certificate **chain** is still fully verified against the CA certificate issued at provisioning time, so a certificate not signed by that CA cannot pass the handshake regardless of this. This is a deliberate tradeoff appropriate for a physically-secured local competition network — not a bank-grade trust model. Revisit if that assumption changes for a given deployment.
+
+### 30.5 Tier A (certificate-based) provisioning
+
+Tier A provisioning issues each device its own mTLS client certificate. The device generates its own key pair locally — the private key is never transmitted, stored outside the device's own NVS, or seen by the CMS — and exchanges the corresponding certificate signing request (CSR) for a signed certificate over MQTT, gated by a short ticket code an operator reads from the CMS's device-pairing screen and enters on the device itself.
+
+**Device identity.** Each device derives a stable `device_id` once, from its MAC address (colons stripped, prefixed `esp32-`), and persists it locally for the device's lifetime. Devices without a camera (most apparatus) have the operator relay the ticket code manually rather than scanning a QR code.
+
+**Roles.** One of `apparatus`, `scoresheet`, `remote`, `var` — the same role vocabulary as topic publishers elsewhere in this document, plus `scoresheet`/`var` for CMS-side client roles outside the apparatus itself.
+
+**Key/CSR generation.** EC key pair on curve secp256r1 (P-256), PKCS#10 CSR signed with SHA-256. The CSR's subject is not meaningful — the CMS discards it and re-issues the certificate with its own CN (`role`-`device_id`); only the CSR's embedded public key is used.
+
+#### Message: _provision/request
+
+**Topic:** `openpiste/_provision/request`
+**QoS:** 1
+**Retained:** No
+
+Deliberately outside the normal `openpiste/{piste_id}/{publisher}/{message_type}` topic structure (Section 5) — provisioning happens before a device necessarily has a piste assignment, and is addressed by device identity rather than piste.
+
+##### Payload
+
+```json
+{
+  "protocol":     "OPP2",
+  "version":      "1.0",
+  "seq":          1,
+  "ts":           1715539200456,
+  "code":         "A1B2C3",
+  "role":         "apparatus",
+  "device_id":    "esp32-1C6920F6B4",
+  "device_label": "Piste 6",
+  "csr":          "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----\n"
+}
+```
+
+##### Fields
+
+| Field | Type | M/O | Description |
+|-------|------|-----|-------------|
+| `protocol` | string | M | Always `"OPP2"` |
+| `version` | string | M | Protocol version, e.g. `"1.0"` |
+| `seq` | integer | M | Always `1` — not part of a per-connection publish sequence |
+| `ts` | integer | M | Timestamp the request was issued, see Section 22 |
+| `code` | string | M | Ticket code from the CMS's device-pairing screen |
+| `role` | string | M | One of `apparatus` / `scoresheet` / `remote` / `var` |
+| `device_id` | string | M | Stable per-device identifier — see Device identity above |
+| `device_label` | string | O | Operator-supplied friendly label |
+| `csr` | string | M | PEM-encoded PKCS#10 certificate signing request |
+
+Before publishing, the device subscribes (QoS 1) to its own response topic, `openpiste/_provision/response/{device_id}`, so it cannot miss a response that arrives immediately after the request.
+
+Only one request may be in flight per device at a time. A second request while one is pending is rejected outright — not queued or merged with the first — since silently replacing the pending key would corrupt whichever response eventually arrives; a browser refreshing the `/provision` form mid-flight is the real-world case this guards against. A pending request with no matching response expires after 30 seconds, after which a new request may be sent.
+
+#### Message: _provision/response/{device_id}
+
+**Topic:** `openpiste/_provision/response/{device_id}`
+**QoS:** 1
+**Retained:** No
+
+Published by the CMS in reply to a specific device's request, addressed to that device alone via the `device_id` topic segment.
+
+##### Payload — granted
+
+```json
+{
+  "status":  "granted",
+  "cert":    "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
+  "ca_cert": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+}
+```
+
+##### Payload — denied
+
+```json
+{
+  "status": "denied",
+  "reason": "invalid or expired code"
+}
+```
+
+##### Fields
+
+| Field | Type | M/O | Description |
+|-------|------|-----|-------------|
+| `status` | string | M | `"granted"` — any other value is treated as a denial |
+| `cert` | string | M (granted) | PEM-encoded certificate signed by the CMS, matching the request's CSR public key |
+| `ca_cert` | string | M (granted) | PEM-encoded CA certificate the broker's own server certificate chains to |
+| `reason` | string | O (denied) | Human-readable denial reason |
+
+A granted response with no request currently pending on this device (e.g. a duplicate delivery after the device already finished provisioning) is ignored.
+
+#### After a grant
+
+On a granted response, the device:
+
+1. Persists `cert`, the private key generated for this request, and `ca_cert` to local storage (never transmitted).
+2. Applies the certificate to its MQTT client and switches to mTLS on port 8883.
+3. Reconnects on its next main-loop iteration, not inline — the response is handled inside the MQTT client's own event context, and stopping/destroying the client from that context is unsafe.
+
+A device holding a previously-granted certificate connects via mTLS on port 8883 from boot. A never-provisioned device connects exactly as before — anonymous, subject to whatever the asymmetric access model in Section 24 otherwise applies.
 
 ---
 
