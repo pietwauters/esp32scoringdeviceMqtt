@@ -172,6 +172,16 @@
         Match #<span id="matchNum">--</span> &middot; Round <span id="matchRound">--</span>
       </div>
 
+      <!-- Only shown once a CMS has actually sent fencer identity (OPP2's
+           Person.present, see Opp2Handler.h) -- hidden by default here and
+           toggled visible in app.js's poll(), not left to render "--" for
+           a device with no CMS attached at all. -->
+      <div id="fencersLine" class="match-status-line" style="display:none">
+        <span id="fencerLeftName">--</span> (<span id="fencerLeftNoc">--</span>)
+        vs
+        <span id="fencerRightName">--</span> (<span id="fencerRightNoc">--</span>)
+      </div>
+
       <!-- Only a cycle action exists (Foil -> Epee -> Sabre -> ...), not a
            direct "set weapon to X" -- FencingStateMachine has no UI_INPUT
            event for that (confirmed by reading it), unlike Favero_OPP2's

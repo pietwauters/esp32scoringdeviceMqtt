@@ -127,17 +127,49 @@ void WebRemoteHandler::registerUiRoute(const char *path, uint32_t eventtype) {
 // not ArduinoJson or std::string concatenation, matching this project's
 // "no dynamic allocation in hot paths" convention even though this path
 // isn't as constrained as async_udp.
+// Minimal JSON string escaping for OPP2::Person::name/nation -- CMS-sourced
+// text, not attacker-controlled, but still raw char[] that could in
+// principle carry a '"' or '\' and break the hand-built JSON below (every
+// other field here is numeric/bool, this handler had no string fields
+// before fencer names). Strips control characters rather than \u-escaping
+// them -- names don't legitimately contain any.
+static void jsonEscape(const char *in, char *out, size_t outSize) {
+  size_t o = 0;
+  for (size_t i = 0; in[i] != '\0' && o + 2 < outSize; i++) {
+    unsigned char c = (unsigned char)in[i];
+    if (c == '"' || c == '\\') {
+      out[o++] = '\\';
+      out[o++] = (char)c;
+    } else if (c >= 0x20) {
+      out[o++] = (char)c;
+    }
+  }
+  out[o] = '\0';
+}
+
 void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
   if (!AcquireRequestSlot(request))
     return;
   OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
 
-  char buf[512];
+  // Fencer name/NOC are only meaningful once a CMS has sent a DISP/fencers
+  // message (CLAUDE.md's "Information state" domain) -- Person::present
+  // is false until then, and the client only shows this when both sides
+  // are present.
+  char leftName[130], rightName[130], leftNoc[12], rightNoc[12];
+  jsonEscape(state.fencers.left.fencer.name, leftName, sizeof(leftName));
+  jsonEscape(state.fencers.right.fencer.name, rightName, sizeof(rightName));
+  jsonEscape(state.fencers.left.fencer.nation, leftNoc, sizeof(leftNoc));
+  jsonEscape(state.fencers.right.fencer.nation, rightNoc, sizeof(rightNoc));
+
+  char buf[900];
   int len = snprintf(
       buf, sizeof(buf),
       "{\"apparatus_state\":%d,"
-      "\"left\":{\"score\":%d,\"yellow_card\":%s,\"red_cards\":%u,\"black_card\":%s,\"p_card\":%u},"
-      "\"right\":{\"score\":%d,\"yellow_card\":%s,\"red_cards\":%u,\"black_card\":%s,\"p_card\":%u},"
+      "\"left\":{\"score\":%d,\"yellow_card\":%s,\"red_cards\":%u,\"black_card\":%s,\"p_card\":%u,"
+      "\"fencer_present\":%s,\"fencer_name\":\"%s\",\"fencer_noc\":\"%s\"},"
+      "\"right\":{\"score\":%d,\"yellow_card\":%s,\"red_cards\":%u,\"black_card\":%s,\"p_card\":%u,"
+      "\"fencer_present\":%s,\"fencer_name\":\"%s\",\"fencer_noc\":\"%s\"},"
       "\"priority\":%d,"
       "\"clock\":{\"running\":%s,\"time_ms\":%u},"
       "\"round\":%u,"
@@ -147,9 +179,11 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
       state.score.left.score, state.score.left.yellow_card ? "true" : "false",
       state.score.left.red_cards, state.score.left.black_card ? "true" : "false",
       state.uw2f.left.p_card,
+      state.fencers.left.fencer.present ? "true" : "false", leftName, leftNoc,
       state.score.right.score, state.score.right.yellow_card ? "true" : "false",
       state.score.right.red_cards, state.score.right.black_card ? "true" : "false",
       state.uw2f.right.p_card,
+      state.fencers.right.fencer.present ? "true" : "false", rightName, rightNoc,
       static_cast<int>(state.score.priority),
       state.clock.running ? "true" : "false", state.clock.time_ms,
       state.match.round,

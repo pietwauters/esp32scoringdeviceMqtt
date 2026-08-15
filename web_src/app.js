@@ -125,10 +125,13 @@
     // Main sits in the middle of the original three, matching Favero_OPP2's
     // own linear-sequence placement of its "Home" position. Menu was
     // appended at the end 2026-08-13 -- reachable by stepping/swiping past
-    // Match, or via the center icon's Home<->Settings toggle while on
+    // Penalties, or via the center icon's Home<->Settings toggle while on
     // Main, matching Favero_OPP2's own 5-position center-icon behavior
-    // (this page just has one settings-style screen, not several).
-    const NAV_SEQUENCE = ['penalties', 'main', 'match', 'menu'];
+    // (this page just has one settings-style screen, not several). Match
+    // (OPP2 lifecycle: Prev/Begin/Next/End) and Penalties swapped sides
+    // 2026-08-15 per explicit request -- Match/OPP2 left of Main, Penalties
+    // right of Main.
+    const NAV_SEQUENCE = ['match', 'main', 'penalties', 'menu'];
     let navIndex = NAV_SEQUENCE.indexOf('main');
     function showView(name) {
       document.getElementById('viewMain').classList.toggle('active', name === 'main');
@@ -406,6 +409,17 @@
         document.getElementById('matchNum').textContent = s.match_num;
         document.getElementById('matchRound').textContent = s.round;
         document.getElementById('matchWeapon').textContent = WEAPON[s.weapon] || '?';
+
+        // Both sides, not just one -- "who fences who" needs a pairing, a
+        // lone name without its opponent isn't that.
+        const fencersKnown = s.left.fencer_present && s.right.fencer_present;
+        document.getElementById('fencersLine').style.display = fencersKnown ? '' : 'none';
+        if (fencersKnown) {
+          document.getElementById('fencerLeftName').textContent = s.left.fencer_name;
+          document.getElementById('fencerLeftNoc').textContent = s.left.fencer_noc;
+          document.getElementById('fencerRightName').textContent = s.right.fencer_name;
+          document.getElementById('fencerRightNoc').textContent = s.right.fencer_noc;
+        }
 
         setCardStatusTrio('cardStatus', 'Left', s.left.yellow_card, s.left.red_cards > 0, s.left.black_card, s.left.red_cards);
         setCardStatusTrio('cardStatus', 'Right', s.right.yellow_card, s.right.red_cards > 0, s.right.black_card, s.right.red_cards);
