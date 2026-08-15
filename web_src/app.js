@@ -411,6 +411,7 @@
 
         document.getElementById('btnScoreLeft').textContent = s.left.score;
         document.getElementById('btnScoreRight').textContent = s.right.score;
+        document.getElementById('pisteLabel').textContent = s.piste_label;
         const mins = Math.floor(s.clock.time_ms / 60000);
         const secs = Math.floor((s.clock.time_ms % 60000) / 1000);
         document.getElementById('clockText').textContent = mins + ':' + String(secs).padStart(2, '0');

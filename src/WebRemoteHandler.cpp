@@ -9,6 +9,7 @@
 #include "web_assets_generated.h"
 #include <WiFi.h>
 #include <cstdio>
+#include <cstdlib>
 
 static const char *WEB_REMOTE_TAG = "WebRemote";
 
@@ -147,10 +148,38 @@ static void jsonEscape(const char *in, char *out, size_t outSize) {
   out[o] = '\0';
 }
 
+// state.piste_id (Opp2Handler::Begin()) is either the Cyrano "fancy name"
+// (a fixed color word -- Red/Blue/Yellow/Green/Podium, see AppSettings.cpp's
+// WriteCyranoPisteName()) when one is configured, or just the bare piste
+// number as a string otherwise -- never zero-padded, never "Piste_"-prefixed
+// itself. This reproduces the same "Piste_XXX" display convention already
+// used elsewhere (NetWork::GlobalStartWiFi()'s AP SSID, WifiSetupMode.cpp)
+// for the bare-number case, purely for display here -- doesn't touch
+// state.piste_id or the topic it's built from. A purely-numeric piste_id
+// reliably means "no fancy name set": none of the fixed Cyrano color words
+// are digit strings.
+static void formatPisteLabel(const char *pisteId, char *out, size_t outSize) {
+  bool allDigits = pisteId[0] != '\0';
+  for (const char *p = pisteId; *p; p++) {
+    if (*p < '0' || *p > '9') {
+      allDigits = false;
+      break;
+    }
+  }
+  if (allDigits) {
+    snprintf(out, outSize, "Piste_%03d", atoi(pisteId));
+  } else {
+    jsonEscape(pisteId, out, outSize);
+  }
+}
+
 void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
   if (!AcquireRequestSlot(request))
     return;
   OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy();
+
+  char pisteLabel[40];
+  formatPisteLabel(state.piste_id, pisteLabel, sizeof(pisteLabel));
 
   // Fencer name/NOC are only meaningful once a CMS has sent a DISP/fencers
   // message (CLAUDE.md's "Information state" domain) -- Person::present
@@ -162,7 +191,7 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
   jsonEscape(state.fencers.left.fencer.nation, leftNoc, sizeof(leftNoc));
   jsonEscape(state.fencers.right.fencer.nation, rightNoc, sizeof(rightNoc));
 
-  char buf[900];
+  char buf[960];
   int len = snprintf(
       buf, sizeof(buf),
       "{\"apparatus_state\":%d,"
@@ -176,7 +205,8 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
       "\"weapon\":%d,"
       "\"match_num\":%u,"
       "\"phase_type\":%d,"
-      "\"match_type\":%d}",
+      "\"match_type\":%d,"
+      "\"piste_label\":\"%s\"}",
       static_cast<int>(state.apparatus_state.state),
       state.score.left.score, state.score.left.yellow_card ? "true" : "false",
       state.score.left.red_cards, state.score.left.black_card ? "true" : "false",
@@ -192,7 +222,8 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
       static_cast<int>(state.match.weapon),
       state.match.match_num,
       static_cast<int>(state.match.phase_type),
-      static_cast<int>(state.match.type));
+      static_cast<int>(state.match.type),
+      pisteLabel);
 
   if (len < 0 || static_cast<size_t>(len) >= sizeof(buf)) {
     request->send(500, "text/plain", "state too large");
