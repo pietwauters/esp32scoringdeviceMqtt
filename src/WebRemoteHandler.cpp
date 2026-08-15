@@ -174,7 +174,9 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
       "\"clock\":{\"running\":%s,\"time_ms\":%u},"
       "\"round\":%u,"
       "\"weapon\":%d,"
-      "\"match_num\":%u}",
+      "\"match_num\":%u,"
+      "\"phase_type\":%d,"
+      "\"match_type\":%d}",
       static_cast<int>(state.apparatus_state.state),
       state.score.left.score, state.score.left.yellow_card ? "true" : "false",
       state.score.left.red_cards, state.score.left.black_card ? "true" : "false",
@@ -188,7 +190,9 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
       state.clock.running ? "true" : "false", state.clock.time_ms,
       state.match.round,
       static_cast<int>(state.match.weapon),
-      state.match.match_num);
+      state.match.match_num,
+      static_cast<int>(state.match.phase_type),
+      static_cast<int>(state.match.type));
 
   if (len < 0 || static_cast<size_t>(len) >= sizeof(buf)) {
     request->send(500, "text/plain", "state too large");
@@ -246,6 +250,12 @@ void WebRemoteHandler::begin() {
   // has no "set weapon to X" UI_INPUT event, only cycle (confirmed by
   // reading FencingStateMachine.cpp's UI_INPUT_CYCLE_WEAPON case).
   registerUiRoute("/ui/cycle_weapon", UI_INPUT_CYCLE_WEAPON);
+  // Cycle only, same shape as weapon above. UI_INPUT_ROUND already existed
+  // (FencingStateMachine.cpp:320, cycles m_nrOfRounds 1->2/3->3->9->1) and
+  // already fed Opp2Handler's EVENT_ROUND derivation of match.phase_type/
+  // match.type (Pool=1 round, DE=2or3, Team=9 -- Opp2Handler.cpp:1374) --
+  // just never had a route or button before this.
+  registerUiRoute("/ui/cycle_round", UI_INPUT_ROUND);
 
   // Menu page (WiFi/Settings/OTA/Full reset) -- WiFi and OTA route
   // through the exact same UI_INPUT_* -> NetWork::update(UDPIOHandler*)

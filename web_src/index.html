@@ -188,6 +188,12 @@
            three explicit weapon buttons. -->
       <button id="btnCycleWeapon" class="atlas-btn atlas-btn-auto">Weapon: <span id="matchWeapon">--</span> (tap to cycle)</button>
 
+      <!-- Cycle only, same reasoning as weapon above -- UI_INPUT_ROUND
+           cycles FencingStateMachine's m_nrOfRounds (1->2/3->3->9->1),
+           which Opp2Handler derives into match.phase_type/match.type
+           (Pool/DE/Team). -->
+      <button id="btnCycleRound" class="atlas-btn atlas-btn-auto">Format: <span id="matchFormat">--</span> (tap to cycle)</button>
+
       <div class="atlas-secondary-row">
         <button class="atlas-btn" id="btnCyranoPrev">&laquo; Prev</button>
         <button class="atlas-btn" id="btnCyranoBegin">Begin</button>

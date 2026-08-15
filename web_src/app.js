@@ -203,6 +203,7 @@
     document.getElementById('btnCyranoNext').addEventListener('click', function () { ui('cyrano_next'); });
     document.getElementById('btnCyranoEnd').addEventListener('click', function () { ui('cyrano_end'); });
     document.getElementById('btnCycleWeapon').addEventListener('click', function () { ui('cycle_weapon'); });
+    document.getElementById('btnCycleRound').addEventListener('click', function () { ui('cycle_round'); });
 
     // WiFi reboots the device into a separate, dedicated setup mode
     // (WifiSetupMode.h) rather than serving a scan/connect page from
@@ -392,6 +393,16 @@
     function pCardBuckets(pCard) {
       return { yellow: pCard >= 1, red: pCard >= 2, black: pCard >= 3 };
     }
+    // Mirrors Opp2Handler.cpp's EVENT_ROUND derivation (phase_type/match_type
+    // from m_nrOfRounds) rather than re-deriving from a round count of our
+    // own -- reads the same three end states the cycle button actually
+    // produces (Pool, DE, DE+Team), OPP2::PhaseType/MatchType enum order.
+    function matchFormatLabel(phaseType, matchType) {
+      if (matchType === 1) return 'Team'; // MatchType::TEAM
+      if (phaseType === 0) return 'Pool'; // PhaseType::POOL
+      if (phaseType === 1) return 'DE';   // PhaseType::DE
+      return '?';
+    }
 
     async function poll() {
       try {
@@ -409,6 +420,7 @@
         document.getElementById('matchNum').textContent = s.match_num;
         document.getElementById('matchRound').textContent = s.round;
         document.getElementById('matchWeapon').textContent = WEAPON[s.weapon] || '?';
+        document.getElementById('matchFormat').textContent = matchFormatLabel(s.phase_type, s.match_type);
 
         // Both sides, not just one -- "who fences who" needs a pairing, a
         // lone name without its opponent isn't that.
