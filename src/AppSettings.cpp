@@ -5,6 +5,7 @@
 // <ESPAsyncWebServer.h> after <WiFiManager.h>, the only include order
 // that doesn't collide (both define HTTP_GET/HTTP_POST/etc).
 #include "network.h"
+#include "ExperimentalMode.h"
 #include "esp_log.h"
 #include <Preferences.h>
 #include <cstdio>
@@ -223,7 +224,30 @@ void AppSettings::handleGet(AsyncWebServerRequest *request) {
             pistename + "' maxlength='8'></div>";
   }
   html += "<button type='submit' class='atlas-btn atlas-wide'>Save and Restart</button>";
-  html += "</form><a class='atlas-btn atlas-wide' style='text-decoration:none;display:block;box-sizing:border-box' href='/remote'>&larr; Back to Remote</a>";
+  html += "</form>";
+
+  // Experimental: its own form/endpoint, deliberately outside the one
+  // above -- that form always restarts the device on submit, which would
+  // immediately reset this flag back to off (see ExperimentalMode.h and
+  // handleExperimentalPost()'s comment in AppSettings.h). Applies
+  // immediately, no restart, and is never written to NVS.
+  //
+  // Route is /experimental, NOT /settings/experimental -- this
+  // ESPAsyncWebServer version's default URI matcher treats "/settings" as
+  // matching "/settings" OR anything under "/settings/*" (WebHandlers.cpp:
+  // `_uri != url && !url.startsWith(_uri + "/")`), so a nested path would
+  // collide with the /settings POST handler above and route here into
+  // handlePost() instead -- which happened once already and reset every
+  // other field on the page to blank/default. A sibling path with no
+  // shared prefix can't collide.
+  html += "<form method='POST' action='/experimental'>";
+  html += "<div class='settings-row'><label>Experimental</label>"
+          "<input type='checkbox' name='Experimental'" +
+          String(IsExperimentalModeEnabled() ? " checked" : "") + "></div>";
+  html += "<button type='submit' class='atlas-btn atlas-wide'>Apply (no restart)</button>";
+  html += "</form>";
+
+  html += "<a class='atlas-btn atlas-wide' style='text-decoration:none;display:block;box-sizing:border-box' href='/remote'>&larr; Back to Remote</a>";
   html += "</div></body></html>";
   request->send(200, "text/html; charset=utf-8", html);
 }
@@ -258,6 +282,16 @@ void AppSettings::handlePost(AsyncWebServerRequest *request) {
   ESP.restart();
 }
 
+void AppSettings::handleExperimentalPost(AsyncWebServerRequest *request) {
+  // Unchecked checkbox: absent from POST body -- same convention as the
+  // BOOL rows above.
+  bool enabled = request->hasParam("Experimental", true);
+  SetExperimentalMode(enabled);
+  ESP_LOGI(SETTINGS_TAG, "Experimental mode set to %s (runtime only, not persisted)",
+           enabled ? "ON" : "OFF");
+  request->redirect("/remote");
+}
+
 void AppSettings::begin() {
   NetWork::getInstance().GetServer().on(
       "/settings", HTTP_GET,
@@ -265,5 +299,13 @@ void AppSettings::begin() {
   NetWork::getInstance().GetServer().on(
       "/settings", HTTP_POST,
       [this](AsyncWebServerRequest *request) { handlePost(request); });
+  // /experimental, NOT /settings/experimental -- see the comment on this
+  // form in handleGet() for why a nested path would collide with the
+  // /settings POST handler above (this ESPAsyncWebServer version's default
+  // URI matcher treats "/settings" as matching anything under
+  // "/settings/*" too).
+  NetWork::getInstance().GetServer().on(
+      "/experimental", HTTP_POST,
+      [this](AsyncWebServerRequest *request) { handleExperimentalPost(request); });
   ESP_LOGI(SETTINGS_TAG, "Settings routes registered");
 }

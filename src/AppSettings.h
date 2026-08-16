@@ -42,6 +42,11 @@ private:
 
   void handleGet(AsyncWebServerRequest *request);
   void handlePost(AsyncWebServerRequest *request);
+  // Separate from handlePost() deliberately -- that path always ends in
+  // ESP.restart() (every other row is boot-time config), but "Experimental"
+  // must take effect immediately and must never be persisted to NVS (see
+  // ExperimentalMode.h) -- a restart would silently reset it back to off.
+  void handleExperimentalPost(AsyncWebServerRequest *request);
 };
 
 #endif // APPSETTINGS_H
