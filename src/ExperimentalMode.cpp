@@ -3,8 +3,8 @@
 // all ESP_LOGx output. Overridden here (before any include that might
 // transitively pull in esp_log.h) so the ON/OFF toggle log is visible while
 // testing. Same pattern as Opp2Handler.cpp.
-#undef LOG_LOCAL_LEVEL
-#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+// #undef LOG_LOCAL_LEVEL
+// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "ExperimentalMode.h"
 #include "3WeaponSensor.h"

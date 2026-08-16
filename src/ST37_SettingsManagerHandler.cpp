@@ -4,8 +4,8 @@
 // include that might transitively pull in esp_log.h) so this file's
 // blocking_time_ms/blade_contact_block_ms logging is visible while testing.
 // Same pattern as Opp2Handler.cpp.
-#undef LOG_LOCAL_LEVEL
-#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+// #undef LOG_LOCAL_LEVEL
+// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "ST37_SettingsManagerHandler.h"
 #include "ExperimentalMode.h"
