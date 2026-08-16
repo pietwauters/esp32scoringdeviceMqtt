@@ -333,6 +333,41 @@ int NetWork::findBestWifiChannel() {
           intervals[max_width_index].start);
 }
 
+// DHCP lease pool start address for this piste's AP. The AP's own IP stays
+// fixed at 192.168.4.1 everywhere -- only where the DHCP server starts
+// handing out client addresses shifts per piste. Reduces (not eliminates)
+// the chance that a remote control which just left a different piste's AP
+// still holds a cached lease for 192.168.4.x, tries an INIT-REBOOT
+// DHCPREQUEST for that stale address against the new piste's AP, gets
+// NAK'd/ignored, and has to time out before falling back to a fresh
+// DISCOVER. Pistes are numbered 1-64 in practice (500 is only the
+// transient "unset" placeholder from FindFirstFreePisteID), so this is
+// just spreading pools out, not guaranteeing uniqueness -- not needed.
+static IPAddress DhcpLeaseStartForPiste(int32_t pisteNr) {
+  // softAPConfig's lease pool is 10 addresses wide and must stay inside the
+  // /24 subnet without overlapping the gateway (192.168.4.1) or running
+  // past .254 -- clamp to a safe interior range regardless of pisteNr.
+  int32_t octet = pisteNr;
+  if (octet < 2)
+    octet = 2;
+  if (octet > 244)
+    octet = 244;
+  return IPAddress(192, 168, 4, octet);
+}
+
+// Recovers the piste number from the AP SSID ("Piste_XXX") for call sites
+// that only have soft_ap_ssid in scope, not the originating int.
+static int32_t PisteNrFromApSsid(const String &ssid) {
+  return ssid.substring(6).toInt(); // "Piste_" is 6 chars; toInt()==0 on
+                                     // parse failure, which clamps safely
+}
+
+static void ApplyPisteDhcpLease(int32_t pisteNr) {
+  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
+                     IPAddress(255, 255, 255, 0),
+                     DhcpLeaseStartForPiste(pisteNr));
+}
+
 bool NetWork::ConnectToExternalNetwork(long ConnectTimeout) {
   if (bConnectedToExternalNetwork)
     return true;
@@ -350,6 +385,7 @@ bool NetWork::ConnectToExternalNetwork(long ConnectTimeout) {
                                    // successful we have to start the local AP
                                    // ourselves
   {
+    ApplyPisteDhcpLease(PisteNrFromApSsid(soft_ap_ssid));
     WiFi.softAP(soft_ap_ssid.c_str(), soft_ap_password.c_str());
     ESP_LOGI(NETWORK_TAG, "ESP32 IP on the WiFi network: %s",
              (WiFi.localIP().toString()).c_str());
@@ -428,12 +464,14 @@ void NetWork::GlobalStartWiFi() {
       bestchannel = findBestWifiChannel() + 1;
       WiFi.mode(WIFI_MODE_AP);
 
+      ApplyPisteDhcpLease(PisteNrFromApSsid(soft_ap_ssid));
       WiFi.softAP(soft_ap_ssid.c_str(), soft_ap_password.c_str());
       esp_wifi_set_channel(bestchannel, WIFI_SECOND_CHAN_NONE);
     }
   } else {
     FindAndSetMasterChannel();
     WiFi.mode(WIFI_MODE_AP);
+    ApplyPisteDhcpLease(PisteNrFromApSsid(soft_ap_ssid));
     WiFi.softAP(soft_ap_ssid.c_str(), soft_ap_password.c_str());
     esp_wifi_set_channel(bestchannel, WIFI_SECOND_CHAN_NONE);
   }
@@ -521,6 +559,7 @@ void NetWork::update(UDPIOHandler *subject, uint32_t eventtype) {
     if (!ConnectToExternalNetwork(45)) {
       WiFi.disconnect();
       WiFi.mode(WIFI_MODE_AP);
+      ApplyPisteDhcpLease(PisteNrFromApSsid(soft_ap_ssid));
       WiFi.softAP(soft_ap_ssid.c_str(), soft_ap_password.c_str());
     }
 
