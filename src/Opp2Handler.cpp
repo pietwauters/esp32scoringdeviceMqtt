@@ -12,6 +12,8 @@
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
 #include "RTOSSettings.h"
+#include "ST37_AIHandler.h"
+#include "ST37_SettingsManagerHandler.h"
 #include "TaskDiagnostics.h"
 #include "TierAProvisioning.h"
 #include <cstring>
@@ -291,6 +293,17 @@ void Opp2Handler::OnMqttConnectStatic(bool sessionPresent) {
   mqttClient.subscribe(topicBuf, 1);
   ESP_LOGI(OPP2_TAG, "[OPP2] *** SUBSCRIBING TO: %s ***", topicBuf);
 
+  // Vendor extensions -- see ST37_AIHandler.h / ST37_SettingsManagerHandler.h.
+  snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/x_ST37_SettingsManager/#",
+           handler.m_State.piste_id);
+  mqttClient.subscribe(topicBuf, 1);
+  ESP_LOGI(OPP2_TAG, "[OPP2] *** SUBSCRIBING TO: %s ***", topicBuf);
+
+  snprintf(topicBuf, sizeof(topicBuf), "openpiste/%s/x_ST37_AI/#",
+           handler.m_State.piste_id);
+  mqttClient.subscribe(topicBuf, 1);
+  ESP_LOGI(OPP2_TAG, "[OPP2] *** SUBSCRIBING TO: %s ***", topicBuf);
+
   // Do NOT publish here — boot recovery (CheckConnection) will restore state
   // from retained broker topics first, then publish once the window closes.
 }
@@ -322,6 +335,23 @@ void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,
     // below.
     if (strstr(topic, "/_provision/response/") != nullptr) {
       TierAProvisioning::getInstance().HandleResponse(payload, length);
+      return;
+    }
+
+    // Vendor extension: x_ST37_SettingsManager (see
+    // ST37_SettingsManagerHandler.h) — doesn't fit the opp2-library's
+    // Dispatcher (unknown {publisher} value), so it's special-cased here,
+    // same as Tier A provisioning above.
+    if (strstr(topic, "/x_ST37_SettingsManager/") != nullptr) {
+      ST37_SettingsManagerHandler::getInstance().ProcessMessage(topic,
+                                                                 payload,
+                                                                 length);
+      return;
+    }
+
+    // Vendor extension: x_ST37_AI (see ST37_AIHandler.h).
+    if (strstr(topic, "/x_ST37_AI/") != nullptr) {
+      ST37_AIHandler::getInstance().ProcessMessage(topic, payload, length);
       return;
     }
 
