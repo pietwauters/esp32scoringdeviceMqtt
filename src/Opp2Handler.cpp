@@ -3,8 +3,8 @@
 // which transitively pulls in esp_log.h via AtlasAsyncMqttClient.h) so this
 // file's existing logging plus the new Tier A routing log line are visible
 // while debugging.
-// #undef LOG_LOCAL_LEVEL
-// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
+#undef LOG_LOCAL_LEVEL
+#define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "Opp2Handler.h"
 #include "AbsoluteTime.h"

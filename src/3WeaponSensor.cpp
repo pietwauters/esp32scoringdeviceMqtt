@@ -436,6 +436,22 @@ void MultiWeaponSensor::DoFullScan() {
     vTaskDelay(0);
   } else {
     CurrentParryState = Debounce_Parry.isOK();
+    // Experimental: arm the post-blade-contact block window on the rising
+    // edge only (foil/sabre; epee has no Parry() concept at all -- see
+    // epee.cpp). 0 (the default, and always the value when Experimental
+    // mode is off) means the feature is disabled.
+    if (CurrentParryState && !previousParryState) {
+      int blockMs = 0;
+      if (m_ActualWeapon == FOIL) {
+        blockMs = FOIL_BLADE_CONTACT_BLOCK_MS;
+      } else if (m_ActualWeapon == SABRE) {
+        blockMs = SABRE_BLADE_CONTACT_BLOCK_MS;
+      }
+      if (blockMs > 0) {
+        BladeContactBlockedUntilMs = millis() + blockMs;
+      }
+    }
+    previousParryState = CurrentParryState;
   }
   HandleLights();
 

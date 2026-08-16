@@ -73,8 +73,16 @@ void MultiWeaponSensor::DoSabre(void) {
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
   cr = (tempADValue > BxCy_200_Ohm);
 
-  Debounce_c1.update(cl);
-  Debounce_c2.update(cr);
+  // Experimental: gate the debounce accumulation itself (not just the
+  // final hit-confirm below), so a touch that occurs entirely inside a
+  // blocked window can't have already-satisfied debounce state "release"
+  // the instant the window/block ends. cl/c1 is left, cr/c2 is right (see
+  // the SignalLeft/SignalRight checks below). LongHitDetector_/
+  // DoubleHitDetector_ below still see the raw cl/cr -- blocking only
+  // suppresses hit registration, not diagnostic long/double-hit tracking.
+  bool bladeContactBlocked = millis() < BladeContactBlockedUntilMs;
+  Debounce_c1.update(cl && !bladeContactBlocked && !BlockLeftSide);
+  Debounce_c2.update(cr && !bladeContactBlocked && !BlockRightSide);
 
   // Sabre has no invalid hits.
   LongHitDetector_.update(cl, cr);

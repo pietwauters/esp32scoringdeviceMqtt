@@ -58,3 +58,44 @@ void ApplyExperimentalBlockingTimes(bool enabled) {
   SABRE_LOCK_TIME = prefs.getInt("ExpSabreMs", FIE_SABRE_LOCK_TIME);
   prefs.end();
 }
+
+volatile int FOIL_BLADE_CONTACT_BLOCK_MS = 0;
+volatile int SABRE_BLADE_CONTACT_BLOCK_MS = 0;
+
+bool SetExperimentalBladeContactBlockMs(const char *weaponCode, int ms) {
+  const char *key;
+  if (strcmp(weaponCode, "F") == 0) {
+    key = "ExpFoilBcMs";
+  } else if (strcmp(weaponCode, "S") == 0) {
+    key = "ExpSabreBcMs";
+  } else {
+    return false;
+  }
+
+  Preferences prefs;
+  prefs.begin(kExperimentsNamespace, false);
+  prefs.putInt(key, ms);
+  prefs.end();
+
+  if (IsExperimentalModeEnabled()) {
+    if (strcmp(weaponCode, "F") == 0) {
+      FOIL_BLADE_CONTACT_BLOCK_MS = ms;
+    } else {
+      SABRE_BLADE_CONTACT_BLOCK_MS = ms;
+    }
+  }
+  return true;
+}
+
+void ApplyExperimentalBladeContactBlock(bool enabled) {
+  if (!enabled) {
+    FOIL_BLADE_CONTACT_BLOCK_MS = 0;
+    SABRE_BLADE_CONTACT_BLOCK_MS = 0;
+    return;
+  }
+  Preferences prefs;
+  prefs.begin(kExperimentsNamespace, true); // read-only
+  FOIL_BLADE_CONTACT_BLOCK_MS = prefs.getInt("ExpFoilBcMs", 0);
+  SABRE_BLADE_CONTACT_BLOCK_MS = prefs.getInt("ExpSabreBcMs", 0);
+  prefs.end();
+}

@@ -68,6 +68,20 @@ public:
     SignalLeft = false;
     SignalRight = false;
   };
+  // Experimental: full suppression of hit registration for one side, until
+  // explicitly un-blocked (x_ST37_AI BLOCK_SIDE/UNBLOCK_SIDE command -- see
+  // ST37_AIHandler.cpp). All three weapons. Independent of
+  // BlockAllNewHits()/AllowAllNewHits() above, which govern the normal
+  // post-hit lock, not this.
+  void SetLeftSideBlocked(bool blocked) { BlockLeftSide = blocked; }
+  void SetRightSideBlocked(bool blocked) { BlockRightSide = blocked; }
+  // Forces both sides back to allowed -- called when Experimental mode is
+  // turned off, so a block can never outlive the flag that permitted it
+  // (see ExperimentalMode.cpp).
+  void ClearSideBlocks() {
+    BlockLeftSide = false;
+    BlockRightSide = false;
+  }
   void Setweapon_detection_mode(weapon_detection_mode_t mode) {
     m_DectionMode = mode;
   };
@@ -106,6 +120,13 @@ private:
 
   bool SignalLeft;
   bool SignalRight;
+  // Experimental: written from Core 0 (MQTT task, via
+  // SetLeftSideBlocked()/SetRightSideBlocked()/ClearSideBlocks()), read
+  // from Core 1 (weapon sensing) -- same atomicity reasoning as
+  // TimingConstants.h's live blocking-time variables (single aligned
+  // word, no mutex needed).
+  volatile bool BlockLeftSide = false;
+  volatile bool BlockRightSide = false;
   bool WaitingForResetStarted;
   bool NotConnectedLeft;
   bool NotConnectedRight;
@@ -175,6 +196,11 @@ private:
   DoubleDebouncer WO_Debounce_Parry;
   bool CurrentParryState = false;
   bool previousParryState = false;
+  // Experimental: full-suppression window after blade contact begins
+  // (foil/sabre only). Armed on the rising edge of CurrentParryState in
+  // DoFullScan(); consumed by DoFoil()/DoSabre(). See TimingConstants.h's
+  // FOIL_BLADE_CONTACT_BLOCK_MS/SABRE_BLADE_CONTACT_BLOCK_MS.
+  unsigned long BladeContactBlockedUntilMs = 0;
 
   int TimeOfLock;
   bool LockStarted;

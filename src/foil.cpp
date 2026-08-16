@@ -88,13 +88,19 @@ void MultiWeaponSensor::DoFoil(void) {
   static bool lastValid_l = false;
   static bool lastValid_r = false;
 
+  // Experimental: both gate the debounce accumulation itself, not just the
+  // final hit-confirm, so a touch that occurs entirely inside a blocked
+  // window can't have already-satisfied debounce state "release" the
+  // instant the window/block ends (see 3WeaponSensor.h's comments).
+  bool bladeContactBlocked = millis() < BladeContactBlockedUntilMs;
+
   // Always measure left contact so LongHitDetector_ tracks uninterrupted
   // contact even after a normal hit has set SignalLeft.
   Set_IODirectionAndValue(IODirection_al_bl, IOValues_al_bl);
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)bl_analog);
   bl = (tempADValue < AxXy_300_Ohm);
   Valid_l = HitOnLame_l();
-  if (!SignalLeft) {
+  if (!SignalLeft && !bladeContactBlocked && !BlockLeftSide) {
     NotConnectedLeft = bl;
     Debounce_b1.update(bl);
     DebounceLong_al_cr.update(Valid_l && !bl);
@@ -108,7 +114,7 @@ void MultiWeaponSensor::DoFoil(void) {
   tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)br_analog);
   br = (tempADValue < AxXy_300_Ohm);
   Valid_r = HitOnLame_r();
-  if (!SignalRight) {
+  if (!SignalRight && !bladeContactBlocked && !BlockRightSide) {
     NotConnectedRight = br;
     Debounce_b2.update(br);
     DebounceLong_ar_cl.update(Valid_r && !br);

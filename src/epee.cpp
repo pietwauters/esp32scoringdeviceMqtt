@@ -60,7 +60,11 @@ void MultiWeaponSensor::DoEpee(void) {
     // contact even after a normal hit has set SignalLeft.
     Set_IODirectionAndValue(IODirection_al_cl, IOValues_al_cl);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cl_analog);
-    if (!SignalLeft) {
+    // Experimental: BlockLeftSide gates debounce accumulation the same way
+    // SignalLeft already does -- epee has no blade-contact/Parry() concept
+    // (see 3WeaponSensor.cpp's DoFullScan()), so only the per-side block
+    // applies here.
+    if (!SignalLeft && !BlockLeftSide) {
       cl = ((tempADValue + ADCL_0) >> 1 > AxXy_160_Ohm);
       Debounce_c1.update(cl);
       ADCL_0 = tempADValue;
@@ -73,7 +77,7 @@ void MultiWeaponSensor::DoEpee(void) {
     // contact even after a normal hit has set SignalRight.
     Set_IODirectionAndValue(IODirection_ar_cr, IOValues_ar_cr);
     tempADValue = fast_adc1_get_raw_inline((adc1_channel_t)cr_analog);
-    if (!SignalRight) {
+    if (!SignalRight && !BlockRightSide) {
       cr = ((tempADValue + ADCR_0) >> 1 > AxXy_160_Ohm);
       Debounce_c2.update(cr);
       ADCR_0 = tempADValue;
