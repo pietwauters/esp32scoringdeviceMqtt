@@ -143,7 +143,21 @@ private:
                     uint8_t startCol, uint32_t color);
   void showNumber(uint8_t panelOffset, uint8_t number, uint32_t color,
                   uint8_t startCol);
-  uint32_t m_LedStatus = 0xFFFFFFFF; //!< Member variable "m_LedStatus"; sentinel outside all real mask combinations so the first SetLedStatus() call is never mistaken for a no-op
+  // Sentinel so the first SetLedStatus(val) call (val != 0xff) is never
+  // mistaken for a no-op -- real event_data is masked to SUB_TYPE_MASK
+  // (0x00ffffff, EventDefinitions.h), so any value with the top byte set
+  // can never collide with a genuine light state. Deliberately NOT
+  // 0xFFFFFFFF (found 2026-08-17): SetLedStatus(0xff) is also used
+  // elsewhere as "re-render current m_LedStatus" and reads m_LedStatus as
+  // a raw bitmask without reassigning it first -- if that fires before
+  // the first real event (a boot-order race, e.g. an early animation),
+  // 0xFFFFFFFF has every MASK_* bit set, including MASK_POWER_PROBLEM,
+  // causing a spurious ShowPowerFailure() at startup even though
+  // PowerProblem (3WeaponSensor.h) is never actually set true anywhere.
+  // 0xFF000000 keeps the "always differs from a real first event" property
+  // while leaving every defined MASK_* bit (all within the low 24 bits)
+  // zero, so an early force-redraw renders as "everything off" instead.
+  uint32_t m_LedStatus = 0xFF000000;
   NeoPixelRMT *m_pixels;
   bool m_HasBegun = false;
   uint8_t m_Brightness = BRIGHTNESS_NORMAL;
