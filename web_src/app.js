@@ -297,17 +297,23 @@
     //
     // No floating per-page toggle button anymore -- "we almost always just
     // want it fullscreen" made a manual button on every screen feel wrong.
-    // Instead: auto-request fullscreen on the very first tap/click anywhere
-    // on the page (browsers require a real user gesture, so this can't
-    // happen on load -- first interaction is the earliest legal moment).
-    // btnMenuFullscreen (Menu view) is a plain session-only toggle, nothing
-    // more -- an earlier version persisted "user exited" to localStorage
-    // so it wouldn't auto-retry next time, but that meant exiting
-    // fullscreen for *any* reason (even just to check something in the
-    // browser chrome) silently disabled auto-fullscreen forever after,
-    // which is the opposite of "we almost always want it." No persisted
-    // state at all now -- every fresh page load gets one auto-attempt on
-    // first tap, unconditionally.
+    // Instead: auto-request fullscreen on every tap/click anywhere on the
+    // page, whenever not currently fullscreen (browsers require a real
+    // user gesture, so this can't happen on load -- first interaction is
+    // the earliest legal moment). btnMenuFullscreen (Menu view) is a plain
+    // session-only toggle, nothing more -- an earlier version persisted
+    // "user exited" to localStorage so it wouldn't auto-retry, but that
+    // meant exiting fullscreen for *any* reason (even just to check
+    // something in the browser chrome) silently disabled auto-fullscreen
+    // forever after. A later version fixed that by using a one-shot
+    // { once: true } listener instead of localStorage, but that has the
+    // same failure mode one level up: it only ever re-enters once per page
+    // load, so an exit forced by the OS/browser itself (notification
+    // shade, back-gesture, split-screen, ...) rather than a deliberate
+    // user tap on the Menu button left fullscreen unrecoverable without a
+    // full page reload (reported 2026-08-17). No persisted state and no
+    // one-shot removal now -- every tap on the page re-enters fullscreen
+    // if it isn't already active.
     (function () {
       const docEl = document.documentElement;
       function requestFn(el) {
@@ -347,10 +353,9 @@
       // entered fullscreen anywhere except the Menu button (which already
       // used 'click') -- found 2026-08-14 after real-device testing showed
       // the auto-trigger never fired.
-      document.addEventListener('click', function firstTap() {
-        document.removeEventListener('click', firstTap);
+      document.addEventListener('click', function () {
         if (!currentFsElement()) enter();
-      }, { once: true });
+      });
 
       if (menuBtn) {
         function refreshLabel() {
@@ -403,6 +408,15 @@
       if (phaseType === 1) return 'DE';   // PhaseType::DE
       return '?';
     }
+
+    // A single dropped/slow poll on a lossy WiFi link doesn't mean the
+    // connection is actually down -- flashing "Connection lost" on every
+    // one-off glitch (reported 2026-08-17, ~500ms poll cadence means even
+    // a sub-second hiccup was enough) is alarming and usually wrong.
+    // Require a few consecutive failures before surfacing it; any success
+    // resets the counter and clears the message immediately.
+    let consecutiveFailures = 0;
+    const FAILURE_THRESHOLD = 3;
 
     async function poll() {
       try {
@@ -463,9 +477,13 @@
           document.getElementById(id).disabled = running;
         });
 
+        consecutiveFailures = 0;
         document.getElementById('statusLineMain').textContent = '';
       } catch (e) {
-        document.getElementById('statusLineMain').textContent = 'Connection lost, retrying...';
+        consecutiveFailures++;
+        if (consecutiveFailures >= FAILURE_THRESHOLD) {
+          document.getElementById('statusLineMain').textContent = 'Connection lost, retrying...';
+        }
       }
     }
     // Self-rescheduling rather than setInterval(poll, 500) -- setInterval
