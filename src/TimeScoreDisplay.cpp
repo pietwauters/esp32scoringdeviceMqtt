@@ -333,7 +333,7 @@ void TimeScoreDisplay::ProcessEvents() {
     m_round = event_data & DATA_BYTE0_MASK;
     m_maxround = (event_data & DATA_BYTE1_MASK) >> 8;
     NextTimeToSwitchBetweenScoreAndTime = millis() + 2500;
-    DisplayMatchCount(m_round, m_maxround);
+    // DisplayMatchCount(m_round, m_maxround);
     break;
   case EVENT_PRIO:
     switch (event_data) {
@@ -349,6 +349,7 @@ void TimeScoreDisplay::ProcessEvents() {
       m_Prio = 2;
       break;
     }
+    ShowTime();
     break;
   case EVENT_SCORE_LEFT:
     m_scoreLeft = event_data;
