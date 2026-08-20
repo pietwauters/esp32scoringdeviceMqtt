@@ -91,9 +91,7 @@ void MultiWeaponSensor::DoSabre(void) {
       switch (sequence[sequence_index]) {
       case 0:
         // SubsampleCounter = 1;
-        if (bAutoDetect) {
-          Debounce_Parry.update(Parry());
-        }
+        Debounce_Parry.update(Parry());
         break;
 
       case 1:
