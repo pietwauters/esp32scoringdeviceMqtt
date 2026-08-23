@@ -257,8 +257,14 @@
         setTimeout(function () { el.textContent = ''; }, 1500);
       }
     });
+    // Weapon/Format/Brightness -- moved here (Weapon/Format used to live
+    // on the Match view) since they're device/session config, not
+    // per-bout actions. Plain click/tap, same as before -- these aren't
+    // disruptive enough to need the long-press confirm pattern the
+    // buttons above and below use.
     document.getElementById('btnCycleWeapon').addEventListener('click', function () { ui('cycle_weapon'); });
     document.getElementById('btnCycleRound').addEventListener('click', function () { ui('cycle_round'); });
+    document.getElementById('btnCycleBrightness').addEventListener('click', function () { ui('cycle_brightness'); });
 
     // WiFi reboots the device into a separate, dedicated setup mode
     // (WifiSetupMode.h) rather than serving a scan/connect page from

@@ -287,6 +287,12 @@ void WebRemoteHandler::begin() {
   // match.type (Pool=1 round, DE=2or3, Team=9 -- Opp2Handler.cpp:1374) --
   // just never had a route or button before this.
   registerUiRoute("/ui/cycle_round", UI_INPUT_ROUND);
+  // Cycle only (Low->Normal->High->UltraHigh->Low) -- UI_CYCLE_BRIGHTNESS
+  // already existed and is already handled by both TimeScoreDisplay and
+  // WS2812BLedStrip (confirmed by reading both), it just had no route or
+  // physical/web trigger anywhere yet, same situation UI_INPUT_ROUND was
+  // in before btnCycleRound got wired up.
+  registerUiRoute("/ui/cycle_brightness", UI_CYCLE_BRIGHTNESS);
 
   // Menu page (WiFi/Settings/OTA/Full reset) -- WiFi and OTA route
   // through the exact same UI_INPUT_* -> NetWork::update(UDPIOHandler*)
