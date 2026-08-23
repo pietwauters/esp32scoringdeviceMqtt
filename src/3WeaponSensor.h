@@ -46,6 +46,14 @@ public:
    */
   void SetActualWeapon(weapon_t val) {
     m_ActualWeapon = val;
+    // Mirrors DoFullScan()'s auto-detected weapon-change path (3WeaponSensor.cpp),
+    // which already clears bPreventBuzzer on every weapon change -- this manual/UI
+    // path (FencingStateMachine's UI_INPUT_CYCLE_WEAPON) was the one way to change
+    // weapon that skipped it, so a disconnect-triggered mute from the old weapon
+    // could survive into the new one indefinitely (GetWeapon() only manages this
+    // flag while m_ActualWeapon != EPEE, so switching into Epee while muted left
+    // it stuck forever). 2026-08-23.
+    bPreventBuzzer = false;
     DoReset();
   }
   /** Access m_DetectedWeapon
