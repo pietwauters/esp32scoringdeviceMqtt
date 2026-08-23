@@ -257,6 +257,26 @@
         setTimeout(function () { el.textContent = ''; }, 1500);
       }
     });
+    // Swap Fencers is long-press-only, same tap-just-warns pattern as
+    // Begin/End above -- it swaps fencers/score/lights/priority/UW2F all
+    // at once (Opp2Handler::ProcessUIEvents()'s UI_SWAP_FENCERS case),
+    // consequential enough to want a deliberate confirm like the other
+    // bout-lifecycle buttons on this view.
+    bindLongPress(document.getElementById('btnSwapFencers'), {
+      long: 'swap_fencers', longFeedbackMs: 200,
+      onTapOnly: function () {
+        const el = document.getElementById('statusLineMatch');
+        el.textContent = 'Long-press to swap fencers';
+        setTimeout(function () { el.textContent = ''; }, 1500);
+      }
+    });
+    // Reserve L/R -- routed (WebRemoteHandler.cpp) but currently do
+    // nothing visible; no OPP2 state field exists yet to hold the flag
+    // (see index.html's comment on these buttons). Plain click, not
+    // long-press -- nothing to guard against yet.
+    document.getElementById('btnReserveLeft').addEventListener('click', function () { ui('reserve_left'); });
+    document.getElementById('btnReserveRight').addEventListener('click', function () { ui('reserve_right'); });
+
     // Weapon/Format/Brightness -- moved here (Weapon/Format used to live
     // on the Match view) since they're device/session config, not
     // per-bout actions. Plain click/tap, same as before -- these aren't

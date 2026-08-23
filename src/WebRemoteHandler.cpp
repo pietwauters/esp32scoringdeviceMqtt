@@ -277,6 +277,20 @@ void WebRemoteHandler::begin() {
   registerUiRoute("/ui/cyrano_begin", UI_INPUT_CYRANO_BEGIN);
   registerUiRoute("/ui/cyrano_next", UI_INPUT_CYRANO_NEXT);
   registerUiRoute("/ui/cyrano_end", UI_INPUT_CYRANO_END);
+  // UI_SWAP_FENCERS already had a complete handler in
+  // Opp2Handler::ProcessUIEvents() (swaps fencers/score/lights/uw2f under
+  // the mutex, flips priority, syncs FSM -- confirmed by reading it) and
+  // is already reachable from the OPRCP UDP remote (UDPIOHandler.cpp), it
+  // just had no web route or button before this.
+  registerUiRoute("/ui/swap_fencers", UI_SWAP_FENCERS);
+  // UI_RESERVE_LEFT/RIGHT, unlike swap above, have no handler anywhere in
+  // Opp2Handler.cpp or FencingStateMachine.cpp -- CLAUDE.md already flags
+  // this as a known gap (no reserve_active field on OPP2::FencerSide to
+  // hold the flag yet). Routed anyway, at Piet's explicit request, so the
+  // buttons exist consistently now and just need real wiring later --
+  // tapping them currently has no visible effect.
+  registerUiRoute("/ui/reserve_left", UI_RESERVE_LEFT);
+  registerUiRoute("/ui/reserve_right", UI_RESERVE_RIGHT);
   // Cycle only (Foil -> Epee -> Sabre -> Foil...) -- FencingStateMachine
   // has no "set weapon to X" UI_INPUT event, only cycle (confirmed by
   // reading FencingStateMachine.cpp's UI_INPUT_CYCLE_WEAPON case).

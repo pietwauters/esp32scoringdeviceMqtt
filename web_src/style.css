@@ -303,6 +303,12 @@ html, body {
   margin: 0;
 }
 .atlas-secondary-row .atlas-btn + .atlas-btn { margin-left: 14px; }
+/* Extra breathing room above Swap Fencers (below End) and above the
+   Reserve L/R row (below Swap) -- these are visually/functionally
+   distinct groups (bout lifecycle vs. fencer-identity actions), unlike
+   the tighter 6px .atlas-btn default which reads as "part of the same
+   group". */
+.atlas-gap-top { margin-top: 28px; }
 
 .atlas-status-row {
   display: flex;

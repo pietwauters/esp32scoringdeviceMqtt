@@ -220,6 +220,18 @@
 
       <button class="atlas-btn atlas-danger atlas-wide" id="btnCyranoEnd">End</button>
 
+      <!-- Swap has a complete handler (Opp2Handler::ProcessUIEvents(),
+           UI_SWAP_FENCERS case) -- just never had a route/button before
+           this. Reserve L/R are routed too (2026-08-23, explicit request)
+           but currently do nothing visible: no OPP2 state field exists
+           yet to hold the flag (CLAUDE.md's "Known OPP2 spec gaps" --
+           reserve_active isn't on OPP2::FencerSide). -->
+      <button class="atlas-btn atlas-wide atlas-gap-top" id="btnSwapFencers">Swap Fencers</button>
+      <div class="atlas-secondary-row atlas-gap-top">
+        <button class="atlas-btn" id="btnReserveLeft">Reserve L</button>
+        <button class="atlas-btn" id="btnReserveRight">Reserve R</button>
+      </div>
+
       <div id="statusLineMatch" class="status-line"></div>
     </div>
   </section>
