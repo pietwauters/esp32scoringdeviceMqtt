@@ -102,6 +102,20 @@ void WebRemoteHandler::serveFlashAsset(const char *routePath,
         AsyncWebServerResponse *response =
             request->beginResponse(200, contentType, data, len);
         response->addHeader("Content-Encoding", "gzip");
+        // No ETag/Last-Modified here to validate against, so without this
+        // browsers fall back to heuristic caching -- mobile Chrome/Android
+        // WebView caches bare static-looking URLs like these far more
+        // aggressively than desktop Chrome does, especially once opened
+        // once or added to the home screen (index.html's
+        // mobile-web-app-capable meta tag). That silently served stale
+        // index.html/app.js/style.css on phones after a firmware update
+        // while laptops kept refetching fine (reported 2026-08-23).
+        // No ETag/Last-Modified means no conditional GET is possible
+        // anyway, so no-cache and no-store behave the same here in
+        // practice -- no-cache chosen as the conventional/more widely
+        // recognized header for "don't serve this from cache without
+        // asking first".
+        response->addHeader("Cache-Control", "no-cache");
         request->send(response);
       }));
 }
