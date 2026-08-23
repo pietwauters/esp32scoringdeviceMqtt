@@ -121,6 +121,30 @@
     document.getElementById('btnPrio').addEventListener('click', function () { ui('prio'); });
     document.getElementById('btnRestoreUw2f').addEventListener('click', function () { ui('restore_uw2f_timer'); });
 
+    // ── Rotate-to-portrait nudge ──────────────────────────────────────────
+    // Non-blocking toast, not a full-screen gate -- see index.html's
+    // comment on #rotateToast for why. `landscape` alone can't tell a
+    // sideways phone from a laptop window that's simply wider than tall
+    // (and can't be rotated at all), so the dismiss button matters: once
+    // closed for the current landscape stretch, it stays closed until the
+    // device goes back to portrait and into landscape again (a real
+    // rotation, or the laptop window being resized past the breakpoint).
+    (function () {
+      const toast = document.getElementById('rotateToast');
+      const mql = window.matchMedia('(orientation: landscape)');
+      let dismissed = false;
+      function sync() {
+        if (!mql.matches) dismissed = false;
+        toast.classList.toggle('visible', mql.matches && !dismissed);
+      }
+      document.getElementById('rotateToastClose').addEventListener('click', function () {
+        dismissed = true;
+        sync();
+      });
+      mql.addEventListener('change', sync);
+      sync();
+    })();
+
     // ── Four-screen navigation (Penalties <-> Main <-> Match <-> Menu) ───
     // Main sits in the middle of the original three, matching Favero_OPP2's
     // own linear-sequence placement of its "Home" position. Menu was
@@ -416,7 +440,7 @@
     // Require a few consecutive failures before surfacing it; any success
     // resets the counter and clears the message immediately.
     let consecutiveFailures = 0;
-    const FAILURE_THRESHOLD = 3;
+    const FAILURE_THRESHOLD = 9;
 
     async function poll() {
       try {

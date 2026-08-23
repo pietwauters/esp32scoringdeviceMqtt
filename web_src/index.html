@@ -11,16 +11,19 @@
 
   <!-- Same portrait-lock fallback as the Favero_OPP2 remote (its own
        CLAUDE.md "Mobile web / PWA gotchas" section): screen.orientation.lock()
-       needs fullscreen (and WebKit never implements it at all), so this CSS
-       overlay is the only thing that reliably catches every device/browser
-       combination. -->
-  <div id="rotateOverlay" class="rotate-overlay">
-    <div>
-      <p>Please rotate your device to portrait.</p>
-      <p class="rotate-overlay-ios-hint">On iPhone/iPad, this can't be locked
-        automatically -- enable Rotation Lock in Control Center while using
-        this page.</p>
-    </div>
+       needs fullscreen (and WebKit never implements it at all), so CSS
+       `orientation: landscape` is the only signal that reliably catches
+       every device/browser combination -- but that signal doesn't
+       distinguish "phone turned sideways" from "browser window that's just
+       wider than tall" (a laptop can't be rotated at all). A full-screen
+       block was too harsh for the latter case, so this is a small
+       dismissible toast instead of an overlay: it nudges without blocking
+       the page underneath. Shown/hidden and dismissed via app.js. -->
+  <div id="rotateToast" class="rotate-toast" role="status">
+    <span>Rotate your device to portrait for the best fit.
+      <span class="rotate-toast-ios-hint">(iPhone/iPad: enable Rotation Lock
+        in Control Center.)</span></span>
+    <button id="rotateToastClose" class="rotate-toast-close" aria-label="Dismiss">&times;</button>
   </div>
 
   <!-- Bottom-nav glyphs, inline as an SVG sprite -- exact path data for
