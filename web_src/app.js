@@ -85,7 +85,17 @@
     }
 
     document.getElementById('btnStartStop').addEventListener('click', function () { ui('toggle_timer'); });
-    document.getElementById('btnNextPeriod').addEventListener('click', function () { ui('next_period'); });
+    // Long-press-only, same tap-just-warns pattern as btnReset below --
+    // advancing the period is disruptive enough (mid-bout) to want a
+    // deliberate confirm rather than a single accidental tap.
+    bindLongPress(document.getElementById('btnNextPeriod'), {
+      long: 'next_period', longFeedbackMs: 200,
+      onTapOnly: function () {
+        const el = document.getElementById('statusLineMain');
+        el.textContent = 'Long-press to advance to next period';
+        setTimeout(function () { el.textContent = ''; }, 1500);
+      }
+    });
     bindLongPress(document.getElementById('btnReset'), {
       long: 'reset', longFeedbackMs: 200,
       onTapOnly: function () {
@@ -223,9 +233,30 @@
     // Match/lifecycle actions -- see the comment on #viewMatch in
     // index.html for why fencer entry isn't here.
     document.getElementById('btnCyranoPrev').addEventListener('click', function () { ui('cyrano_prev'); });
-    document.getElementById('btnCyranoBegin').addEventListener('click', function () { ui('cyrano_begin'); });
+    // Begin/End are long-press-only, same tap-just-warns pattern as
+    // btnReset -- both are bout-lifecycle transitions (W->H, Active->E)
+    // easy to hit by accident while reaching for Prev/Next beside them.
+    bindLongPress(document.getElementById('btnCyranoBegin'), {
+      long: 'cyrano_begin', longFeedbackMs: 200,
+      onTapOnly: function () {
+        const el = document.getElementById('statusLineMatch');
+        el.textContent = 'Long-press to begin';
+        setTimeout(function () { el.textContent = ''; }, 1500);
+      },
+      // Begin (W->H) is the point the bout actually starts -- jump to
+      // Main so score/clock/cards are immediately in view instead of
+      // leaving the referee on the Match screen they no longer need.
+      onLongFire: function () { showNavPosition('main'); }
+    });
     document.getElementById('btnCyranoNext').addEventListener('click', function () { ui('cyrano_next'); });
-    document.getElementById('btnCyranoEnd').addEventListener('click', function () { ui('cyrano_end'); });
+    bindLongPress(document.getElementById('btnCyranoEnd'), {
+      long: 'cyrano_end', longFeedbackMs: 200,
+      onTapOnly: function () {
+        const el = document.getElementById('statusLineMatch');
+        el.textContent = 'Long-press to end';
+        setTimeout(function () { el.textContent = ''; }, 1500);
+      }
+    });
     document.getElementById('btnCycleWeapon').addEventListener('click', function () { ui('cycle_weapon'); });
     document.getElementById('btnCycleRound').addEventListener('click', function () { ui('cycle_round'); });
 
