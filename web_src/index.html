@@ -26,6 +26,29 @@
     <button id="rotateToastClose" class="rotate-toast-close" aria-label="Dismiss">&times;</button>
   </div>
 
+  <!-- Shown once the WiFi menu button's long-press actually fires the
+       reboot (see app.js/WifiSetupMode.h) -- unlike OTA, this can't just
+       navigate to the setup page: the device comes back up as its own
+       separate access point (a different network entirely), so the
+       browser can't reach it until the user manually rejoins that
+       network. Blocking the whole page here is fine (unlike the rotate
+       toast) -- the live server this page is talking to is genuinely
+       going away in under a second, so there's nothing left to interact
+       with underneath regardless. -->
+  <div id="wifiRebootOverlay" class="wifi-reboot-overlay">
+    <div class="wifi-reboot-box">
+      <p><strong>Rebooting into WiFi setup mode&hellip;</strong></p>
+      <ol>
+        <li>Wait a few seconds for the device to restart.</li>
+        <li>On this phone/laptop, join the device's own WiFi network
+          (its name starts with <code>Piste_</code>).</li>
+        <li>Then tap: <a id="wifiRebootLink" href="http://192.168.4.1/wifi">192.168.4.1/wifi</a></li>
+      </ol>
+      <p class="wifi-reboot-hint">The link won't load until step 2 is done --
+        this page has no way to switch your WiFi network for you.</p>
+    </div>
+  </div>
+
   <!-- Bottom-nav glyphs, inline as an SVG sprite -- exact path data for
        prev/next/home ported from Favero_OPP2/data/index.html (already
        validated there: rendered and visually compared against the

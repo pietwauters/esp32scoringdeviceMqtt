@@ -68,6 +68,18 @@ void WifiSetupMode::Run() {
   sprintf(temp, "%03d", pisteNr >= 0 ? (int)pisteNr : 500);
   String apSsid = "Piste_" + String(temp);
 
+  // WiFi.persistent() defaults to true in the Arduino core -- every
+  // WiFi.mode()/softAP()/begin() call writes straight through to the
+  // driver's own NVS-backed config as a side effect of being called, not
+  // only on a successful connect. Left on, just entering this mode (AP
+  // only, no STA) was silently blanking the previously-saved STA
+  // credentials with nothing ever submitted, and a submitted-but-wrong
+  // password was overwriting a previously-good saved network before the
+  // connect attempt below even ran (confirmed 2026-08-23). Off for the
+  // whole session; the POST handler explicitly turns it back on only
+  // after confirming the new connection actually succeeded.
+  WiFi.persistent(false);
+
   // AP only, deliberately -- no STA connect attempt (nothing else is
   // running that needs external connectivity, and the whole point of
   // this mode is picking a *different* network), and no channel
@@ -87,6 +99,7 @@ void WifiSetupMode::Run() {
 
   int scanCount = -1; // -1 = not yet scanned this session
   ScanEntry results[20];
+  uint32_t lastScanMs = 0; // debounce guard, see the GET handler below
 
   // Self-contained, not linked from /style.css -- this mode is a
   // completely separate server (no AsyncWebServer, see this file's top
@@ -110,36 +123,81 @@ void WifiSetupMode::Run() {
       ".btn{display:block;width:100%;background-color:#17375E;color:#fff;border:none;"
       "border-radius:12px;padding:14px;margin:14px 0;font-size:16px;cursor:pointer;"
       "text-align:center;text-decoration:none;box-sizing:border-box}"
+      ".btn.disabled{opacity:0.5;pointer-events:none}"
       "p{text-align:center}"
+      ".hint{color:#aaa;font-size:13px}"
       "</style>";
 
+  // Rendered two ways depending on whether a scan has happened yet this
+  // session -- scanCount < 0 means never. Scanning used to run
+  // unconditionally on the very first GET, which made the page itself
+  // (not just "Rescan") take as long as WiFi.scanNetworks() to appear --
+  // confusing when the whole point of showing something fast here is so
+  // the user isn't left staring at a blank load after the reboot. Now the
+  // page always renders instantly; scanning only ever happens because the
+  // user explicitly asked for it (Scan/Rescan link), same call either way.
   auto renderPage = [&]() {
     String html = "<html><head><title>WiFi Setup</title>"
                   "<meta name='viewport' content='width=device-width, initial-scale=1'>";
     html += kStyle;
     html += "</head><body><div class='panel'>";
     html += "<h2>Connect " + apSsid + " to WiFi</h2>";
-    html += "<form method='POST' action='/wifi'>";
-    html += "<label>Network</label><select name='ssid'>";
-    for (int i = 0; i < scanCount && i < 20; i++) {
-      html += "<option value='" + results[i].ssid + "'>" + results[i].ssid +
-              " (" + String(results[i].rssi) + " dBm)</option>";
+    // Disables itself on click (className -> 'btn disabled', text swapped
+    // to a wait message) -- the debounce guard in the GET handler below
+    // is what actually stops a second scan from running, but this stops
+    // an impatient extra tap from even looking like it did nothing.
+    const char *kScanOnClick =
+        " onclick=\"this.className='btn disabled';"
+        "this.textContent='Scanning\\u2026';\"";
+    if (scanCount < 0) {
+      html += "<p>Tap Scan to list nearby WiFi networks.</p>";
+      html += String("<a class='btn' href='/wifi?rescan=1'") + kScanOnClick +
+              ">Scan for networks</a>";
+      html += "<p class='hint'>This can take several seconds -- please "
+              "wait, don't tap again.</p>";
+    } else {
+      html += "<form method='POST' action='/wifi'>";
+      html += "<label>Network</label><select name='ssid'>";
+      if (scanCount == 0) {
+        html += "<option value=''>No networks found</option>";
+      }
+      for (int i = 0; i < scanCount && i < 20; i++) {
+        html += "<option value='" + results[i].ssid + "'>" + results[i].ssid +
+                " (" + String(results[i].rssi) + " dBm)</option>";
+      }
+      html += "</select>";
+      html += "<label>Password</label><input type='password' name='pass'>";
+      html += "<button type='submit' class='btn'>Connect</button>";
+      html += "</form>";
+      html += String("<a class='btn' href='/wifi?rescan=1'") + kScanOnClick +
+              ">Rescan</a>";
+      html += "<p class='hint'>Rescanning can take several seconds -- "
+              "please wait, don't tap again.</p>";
     }
-    html += "</select>";
-    html += "<label>Password</label><input type='password' name='pass'>";
-    html += "<button type='submit' class='btn'>Connect</button>";
-    html += "</form><a class='btn' href='/wifi?rescan=1'>Rescan</a>";
     html += "</div></body></html>";
     return html;
   };
 
   server.on("/wifi", HTTP_GET, [&]() {
-    if (scanCount < 0 || server.hasArg("rescan")) {
+    // This WebServer is synchronous/single-client (see this file's top
+    // comment) -- while WiFi.scanNetworks() blocks below, a second tap's
+    // request just sits queued at the TCP level, then gets handled for
+    // real right after, indistinguishable from a fresh request. Without
+    // this guard that meant every extra impatient tap queued up its own
+    // full rescan, one after another, silently multiplying the wait.
+    // kScanDebounceMs skips re-scanning (serving the just-fetched results
+    // instead) for anything that arrives within it of the previous scan's
+    // completion -- long enough to absorb a burst of taps, short enough
+    // that a genuine "scan again a bit later" still gets a real rescan.
+    const uint32_t kScanDebounceMs = 3000;
+    if (server.hasArg("rescan") &&
+        (scanCount < 0 || millis() - lastScanMs > kScanDebounceMs)) {
       ESP_LOGI(TAG, "Scanning...");
       // Ordinary blocking scan -- safe here specifically because nothing
       // else (no AsyncWebServer, no MQTT, no FSM) is running to conflict
       // with it. Same call NetWork::begin() already makes successfully
-      // at normal boot.
+      // at normal boot. Only reached on an explicit user request now, so
+      // this blocking wait is expected rather than surprising.
       int n = WiFi.scanNetworks();
       scanCount = 0;
       for (int i = 0; i < n && scanCount < 20; i++) {
@@ -148,6 +206,7 @@ void WifiSetupMode::Run() {
         scanCount++;
       }
       WiFi.scanDelete();
+      lastScanMs = millis();
       ESP_LOGI(TAG, "Scan complete: %d networks", scanCount);
     }
     server.send(200, "text/html; charset=utf-8", renderPage());
@@ -163,12 +222,25 @@ void WifiSetupMode::Run() {
     server.send(200, "text/plain",
                 "Connecting -- device will restart shortly regardless of outcome.");
     delay(300); // let the response above flush before WiFi.begin() disrupts the AP
+    // Still non-persistent here (Run() set that up) -- this attempt, and
+    // any earlier one this session, cannot touch flash no matter how it
+    // ends.
     WiFi.begin(ssid.c_str(), pass.c_str());
     uint32_t deadline = millis() + 15000;
     while (millis() < deadline && WiFi.status() != WL_CONNECTED)
       delay(200);
-    ESP_LOGI(TAG, "Connect to '%s': %s", ssid.c_str(),
-             WiFi.status() == WL_CONNECTED ? "OK" : "FAILED");
+    bool connected = WiFi.status() == WL_CONNECTED;
+    ESP_LOGI(TAG, "Connect to '%s': %s", ssid.c_str(), connected ? "OK" : "FAILED");
+    if (connected) {
+      // Only now commit the new credentials to flash, and only because
+      // they're verified working -- re-issuing begin() with persistent
+      // back on writes the config through; already-associated with this
+      // AP, so this is just a flash write; no interruption before restart
+      // below.
+      WiFi.persistent(true);
+      WiFi.begin(ssid.c_str(), pass.c_str());
+      delay(100);
+    }
     ClearFlagAndRestart();
   });
 

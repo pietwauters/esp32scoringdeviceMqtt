@@ -75,6 +75,39 @@ html, body {
   cursor: pointer;
 }
 
+/* Full-screen and blocking on purpose -- see index.html's comment on
+   #wifiRebootOverlay for why this one differs from the non-blocking
+   .rotate-toast. */
+.wifi-reboot-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.92);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.wifi-reboot-overlay.visible { display: flex; }
+.wifi-reboot-box {
+  max-width: 360px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.wifi-reboot-box ol { padding-left: 20px; margin: 12px 0; }
+.wifi-reboot-box li { margin-bottom: 8px; }
+.wifi-reboot-box code {
+  background: #222;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.wifi-reboot-box a {
+  color: #4CAF50;
+  font-weight: bold;
+}
+.wifi-reboot-hint { color: #aaa; font-size: 12px; }
+
 .remote-view { display: none; }
 .remote-view.active { display: block; }
 

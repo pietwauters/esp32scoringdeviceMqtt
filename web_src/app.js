@@ -247,8 +247,14 @@
         setTimeout(function () { el.textContent = ''; }, 1500);
       },
       onLongFire: function () {
-        document.getElementById('statusLineMenu').textContent =
-          'Rebooting into WiFi setup mode -- reconnect to this device\'s own WiFi network, then go to 192.168.4.1/wifi';
+        // Can't navigate straight to the setup page the way btnMenuOta
+        // does to /update -- WifiSetupMode.Run() brings the device back
+        // up as its own separate access point (a different network), so
+        // this browser has no route to it until the user manually
+        // rejoins that network. Show instructions instead of a status
+        // line easy to miss/scroll past, since this reboot is now
+        // unconditional -- there's nothing else useful to show here.
+        document.getElementById('wifiRebootOverlay').classList.add('visible');
       }
     });
     document.getElementById('btnMenuSettings').addEventListener('click', function () {
