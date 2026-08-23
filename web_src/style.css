@@ -234,6 +234,32 @@ html, body {
    every .atlas-wide use case wants centering. */
 .atlas-btn.atlas-wide { width: 80%; margin-left: auto; margin-right: auto; }
 .atlas-btn.atlas-danger { background-color: #f44336; }
+/* Same footprint/centering as .atlas-btn.atlas-wide (width/margin/padding/
+   border-radius/margin-block all matched) so it doesn't stand out as a
+   different kind of control in the same list -- just a row, not a button,
+   since unlike everything else on this page it reflects standing intent
+   rather than firing a one-shot action. */
+.atlas-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 80%;
+  margin: 6px auto;
+  padding: 14px;
+  border-radius: 12px;
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  font-size: 16px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.atlas-checkbox-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: #17375E;
+}
 /* UW2F/PRIO/Undo-Timer-Reset: sized to their own text via padding, not a
    fixed-percentage bar. Relies on body's text-align:center (see top of
    file) to actually center, same mechanism Favero_OPP2 uses. */

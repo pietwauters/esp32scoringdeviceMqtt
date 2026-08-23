@@ -367,20 +367,26 @@
     // Instead: auto-request fullscreen on every tap/click anywhere on the
     // page, whenever not currently fullscreen (browsers require a real
     // user gesture, so this can't happen on load -- first interaction is
-    // the earliest legal moment). btnMenuFullscreen (Menu view) is a plain
-    // session-only toggle, nothing more -- an earlier version persisted
-    // "user exited" to localStorage so it wouldn't auto-retry, but that
-    // meant exiting fullscreen for *any* reason (even just to check
+    // the earliest legal moment).
+    //
+    // #chkAutoFullscreen (Menu view) tracks *intent* ("should the page
+    // keep recovering into fullscreen"), deliberately kept independent of
+    // *momentary* fullscreen state -- two earlier designs conflated the
+    // two and both failed the same way: persisting "user exited" to
+    // localStorage meant exiting for *any* reason (even just checking
     // something in the browser chrome) silently disabled auto-fullscreen
-    // forever after. A later version fixed that by using a one-shot
-    // { once: true } listener instead of localStorage, but that has the
-    // same failure mode one level up: it only ever re-enters once per page
-    // load, so an exit forced by the OS/browser itself (notification
-    // shade, back-gesture, split-screen, ...) rather than a deliberate
-    // user tap on the Menu button left fullscreen unrecoverable without a
-    // full page reload (reported 2026-08-17). No persisted state and no
-    // one-shot removal now -- every tap on the page re-enters fullscreen
-    // if it isn't already active.
+    // forever after; a later one-shot `{ once: true }` listener had the
+    // same failure mode one level up (re-enters at most once per page
+    // load, so an exit forced by the OS/browser itself -- notification
+    // shade, back-gesture, split-screen, ... -- left fullscreen
+    // unrecoverable without a full reload, reported 2026-08-17). Both
+    // read every exit, deliberate or forced, as "stop trying". This
+    // version only ever changes on a direct edit of the checkbox itself
+    // (2026-08-23) -- a forced exit leaves it checked, so the very next
+    // tap anywhere still recovers, and unchecking it is the only thing
+    // that actually stops that recovery (in-memory only, resets to
+    // checked on reload -- not persisted, to avoid reopening the same
+    // class of bug the two attempts above hit with localStorage).
     (function () {
       const docEl = document.documentElement;
       function requestFn(el) {
@@ -395,9 +401,9 @@
         return document.fullscreenElement || document.webkitFullscreenElement ||
                document.mozFullScreenElement || document.msFullscreenElement;
       }
-      const menuBtn = document.getElementById('btnMenuFullscreen');
+      const chk = document.getElementById('chkAutoFullscreen');
       if (!requestFn(docEl)) {
-        if (menuBtn) menuBtn.style.display = 'none';
+        if (chk) chk.closest('.atlas-checkbox-row').style.display = 'none';
         return;
       }
 
@@ -421,21 +427,12 @@
       // used 'click') -- found 2026-08-14 after real-device testing showed
       // the auto-trigger never fired.
       document.addEventListener('click', function () {
-        if (!currentFsElement()) enter();
+        if (chk.checked && !currentFsElement()) enter();
       });
 
-      if (menuBtn) {
-        function refreshLabel() {
-          menuBtn.textContent = currentFsElement() ? 'Exit Fullscreen' : 'Enter Fullscreen';
-        }
-        refreshLabel();
-        document.addEventListener('fullscreenchange', refreshLabel);
-        document.addEventListener('webkitfullscreenchange', refreshLabel);
-        menuBtn.addEventListener('click', function () {
-          if (currentFsElement()) exit(); else enter();
-          setTimeout(refreshLabel, 200);
-        });
-      }
+      chk.addEventListener('change', function () {
+        if (chk.checked) enter(); else exit();
+      });
     })();
 
     // ── State polling ────────────────────────────────────────────────────

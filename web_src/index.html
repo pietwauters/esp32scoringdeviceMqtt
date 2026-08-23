@@ -232,12 +232,11 @@
        reboots the device. Weapon/Format below do poll live state
        (matchWeapon/matchFormat, same as on the other three views) --
        everything else here is a one-shot action with nothing to poll.
-       btnMenuFullscreen is the replacement for the old
-       always-visible floating toggle button (see app.js's Fullscreen
-       IIFE) -- fullscreen is now entered automatically on first tap
-       elsewhere on the page, this button is only the opt-out/opt-back-in
-       escape hatch, so it lives here instead of floating on top of every
-       screen. -->
+       #chkAutoFullscreen is the replacement for the old always-visible
+       floating toggle button (see app.js's Fullscreen IIFE) -- fullscreen
+       is now entered automatically on first tap elsewhere on the page,
+       this checkbox is only the opt-out/opt-back-in escape hatch, so it
+       lives here instead of floating on top of every screen. -->
   <section id="viewMenu" class="remote-view">
     <div class="atlas-panel">
       <!-- Weapon/Format moved here from the Match view -- both are
@@ -258,7 +257,18 @@
       <button class="atlas-btn atlas-wide" id="btnMenuWifi">WiFi</button>
       <button class="atlas-btn atlas-wide" id="btnMenuSettings">Settings</button>
       <button class="atlas-btn atlas-wide" id="btnMenuOta">OTA Update</button>
-      <button class="atlas-btn atlas-wide" id="btnMenuFullscreen">Exit Fullscreen</button>
+      <!-- Intent, not momentary state -- see app.js's Fullscreen IIFE for
+           why this has to be a checkbox and not a button. Checked (the
+           default) means "auto-recover into fullscreen on the next tap
+           anywhere", independent of whether fullscreen happens to be
+           active right now -- an OS/browser-forced exit (notification
+           shade, back-gesture, split-screen, ...) never touches this, so
+           the very next tap still self-heals. Only unchecking it here
+           stops that recovery, until it's checked again. -->
+      <label class="atlas-checkbox-row" for="chkAutoFullscreen">
+        <input type="checkbox" id="chkAutoFullscreen" checked>
+        Stay in fullscreen
+      </label>
       <button class="atlas-btn atlas-danger atlas-wide" id="btnMenuFullReset">Full Reset</button>
       <div id="statusLineMenu" class="status-line"></div>
     </div>
