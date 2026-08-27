@@ -80,10 +80,15 @@ void CyranoHandler::Begin() {
   strncpy(mqttServer,
           networkpreferences.getString("MqttBroker", "10.154.1.130").c_str(),
           16);
+  mqttServer[15] = '\0'; // strncpy does not guarantee NUL-termination when the source is >= 16 bytes
   networkpreferences.end();
 
-  mqttClientId = (char *)malloc(sizeof("Piste_001") + 1);
-  sprintf(mqttClientId, "Piste_%.3d", PisteNr);
+  // PisteNr is uint32_t; NVS getInt() returning -1 (unset) wraps to
+  // 4294967295, a 10-digit value -- "Piste_001"-sized alloc overflowed the
+  // heap for any PisteNr >= 10000, including that unset case. 24 bytes
+  // covers "Piste_" (6) + up to 10 digits + NUL with margin.
+  mqttClientId = (char *)malloc(24);
+  snprintf(mqttClientId, 24, "Piste_%.3u", PisteNr);
 
   // NOTE: MQTT callbacks, connection, and NTP now managed by Opp2Handler
   // CyranoHandler still uses the shared mqttClient for publishing

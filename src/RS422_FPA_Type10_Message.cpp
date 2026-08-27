@@ -40,8 +40,16 @@ RS422_FPA_Type10_Message::~RS422_FPA_Type10_Message()
 
 void RS422_FPA_Type10_Message::SetPiste(int PisteNr)
 {
+  // m_message[5..7] is a fixed 3-digit wire field; an unclamped PisteNr
+  // (e.g. a negative value, or >= 1000) produces more than 3 characters and
+  // overflows this stack buffer. Clamped to [0, 999], matching the existing
+  // TimeScoreDisplay::DisplayPisteId() precedent for this same field.
+  if (PisteNr < 0)
+    PisteNr = 0;
+  else if (PisteNr > 999)
+    PisteNr = 999;
   char temp[8];
-  sprintf(temp,"%03d",PisteNr);
+  snprintf(temp, sizeof(temp), "%03d", PisteNr);
   m_message[5]= temp[0];
   m_message[6]= temp[1];
   m_message[7]= temp[2];

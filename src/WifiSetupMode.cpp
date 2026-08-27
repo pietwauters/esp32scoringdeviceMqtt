@@ -64,8 +64,15 @@ void WifiSetupMode::Run() {
   int32_t pisteNr = prefs.getInt("pisteNr", -1);
   String apPassword = prefs.getString("AP_Password", "01041967");
   prefs.end();
+  // Clamped to [0, 999] -- matches the "Piste_XXX" 3-digit SSID convention
+  // (network.cpp's FindAndSetMasterChannel scans for the same format) and
+  // prevents an unbounded pisteNr (>= 1000) from overflowing this stack
+  // buffer via "%03d". 500 is the existing fallback for "unset" (negative).
+  int pisteForSsid = 500;
+  if (pisteNr >= 0)
+    pisteForSsid = (pisteNr > 999) ? 999 : (int)pisteNr;
   char temp[8];
-  sprintf(temp, "%03d", pisteNr >= 0 ? (int)pisteNr : 500);
+  snprintf(temp, sizeof(temp), "%03d", pisteForSsid);
   String apSsid = "Piste_" + String(temp);
 
   // WiFi.persistent() defaults to true in the Arduino core -- every

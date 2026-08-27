@@ -496,8 +496,17 @@ void NetWork::FindAndSetMasterChannel(int soft_retries,
   networkpreferences.end();
   int tempchannel = -1;
   if (-1 != PisteNr) {
+    // Clamped to [0, 999] -- matches the "Piste_XXX" 3-digit SSID
+    // convention (WifiSetupMode.cpp builds the master's own SSID the same
+    // way) and prevents an unbounded PisteNr (any other negative value, or
+    // >= 1000) from overflowing this stack buffer via "%03d".
+    int32_t clamped = PisteNr;
+    if (clamped < 0)
+      clamped = 0;
+    else if (clamped > 999)
+      clamped = 999;
     char temp[8];
-    sprintf(temp, "%03d", PisteNr);
+    snprintf(temp, sizeof(temp), "%03d", clamped);
     MasterSSID = "Piste_" + (String)temp;
     for (int j = soft_retries; j > 0; j--) {
       int networks = WiFi.scanNetworks();

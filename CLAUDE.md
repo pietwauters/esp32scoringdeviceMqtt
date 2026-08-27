@@ -187,6 +187,37 @@ OPP2::SystemState state = Opp2Handler::getInstance().getStateCopy(); // ~600 byt
 
 ---
 
+## JSON / Wire-Format Buffer Capacity — Verify, Never Estimate
+
+> **Never size a fixed-capacity serialization buffer (ArduinoJson `StaticJsonDocument`,
+> `sprintf`/`snprintf` targets for EFP1/Cyrano messages, etc.) by estimating expected
+> output text length.** Build a worst-case-populated message, serialize it for real
+> with the actual library call, and confirm the output is complete — not just that the
+> call returned success. ArduinoJson v6 pool exhaustion is **silent**: it drops fields
+> with no error, no exception, no return-code signal.
+>
+> If the allocator's per-unit cost is platform-dependent — confirmed true for
+> ArduinoJson v6, whose `VariantSlot` is 16 bytes on the real ESP32 (Xtensa, 32-bit)
+> target but 32 bytes on 64-bit desktop/native — a native/desktop test is **not**
+> sufficient evidence by itself. It can both under-report real capacity (looks broken
+> on desktop, is actually fine on-device) and over-report it (looks fine on desktop,
+> silently truncates on-device). Get real numbers from the actual target hardware
+> before trusting a capacity constant, the same way `docs/level2.md` and this file
+> insist on runtime logs over speculation.
+>
+> This mistake was made twice on this codebase, both times by a Claude Code session —
+> the `OPP2::Serializer`'s `JSON_SIZE_*` constants (`opp2-library`,
+> `src/opp2_serialize.h`) were originally sized by estimating JSON output text length
+> and padding it, which doesn't match ArduinoJson v6's actual per-slot allocation model.
+> `JSON_SIZE_LIGHTS=128` silently dropped the entire `"left"` object from every lights
+> MQTT message for an unknown period before being caught (2026-08-26); six more message
+> types had the same class of bug or near-zero safety margin, found only once every
+> constant was re-verified against real hardware. See
+> `/home/piet/.claude/projects/-home-piet-esp-idfProjects-esp32scoringdeviceMqtt/memory/project_opp2_json_size_bugs.md`
+> for the full incident.
+
+---
+
 ## State Update Patterns
 
 ### Internal updates (from FencingStateMachine or local logic)
@@ -404,6 +435,18 @@ interchangeable — see rationale below):
   `setRedPCardRight/Left`'s `theFillColor2` is unused by design; 2 red P-cards trigger a
   full white-panel indicator (`setWhiteRight/Left(true, true)`) instead of lighting a
   second red pixel. Works as intended per user confirmation — leave as-is.
+- ✅ Fixed (2026-08-26) — 4 sites formatted `PisteNr` via unbounded
+  `sprintf("%03d"/"%.3d", ...)` into undersized buffers: `CyranoHandler.cpp:85-86`
+  (heap overflow — `PisteNr` is `uint32_t`; NVS "unset" sentinel `-1` wraps to a
+  10-digit value on assignment, didn't fit the 11-byte alloc), `RS422_FPA_Type10_
+  Message.cpp:41-47`, `network.cpp:499-500`, `WifiSetupMode.cpp:67-68` (all three
+  stack overflow, `char temp[8]`). `"%03d"` zero-pads but does not cap max width, so
+  any value needing more than 3 digits (or negative) overflowed. RS422's field and the
+  two WiFi-SSID sites now clamp to `[0, 999]` before formatting — same precedent as
+  `TimeScoreDisplay::DisplayPisteId()` below — since those destinations have a real
+  fixed-width constraint (protocol field / SSID-matching convention); the MQTT client
+  ID has no such constraint, so it's widened (bigger buffer + `snprintf`) instead of
+  clamped, to avoid colliding two different real piste numbers onto one client ID.
 
 ### 🟡 Concurrency / mutex discipline
 - ✅ Fixed (2026-07-31) `Opp2Handler.cpp` — did the dedicated pass across the whole file
