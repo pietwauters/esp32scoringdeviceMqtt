@@ -230,11 +230,11 @@ void MultiWeaponSensor::DoFoil(void) {
         }
       } else {
         if (HitOnGuard_r()) {
-          Debounce_b1.reset();
+          Debounce_b2.reset();
           // Serial.println("Guard");
         } else {
           if (HitOnPiste_r()) {
-            Debounce_b1.reset();
+            Debounce_b2.reset();
             // Serial.println("Piste");
           } else {
             // Serial.println("WhiteR");
