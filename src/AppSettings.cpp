@@ -177,9 +177,25 @@ static void WriteValue(const SettingDescriptor &d, const String &value) {
 // (style.css) is the one addition that page didn't need before this --
 // plain form inputs, nothing else on the remote has any.
 void AppSettings::handleGet(AsyncWebServerRequest *request) {
+  // Inline style, not only the external /style.css link: in repeater mode
+  // WebRemoteHandler::begin() never runs (main.cpp), so /style.css is not
+  // registered and this page -- the only way to switch repeater mode back
+  // off -- would otherwise render unstyled. The link is kept so the page
+  // still matches the rest of the remote when the remote IS running; the
+  // inline rules below are the minimum this page needs on its own.
   String html = "<html><head><title>Settings</title>"
                 "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-                "<link rel='stylesheet' type='text/css' href='/style.css'></head><body>";
+                "<link rel='stylesheet' type='text/css' href='/style.css'>"
+                "<style>body{margin:0;padding:12px;background:#0d0d0d;color:#fff;"
+                "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,"
+                "Arial,sans-serif}.atlas-panel{max-width:480px;margin:0 auto}"
+                ".settings-row{display:flex;justify-content:space-between;"
+                "align-items:center;margin:10px 0;gap:12px}"
+                ".settings-row input[type='text']{background:#1a1a1a;color:#fff;"
+                "border:1px solid #444;border-radius:6px;padding:6px}"
+                ".atlas-btn{display:block;width:80%;margin:12px auto;padding:14px;"
+                "background:#17375E;color:#fff;border:none;border-radius:12px;"
+                "font-size:16px}</style></head><body>";
   html += "<div class='atlas-panel' style='padding-bottom:24px'>";
   html += "<h2>Device Settings</h2><form method='POST' action='/settings'>";
   for (size_t i = 0; i < kNumSettings; i++) {
@@ -223,7 +239,10 @@ void AppSettings::handleGet(AsyncWebServerRequest *request) {
             pistename + "' maxlength='8'></div>";
   }
   html += "<button type='submit' class='atlas-btn atlas-wide'>Save and Restart</button>";
-  html += "</form><a class='atlas-btn atlas-wide' style='text-decoration:none;display:block;box-sizing:border-box' href='/remote'>&larr; Back to Remote</a>";
+  // Links to "/" (the landing page), not "/remote": in repeater mode
+  // /remote is not registered, and "/" now offers the remote link itself
+  // only when it exists (see network.cpp startCalibrationWebServer()).
+  html += "</form><a class='atlas-btn atlas-wide' style='text-decoration:none;display:block;box-sizing:border-box' href='/'>&larr; Back</a>";
   html += "</div></body></html>";
   request->send(200, "text/html; charset=utf-8", html);
 }

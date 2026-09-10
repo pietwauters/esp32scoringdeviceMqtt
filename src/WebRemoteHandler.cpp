@@ -248,9 +248,9 @@ void WebRemoteHandler::handleState(AsyncWebServerRequest *request) {
 
 void WebRemoteHandler::begin() {
   // Not "/" -- network.cpp's startCalibrationWebServer() already owns the
-  // exact path "/" (its own health-check handler, "Hi! I am ESP32."),
-  // registered first at boot; a duplicate exact-match registration here
-  // never won (confirmed: GET / kept returning the health-check text).
+  // exact path "/" (its own landing-page handler), registered first at
+  // boot; a duplicate exact-match registration here never won (confirmed:
+  // GET / kept returning startCalibrationWebServer()'s response).
   serveFlashAsset("/remote", index_html_gz, index_html_gz_len, "text/html");
   serveFlashAsset("/style.css", style_css_gz, style_css_gz_len, "text/css");
   serveFlashAsset("/app.js", app_js_gz, app_js_gz_len, "application/javascript");

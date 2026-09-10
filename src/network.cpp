@@ -106,8 +106,36 @@ AsyncWebServer &NetWork::GetServer() { return server; }
 // directly.
 void startCalibrationWebServer() {
   server.reset();
+  // Minimal landing page. In repeater mode WebRemoteHandler::begin() never
+  // runs (main.cpp), so /remote, /app.js and /style.css are unregistered and
+  // /settings -- still registered by AppSettings::begin() -- has no link
+  // pointing at it. Without this, a device stuck in repeater mode could only
+  // be switched back by knowing to type /settings by hand. This page always
+  // links /settings; the remote link is shown only when it actually exists.
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hi! I am ESP32.");
+    Preferences p;
+    p.begin("scoringdevice", true);
+    bool isRepeater = p.getBool("RepeaterMode", false);
+    p.end();
+    String html =
+        "<!DOCTYPE html><html><head><title>ESP32 Scoring Device</title>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<style>body{margin:0;padding:24px;background:#0d0d0d;color:#fff;"
+        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,"
+        "sans-serif;text-align:center}h2{font-weight:600}"
+        "a.btn{display:block;width:80%;max-width:400px;margin:12px auto;"
+        "padding:14px;background:#17375E;color:#fff;border-radius:12px;"
+        "text-decoration:none;font-size:16px}</style></head><body>"
+        "<h2>ESP32 Scoring Device</h2>";
+    if (isRepeater)
+      html += "<p style='color:#ccc'>Repeater mode</p>";
+    html += "<a class='btn' href='/settings'>Device Settings</a>";
+    if (!isRepeater)
+      html += "<a class='btn' href='/remote'>Remote Control</a>";
+    html += "<a class='btn' href='/calibration'>ADC Calibration</a>";
+    html += "<a class='btn' href='/provision'>Provisioning</a>";
+    html += "</body></html>";
+    request->send(200, "text/html; charset=utf-8", html);
   });
   server.on("/calibration", HTTP_GET, [](AsyncWebServerRequest *request) {
     String html = getCalibrationHtml();
