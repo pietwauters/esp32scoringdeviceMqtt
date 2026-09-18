@@ -204,11 +204,15 @@ uint64_t AbsoluteTime::getTimestamp() {
   } else {
     // ══════════════════════════════════════════════════════════════
     // Standard approach: Just read the SNTP-adjusted system clock!
-    // SNTP continuously adjusts it via adjtime() in smooth mode
+    // SNTP continuously adjusts it via adjtime() in smooth mode.
+    // gettimeofday() (not time()) -- time() only has whole-second
+    // resolution, which silently truncated every NTP timestamp to a
+    // multiple of 1000ms despite the wire format carrying millisecond
+    // precision. Video sync needs the real sub-second value.
     // ══════════════════════════════════════════════════════════════
-    time_t now = 0;
-    time(&now);
-    uint64_t ts = (uint64_t)now * 1000;
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    uint64_t ts = (uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 
     // Validate: time() should return > year 2020 (1577836800 seconds)
     // If invalid, return last valid timestamp (must stay in NTP format)
