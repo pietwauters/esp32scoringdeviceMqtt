@@ -45,6 +45,7 @@
 #define CORE_FPA422 0        // FPA422Handler::fpa422Task — FPA422/RS422 output queue drain
 #define CORE_WIFI_SETUP_REBOOT 0 // WifiSetupMode's deferred-restart task
 #define CORE_MQTT_PUBLISH 0 // Opp2Handler::mqttPublishTask — control-message publish drain
+#define CORE_BROKER_DISCOVERY 0 // BrokerDiscovery::searchTask — background mDNS race
 
 // ---------------------------------------------------------------------------
 // Task priorities  (higher number = higher priority)
@@ -60,6 +61,7 @@
 #define PRIORITY_FPA422 2            // FPA422Handler::fpa422Task
 #define PRIORITY_WIFI_SETUP_REBOOT 1 // WifiSetupMode's deferred-restart task
 #define PRIORITY_MQTT_PUBLISH 2      // Opp2Handler::mqttPublishTask
+#define PRIORITY_BROKER_DISCOVERY 1  // BrokerDiscovery::searchTask — background, low urgency
 
 // ---------------------------------------------------------------------------
 // Stack sizes (bytes)
@@ -94,6 +96,12 @@
 // no string building). Sized the same as STACK_UI_EVENT since the work
 // shape is nearly identical, minus the mutex/notify overhead.
 #define STACK_MQTT_PUBLISH 4096
+
+// BrokerDiscovery::searchTask — loops mdns_query_a() + occasional
+// setServer()/reconnectWithNewSettings() calls only, no JSON/getStateCopy.
+// Sized like STACK_MQTT_PUBLISH/STACK_FPA422 for the same reason: similar,
+// modest work shape. Not yet measured with ENABLE_STACK_HWM_LOGGING.
+#define STACK_BROKER_DISCOVERY 4096
 
 // esp-mqtt's own internal "mqtt_task" (esp_mqtt_client_config_t::task_stack,
 // mqtt_client.h) -- NOT one of ours, but never explicitly set either, so it

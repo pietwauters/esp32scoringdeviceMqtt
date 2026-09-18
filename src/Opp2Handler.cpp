@@ -3,11 +3,12 @@
 // which transitively pulls in esp_log.h via AtlasAsyncMqttClient.h) so this
 // file's existing logging plus the new Tier A routing log line are visible
 // while debugging.
-// #undef LOG_LOCAL_LEVEL
-// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
+#undef LOG_LOCAL_LEVEL
+#define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "Opp2Handler.h"
 #include "AbsoluteTime.h"
+#include "BrokerDiscovery.h"
 #include "CyranoHandler.h"
 #include "EFP1Message.h"
 #include "MDNSResolver.h"
@@ -16,9 +17,9 @@
 #include "TierAProvisioning.h"
 #include <cstring>
 #include <esp_log.h>
+#include <string>
 
 static const char *OPP2_TAG = "OPP2";
-extern const char *mdnsName;             // Defined in CyranoHandler.cpp
 extern AtlasAsyncMqttClient &mqttClient; // Shared MQTT client singleton
 
 // Queue item for m_MqttPublishQueue -- fixed-size, no dynamic allocation,
@@ -127,9 +128,17 @@ void Opp2Handler::Begin() {
 
   m_NextPeriodicUpdate = millis() + 10000;
 
-  // ── Start NTP time service (now owned by Opp2Handler) ────────────────
+  // ── Start NTP time service (now owned by Opp2Handler) ─────────────────
+  // Initial target: the static/configured broker IP, not the bare
+  // "openpiste" mDNS name -- that name needs a ".local" suffix to resolve
+  // via mDNS at all (see 2026-09-18 discussion), and SNTP's own DNS
+  // resolution can't do anything useful with an un-suffixed hostname
+  // either. This is only the boot-time default before the first MQTT
+  // connect; OnMqttConnectStatic() re-points it at whichever address the
+  // broker actually connected through (static IP or mDNS-resolved).
   ESP_LOGI(OPP2_TAG, "[OPP2] Starting AbsoluteTime (NTP client)");
-  AbsoluteTime::getInstance().begin(mdnsName, 10, mqttBroker.c_str());
+  AbsoluteTime::getInstance().begin(mqttBroker.c_str(), 10,
+                                    mqttBroker.c_str());
 
   // ── Register MQTT callbacks (Opp2Handler becomes message router) ─────
   ESP_LOGI(OPP2_TAG, "[OPP2] Registering MQTT callbacks");
@@ -275,6 +284,19 @@ void Opp2Handler::OnMqttConnectStatic(bool sessionPresent) {
   ESP_LOGI(OPP2_TAG, "[OPP2] MQTT Connected (sessionPresent=%d)",
            sessionPresent);
 
+  // Connected -- stop the background mDNS race (see BrokerDiscovery); it
+  // resumes automatically on the next disconnect.
+  BrokerDiscovery::getInstance().OnConnected();
+
+  // Point the NTP client at whichever address actually won the broker
+  // connection race (static IP or mDNS-resolved) -- same box in the common
+  // deployment (broker + chrony together), and always at least reachable
+  // since we just connected to it.
+  std::string brokerHost = mqttClient.getHost();
+  ESP_LOGI(OPP2_TAG, "[OPP2] Pointing NTP client at broker host: %s",
+           brokerHost.c_str());
+  AbsoluteTime::getInstance().begin(brokerHost, 10, brokerHost);
+
   // Subscribe to OPP2 control topics
   Opp2Handler &handler = Opp2Handler::getInstance();
   char topicBuf[64];
@@ -297,6 +319,10 @@ void Opp2Handler::OnMqttConnectStatic(bool sessionPresent) {
 
 void Opp2Handler::OnMqttDisconnectStatic() {
   ESP_LOGW(OPP2_TAG, "[OPP2] MQTT Disconnected");
+
+  // Resume the background mDNS race against the static/configured IP --
+  // see BrokerDiscovery.
+  BrokerDiscovery::getInstance().OnDisconnected();
 }
 
 void Opp2Handler::OnMqttMessageStatic(const char *topic, const char *payload,

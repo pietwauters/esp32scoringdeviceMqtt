@@ -1,7 +1,7 @@
 #include "CyranoHandler.h"
 #include "AbsoluteTime.h"
+#include "BrokerDiscovery.h"
 #include "EFP1Message.h"
-#include "MDNSResolver.h"
 #include "Opp2Handler.h"
 #include <esp_log.h>
 #include <string>
@@ -98,12 +98,17 @@ void CyranoHandler::Begin() {
 
   theBroker.fromString(mqttServer);
 
-  IPAddress resolvedBroker =
-      MDNSResolver::getInstance().resolveHostname(mdnsName, theBroker);
-  mqttClient.setServer(resolvedBroker, resolvedPort);
+  // Static/configured IP first, no waiting -- it's already a concrete
+  // address with zero resolution latency, and many deployments have no
+  // mDNS responder on the network at all (see 2026-09-18 discussion).
+  // BrokerDiscovery races a background mDNS lookup against the MQTT
+  // client's own built-in reconnect against this address, and switches
+  // over if mDNS wins; it stops entirely once connected.
+  mqttClient.setServer(theBroker, resolvedPort);
   mqttClient.setTLS(false);
   mqttClient.setCredentials(mqttUser, mqttPassword);
   mqttClient.setClientId(mqttClientId);
+  BrokerDiscovery::getInstance().Begin(mdnsName, resolvedPort);
 
   // NOTE: LWT set by Opp2Handler (OPP2 is primary protocol)
 }
