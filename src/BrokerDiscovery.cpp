@@ -5,8 +5,8 @@
 // that transitively pulls in esp_log.h) so this file's logging is visible
 // while debugging the 2026-09-18 "never connects after an outage" issue.
 // Comment back out once resolved -- see Opp2Handler.cpp's identical toggle.
-#undef LOG_LOCAL_LEVEL
-#define LOG_LOCAL_LEVEL ESP_LOG_INFO
+// #undef LOG_LOCAL_LEVEL
+// #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include "BrokerDiscovery.h"
 #include "AtlasAsyncMqttClient.h"
