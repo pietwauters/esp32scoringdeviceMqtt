@@ -3,6 +3,8 @@
 #include "BrokerDiscovery.h"
 #include "EFP1Message.h"
 #include "Opp2Handler.h"
+#include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include <esp_log.h>
 #include <string>
 
@@ -111,6 +113,40 @@ void CyranoHandler::Begin() {
   BrokerDiscovery::getInstance().Begin(mdnsName, resolvedPort);
 
   // NOTE: LWT set by Opp2Handler (OPP2 is primary protocol)
+
+  // ── CMS packet queue + dedicated task (stack safety) ──────────────────
+  // See the m_RxSlots comment in CyranoHandler.h. Must exist before
+  // CheckConnection() binds the UDP socket and installs the callback.
+  m_RxQueue = xQueueCreate(kRxSlots - 1, sizeof(uint8_t));
+  TaskHandle_t rxTaskHandle = nullptr;
+  xTaskCreatePinnedToCore(rxTask, "cyrano_rx", STACK_CYRANO_RX, this,
+                          PRIORITY_CYRANO_RX, &rxTaskHandle, CORE_CYRANO_RX);
+  TaskDiagnostics::Register(rxTaskHandle, "cyrano_rx");
+}
+
+bool CyranoHandler::EnqueueSoftwarePacket(const uint8_t *data, size_t len) {
+  if (!m_RxQueue)
+    return false;
+  if (len >= EFP1Message::kMaxWireMessageLength)
+    len = EFP1Message::kMaxWireMessageLength - 1; // keep room for the NUL
+  const uint8_t slot = m_RxHead;
+  memcpy(m_RxSlots[slot], data, len);
+  m_RxSlots[slot][len] = '\0';
+  if (xQueueSend(m_RxQueue, &slot, 0) != pdTRUE) {
+    ESP_LOGW(CYRANO_TAG, "[Cyrano] RX queue full, dropping packet");
+    return false;
+  }
+  m_RxHead = (m_RxHead + 1) % kRxSlots;
+  return true;
+}
+
+void CyranoHandler::rxTask(void *pvParam) {
+  CyranoHandler *self = static_cast<CyranoHandler *>(pvParam);
+  uint8_t slot;
+  while (true) {
+    if (xQueueReceive(self->m_RxQueue, &slot, portMAX_DELAY) == pdTRUE)
+      self->ProcessMessageFromSoftware(EFP1Message(self->m_RxSlots[slot]));
+  }
 }
 
 CyranoHandler::~CyranoHandler() {
@@ -332,8 +368,9 @@ void ProcessCyranoPacket(AsyncUDPPacket packet) {
       return;
   }
   // ESP_LOGE(CYRANO_TAG, "%s",(char*)packet.data());
-  MyCyranoHandler.ProcessMessageFromSoftware(
-      (EFP1Message((char *)packet.data())));
+  // Runs in async_udp context (~4KB stack): no parsing here -- see
+  // CyranoHandler::EnqueueSoftwarePacket().
+  MyCyranoHandler.EnqueueSoftwarePacket(packet.data(), packet.length());
 }
 
 void CyranoHandler::CheckConnection() {

@@ -63,6 +63,15 @@ public:
    */
   void updateCachedStatus(const EFP1Message &status);
 
+  /**
+   * Hand a raw packet from the CMS to rxTask() for processing. Called from
+   * the async_udp callback (~4KB stack): copies the bytes into a
+   * preallocated slot and queues only the slot index -- no parsing, no
+   * string building, no stack buffer. Returns false if the queue is full
+   * or Begin() has not created it yet (packet dropped).
+   */
+  bool EnqueueSoftwarePacket(const uint8_t *data, size_t len);
+
 protected:
 private:
   friend class SingletonMixin<CyranoHandler>;
@@ -109,6 +118,21 @@ private:
   bool bCyranoConnected = false;
   bool bmqttCyranoConnected = false;
   bool budpCyranoConnected = false;
+
+  // ── CMS packet queue + dedicated task (stack safety) ──────────────────
+  // ProcessMessageFromSoftware() (EFP1Message parse + the whole DISP chain)
+  // overflowed async_udp's ~4KB stack -- core dump 2026-09-19. The UDP
+  // callback now only copies the packet into m_RxSlots and queues the slot
+  // index; rxTask() does the work on its own stack, in arrival order, so
+  // the DISP -> update -> INFO reply sequence (Invariant #7) is unchanged.
+  // Single producer (async_udp) / single consumer (rxTask). The queue holds
+  // kRxSlots-1 indices so the producer can never overwrite the slot rxTask
+  // is currently processing.
+  static constexpr size_t kRxSlots = 4;
+  char m_RxSlots[kRxSlots][EFP1Message::kMaxWireMessageLength];
+  uint8_t m_RxHead = 0;
+  QueueHandle_t m_RxQueue = nullptr;
+  static void rxTask(void *pvParam);
 
   AsyncUDP CyranoHandlerudpRcv;
   AsyncUDP CyranoHandlerudpBroadcast;

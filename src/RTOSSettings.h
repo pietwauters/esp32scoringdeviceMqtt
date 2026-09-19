@@ -43,6 +43,7 @@
 #define CORE_ARDUINO_TASK 0    // setup() + loop()     — main Arduino task
 #define CORE_UI_EVENT 0        // Opp2Handler::uiEventTask — UI event queue drain
 #define CORE_FPA422 0        // FPA422Handler::fpa422Task — FPA422/RS422 output queue drain
+#define CORE_CYRANO_RX 0     // CyranoHandler::rxTask — CMS packet processing (off async_udp)
 #define CORE_WIFI_SETUP_REBOOT 0 // WifiSetupMode's deferred-restart task
 #define CORE_MQTT_PUBLISH 0 // Opp2Handler::mqttPublishTask — control-message publish drain
 #define CORE_BROKER_DISCOVERY 0 // BrokerDiscovery::searchTask — background mDNS race
@@ -59,6 +60,7 @@
 #define PRIORITY_ARDUINO_TASK 3    // setup() + loop()  — below FSM/LED tasks
 #define PRIORITY_UI_EVENT 2          // Opp2Handler::uiEventTask
 #define PRIORITY_FPA422 2            // FPA422Handler::fpa422Task
+#define PRIORITY_CYRANO_RX 2         // CyranoHandler::rxTask
 #define PRIORITY_WIFI_SETUP_REBOOT 1 // WifiSetupMode's deferred-restart task
 #define PRIORITY_MQTT_PUBLISH 2      // Opp2Handler::mqttPublishTask
 #define PRIORITY_BROKER_DISCOVERY 1  // BrokerDiscovery::searchTask — background, low urgency
@@ -90,6 +92,12 @@
 #define STACK_ARDUINO_TASK 12288 // setup() + loop()
 #define STACK_UI_EVENT 8192          // Opp2Handler::uiEventTask
 #define STACK_FPA422 4096            // FPA422Handler::fpa422Task
+// CyranoHandler::rxTask — runs ProcessMessageFromSoftware() (EFP1Message
+// parse ~1.3KB + the full DISP chain: mutex, MQTT publish, cache push,
+// observer notify, INFO reply). That chain overflowed async_udp's 4KB
+// (confirmed by core dump 2026-09-19). Sized like STACK_UI_EVENT; not yet
+// measured with ENABLE_STACK_HWM_LOGGING.
+#define STACK_CYRANO_RX 8192
 #define STACK_WIFI_SETUP_REBOOT 2048 // vTaskDelay(500ms) + ESP.restart() only
 // Opp2Handler::mqttPublishTask — drains m_MqttPublishQueue, calls
 // mqttClient.publish() with pre-built topic/payload buffers only (no JSON,
