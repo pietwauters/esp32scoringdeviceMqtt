@@ -165,7 +165,13 @@ std::string msg = BuildMessage(state);
 
 ### Zero-copy pattern for DISP messages
 
-DISP messages arrive via UDP and must update canonical state. Use output parameters,
+> **Update 2026-09-19:** DISP is no longer processed in the UDP callback at all. The
+> callback only copies the raw packet into a slot and queues it; the `cyrano_rx` task
+> parses and processes it (see the Known Issues entry below). The pattern here still
+> applies inside `updateFromCyranoMessage()` (keep its stack footprint small), but the
+> "runs in async_udp" warnings no longer describe the DISP path.
+
+DISP messages must update canonical state. Use output parameters,
 never `getStateCopy()` in the UDP callback:
 
 ```cpp
@@ -270,10 +276,15 @@ EVENT_CYRANO_SEND_NEXT, EVENT_CYRANO_SEND_PREV
 Core 0 (PRO_CPU) — Protocol & Network
   • WiFi/lwIP
   • MQTT client (AtlasAsyncMqttClient)
-  • async_udp task (~4KB stack) ← constrained
+  • async_udp task (~4KB stack) ← constrained; UDP callbacks must only filter/copy/queue
+  • cyrano_rx task (8KB) — CMS packet processing (EFP1 parse, DISP→update→INFO)
+  • opp2_ui_evt task (8KB) — button/UI events
   • FencingStateMachine (10ms tick)
   • Opp2Handler, CyranoHandler, FPA422Handler
   • UDPIOHandler (button input)
+  • BrokerDiscovery::searchTask — background mDNS race while MQTT is
+    disconnected (see RTOSSettings.h for the full current task list;
+    this diagram is not exhaustively kept in sync with it)
 
 Core 1 (APP_CPU) — Real-Time Weapon Sensing
   • 3WeaponSensor (150µs scan, ~6.6kHz ADC)
@@ -352,6 +363,8 @@ Do not implement auto-detect unless explicitly asked to. Note the gap; do not fi
 - **OPP2 CMS end-to-end** — inbound software/fencers+match+score+clock+uw2f accepted with guards; all external update methods now follow full mandatory sequence (publish → push cache → notify); FSM synced for weapon, score, clock corrections; tested (2026-05-24)
 - **UI_SWAP_FENCERS** — swaps fencers, score, lights, uw2f under mutex; flips priority; syncs FSM (2026-05-24)
 - **software/fencers and software/match retained=No** — spec and rationale documented in docs/level2.md §4.5; apparatus/fencers+match remain retained (recovery state) (2026-05-24)
+- **Broker connection: static IP first, mDNS as background recovery** — `CyranoHandler::Begin()` points the MQTT client at the static/configured `MqttBroker` IP immediately (no blocking mDNS wait); a new `BrokerDiscovery` singleton (`src/BrokerDiscovery.h/.cpp`) races a background `mdns_query_a("openpiste", ...)` lookup against the client's own built-in reconnect for as long as nothing is connected, switching over via `AtlasAsyncMqttClient::reconnectWithNewSettings()` if mDNS resolves to a different address. Stops the race entirely once connected, resumes on the next disconnect — no periodic re-check of a working connection. Design rationale (never depend on mDNS being available at all, never let a single early miss be a permanent decision) discussed and agreed with the user 2026-09-18 (fixed 2026-09-18)
+- **NTP target derived from the broker's resolved address, not its own hostname resolution** — `AbsoluteTime` no longer does its own DNS/mDNS lookup for the NTP server. `Opp2Handler::OnMqttConnectStatic()` re-points it at `mqttClient.getHost()` — whichever address actually won the broker connection race — every time a connection is established, so NTP always targets a host that's already known reachable. The NTP client itself is a standard ESP-IDF `esp_sntp` client (plain SNTP over UDP/123); it has no chrony-specific (or any other server-specific) dependency — any standards-compliant NTP server reachable at that address works (fixed 2026-09-18)
 
 ### 🚧 Partial / not tested
 - UI_RESERVE, UI_ABANDON buttons
@@ -412,8 +425,26 @@ interchangeable — see rationale below):
     `EFP1Message msg` (~1.3KB) just to overwrite two fields — mutates `m_CachedStatus` in
     place (Command/CompetitionId are unconditionally overwritten on every call anyway).
 
-  Combined, worst-case stack for a DISP round-trip dropped from an unsafe ~4-4.5KB+
-  (likely overflow) to ~2.6-3KB — no timing/ordering change, no behavior change.
+  Combined, worst-case stack for a DISP round-trip was *estimated* to drop from an
+  unsafe ~4-4.5KB+ to ~2.6-3KB.
+
+  **⚠️ That estimate was wrong — superseded 2026-09-19.** On real hardware every DISP
+  from Engarde still overflowed `async_udp` (core dump: "stack overflow in task
+  async_udp"), rebooting the device to state W with no match data — seen as "NEXT/PREV
+  never shows the next bout". `ProcessCyranoPacket()` also built a full `EFP1Message`
+  (~1.3KB) on the callback stack *before* any of the above. The premise that a task
+  couldn't be used was too narrow: deferring only the *update* would race the INFO
+  reply, but deferring the *whole* DISP→update→INFO sequence into one task keeps the
+  ordering (Invariant #7) intact. Fixed (`e91dc29`): the callback now only filters by
+  sender IP, copies the packet into a preallocated slot (`CyranoHandler::m_RxSlots`) and
+  queues the slot index (`EnqueueSoftwarePacket()`); a dedicated `cyrano_rx` task (8192
+  stack, core 0, priority 2 — `RTOSSettings.h`) builds the `EFP1Message` and runs
+  `ProcessMessageFromSoftware()`. Queue depth is `kRxSlots-1` so the producer can never
+  overwrite the slot being processed. **Never trust a hand-estimated stack figure for
+  this path — measure (core dump, or `ENABLE_STACK_HWM_LOGGING`).** `cyrano_rx`'s real
+  high-water mark has not been measured yet.
+  (`Opp2Handler.cpp` `OnMqttMessage` also calls `ProcessMessageFromSoftware()` for the
+  MQTT Level 1 path, from the MQTT task — unchanged.)
 
 ### 🟡 Correctness bugs found
 - ✅ Fixed (2026-07-31) `adc_calibrator.cpp:19` — `r1_eff = 495, 6;` comma-operator bug;
@@ -447,6 +478,18 @@ interchangeable — see rationale below):
   fixed-width constraint (protocol field / SSID-matching convention); the MQTT client
   ID has no such constraint, so it's widened (bigger buffer + `snprintf`) instead of
   clamped, to avoid colliding two different real piste numbers onto one client ID.
+- ✅ Fixed (2026-09-18) `AbsoluteTime.cpp` `getTimestamp()` — the NTP-synced branch used
+  `time()`, which only has whole-second resolution, so every OPP2 `ts` value silently
+  came out as a multiple of 1000ms despite the wire format (docs/level2.md §22) carrying
+  real millisecond precision — the entire point of which is sub-second accuracy for video
+  replay sync. The fallback (no-broker) branch was already correct
+  (`esp_timer_get_time()/1000`). Switched to `gettimeofday()`, which SNTP's smooth-sync
+  `adjtime()` adjusts the same way it adjusts `time()`, so the real sub-second value now
+  carries through. Root cause of the original "local timestamps" / "strange large time
+  differences" report this fix started from was a separate, now-also-fixed bug: `mdnsName`
+  (`"openpiste"`, no `.local` suffix) was being handed directly to
+  `AbsoluteTime::begin()`/SNTP, which never resolved — see the broker-discovery entry
+  above for the actual fix (NTP no longer does its own hostname resolution at all).
 
 ### 🟡 Concurrency / mutex discipline
 - ✅ Fixed (2026-07-31) `Opp2Handler.cpp` — did the dedicated pass across the whole file
