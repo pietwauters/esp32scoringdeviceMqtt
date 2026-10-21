@@ -285,6 +285,7 @@ Core 0 (PRO_CPU) — Protocol & Network
   • BrokerDiscovery::searchTask — background mDNS race while MQTT is
     disconnected (see RTOSSettings.h for the full current task list;
     this diagram is not exhaustively kept in sync with it)
+  • mqtt_outbox — the only task that calls esp_mqtt_client_publish()
 
 Core 1 (APP_CPU) — Real-Time Weapon Sensing
   • 3WeaponSensor (150µs scan, ~6.6kHz ADC)
@@ -292,6 +293,17 @@ Core 1 (APP_CPU) — Real-Time Weapon Sensing
 
 FreeRTOS mutex (`m_StateMutex`) protects `OPP2::SystemState` for dual-core access.
 `getStateCopy()` is safe on Core 0 (ample stack). Never call it from Core 1 or async_udp.
+
+**MQTT publishes never block the caller** (2026-10-21). `esp_mqtt_client_publish()`
+blocks on esp-mqtt's internal lock, which `mqtt_task` holds during socket writes
+(up to `network_timeout_ms`) and the whole TLS (re)connect — called from the FSM
+path it could stall scoring for seconds. `AtlasAsyncMqttClient::publish()` now
+copies into one of `QUEUE_DEPTH_MQTT_OUTBOX` static slots (no heap — fragmentation)
+and returns; `mqtt_outbox` sends. Outbox full → message dropped (deliberate: scoring
+must keep working in local mode). Payloads ≥512 bytes or topics ≥96 bypass the
+outbox and publish directly (blocking). Do not reintroduce direct
+`esp_mqtt_client_publish()` calls on any scoring/FSM path. Fixed blade_contact
+messages disappearing for 5–10 s at a time (confirmed on hardware).
 
 ---
 

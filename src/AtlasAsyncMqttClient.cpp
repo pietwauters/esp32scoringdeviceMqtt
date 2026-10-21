@@ -10,6 +10,7 @@
 
 #include "AtlasAsyncMqttClient.h"
 #include "RTOSSettings.h"
+#include "TaskDiagnostics.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
 #include <cstring>
@@ -66,17 +67,116 @@ void AtlasAsyncMqttClient::onSubscribe(mqtt_subscribe_cb_t cb) {
 
 void AtlasAsyncMqttClient::publish(const char *topic, int qos, bool retain,
                                    const char *payload) {
-  if (!client || !isConnected())
-    return;
-  esp_mqtt_client_publish(client, topic, payload, 0, qos, retain);
+  publish(topic, qos, retain, payload, payload ? strlen(payload) : 0);
 }
 
 void AtlasAsyncMqttClient::publish(const char *topic, int qos, bool retain,
                                    const void *payload, size_t length) {
   if (!client || !isConnected())
     return;
-  esp_mqtt_client_publish(client, topic, static_cast<const char *>(payload),
-                          length, qos, retain);
+  enqueuePublish(topic, qos, retain, payload, length, 0);
+}
+
+void AtlasAsyncMqttClient::publishWaitForSlot(const char *topic, int qos,
+                                              bool retain, const char *payload,
+                                              TickType_t wait) {
+  if (!client || !isConnected())
+    return;
+  enqueuePublish(topic, qos, retain, payload, payload ? strlen(payload) : 0,
+                 wait);
+}
+
+// ── Outbox ─────────────────────────────────────────────────────────────────
+// esp_mqtt_client_publish() blocks its caller: it takes esp-mqtt's internal
+// API lock, which mqtt_task holds during socket writes (up to
+// network_timeout_ms on a degraded link) and during the whole (re)connect /
+// TLS handshake, and then writes to the socket itself. Calling it from the
+// FSM/scoring path could therefore stall scoring for seconds. Every publish
+// is instead copied into a fixed slot and sent by outboxTask, the only task
+// that ever waits on the network.
+//
+// Fragmentation: slots, queues and the task stack are all static (.bss), so
+// the outbox never touches the heap. Slot indices (not the ~612-byte slots
+// themselves) go through the queues, so callers fill the slot in place and
+// put nothing large on their own stack.
+namespace {
+constexpr size_t OUTBOX_TOPIC_MAX = 96;    // longest real topic is ~50 chars
+constexpr size_t OUTBOX_PAYLOAD_MAX = 512; // = Opp2Handler's payloadBuf[512]
+
+struct OutboxSlot {
+  uint8_t qos;
+  bool retain;
+  uint16_t len;
+  char topic[OUTBOX_TOPIC_MAX];
+  char payload[OUTBOX_PAYLOAD_MAX];
+};
+
+OutboxSlot s_Slots[QUEUE_DEPTH_MQTT_OUTBOX];
+StaticQueue_t s_FreeSlotsQueue;
+StaticQueue_t s_ReadySlotsQueue;
+uint8_t s_FreeSlotsStorage[QUEUE_DEPTH_MQTT_OUTBOX];
+uint8_t s_ReadySlotsStorage[QUEUE_DEPTH_MQTT_OUTBOX];
+StaticTask_t s_OutboxTaskTcb;
+StackType_t s_OutboxTaskStack[STACK_MQTT_OUTBOX];
+} // namespace
+
+void AtlasAsyncMqttClient::createOutbox() {
+  if (m_FreeSlots) // once per boot; survives disconnect()/reconnect
+    return;
+  m_FreeSlots = xQueueCreateStatic(QUEUE_DEPTH_MQTT_OUTBOX, sizeof(uint8_t),
+                                   s_FreeSlotsStorage, &s_FreeSlotsQueue);
+  m_ReadySlots = xQueueCreateStatic(QUEUE_DEPTH_MQTT_OUTBOX, sizeof(uint8_t),
+                                    s_ReadySlotsStorage, &s_ReadySlotsQueue);
+  for (uint8_t i = 0; i < QUEUE_DEPTH_MQTT_OUTBOX; i++)
+    xQueueSend(m_FreeSlots, &i, 0);
+  TaskHandle_t handle = xTaskCreateStaticPinnedToCore(
+      outboxTask, "mqtt_outbox", STACK_MQTT_OUTBOX, this, PRIORITY_MQTT_OUTBOX,
+      s_OutboxTaskStack, &s_OutboxTaskTcb, CORE_MQTT_OUTBOX);
+  TaskDiagnostics::Register(handle, "mqtt_outbox");
+}
+
+void AtlasAsyncMqttClient::enqueuePublish(const char *topic, int qos,
+                                          bool retain, const void *payload,
+                                          size_t length, TickType_t wait) {
+  size_t topicLen = strlen(topic);
+  if (!m_FreeSlots || topicLen >= OUTBOX_TOPIC_MAX ||
+      length >= OUTBOX_PAYLOAD_MAX) {
+    // Doesn't fit a slot (e.g. the Tier A provisioning request -- rare, never
+    // on the scoring path): direct, blocking publish as before.
+    ESP_LOGW(TAG, "Outbox bypass (%u bytes): %s", (unsigned)length, topic);
+    esp_mqtt_client_publish(client, topic, static_cast<const char *>(payload),
+                            length, qos, retain);
+    return;
+  }
+  uint8_t idx;
+  if (xQueueReceive(m_FreeSlots, &idx, wait) != pdTRUE) {
+    ESP_LOGW(TAG, "Outbox full, dropped: %s", topic);
+    return;
+  }
+  OutboxSlot &slot = s_Slots[idx];
+  slot.qos = qos;
+  slot.retain = retain;
+  slot.len = length;
+  memcpy(slot.topic, topic, topicLen + 1);
+  if (length)
+    memcpy(slot.payload, payload, length);
+  slot.payload[length] = '\0';
+  xQueueSend(m_ReadySlots, &idx, 0); // can't fail: depth == slot count
+}
+
+void AtlasAsyncMqttClient::outboxTask(void *pvParam) {
+  auto *self = static_cast<AtlasAsyncMqttClient *>(pvParam);
+  uint8_t idx;
+  while (true) {
+    if (xQueueReceive(self->m_ReadySlots, &idx, portMAX_DELAY) != pdTRUE)
+      continue;
+    const OutboxSlot &slot = s_Slots[idx];
+    // Re-check: the link may have dropped while this sat in the outbox.
+    if (self->client && self->isConnected())
+      esp_mqtt_client_publish(self->client, slot.topic, slot.payload, slot.len,
+                              slot.qos, slot.retain);
+    xQueueSend(self->m_FreeSlots, &idx, 0);
+  }
 }
 
 void AtlasAsyncMqttClient::publishString(const char *topic, int qos,
@@ -170,6 +270,8 @@ void AtlasAsyncMqttClient::handleEvent(esp_mqtt_event_handle_t event) {
 void AtlasAsyncMqttClient::begin() {
   if (m_HasBegun)
     return;
+
+  createOutbox();
 
   esp_mqtt_client_config_t mqtt_cfg = {};
 

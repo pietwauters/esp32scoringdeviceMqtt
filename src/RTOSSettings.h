@@ -46,6 +46,7 @@
 #define CORE_CYRANO_RX 0     // CyranoHandler::rxTask — CMS packet processing (off async_udp)
 #define CORE_WIFI_SETUP_REBOOT 0 // WifiSetupMode's deferred-restart task
 #define CORE_MQTT_PUBLISH 0 // Opp2Handler::mqttPublishTask — control-message publish drain
+#define CORE_MQTT_OUTBOX 0  // AtlasAsyncMqttClient::outboxTask — all outgoing MQTT publishes
 #define CORE_BROKER_DISCOVERY 0 // BrokerDiscovery::searchTask — background mDNS race
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@
 #define PRIORITY_CYRANO_RX 2         // CyranoHandler::rxTask
 #define PRIORITY_WIFI_SETUP_REBOOT 1 // WifiSetupMode's deferred-restart task
 #define PRIORITY_MQTT_PUBLISH 2      // Opp2Handler::mqttPublishTask
+#define PRIORITY_MQTT_OUTBOX 2       // AtlasAsyncMqttClient::outboxTask — below FSM, never blocks scoring
 #define PRIORITY_BROKER_DISCOVERY 1  // BrokerDiscovery::searchTask — background, low urgency
 
 // ---------------------------------------------------------------------------
@@ -104,6 +106,12 @@
 // no string building). Sized the same as STACK_UI_EVENT since the work
 // shape is nearly identical, minus the mutex/notify overhead.
 #define STACK_MQTT_PUBLISH 4096
+// AtlasAsyncMqttClient::outboxTask -- the only task that calls
+// esp_mqtt_client_publish() for slot-sized messages, so it is the one that
+// does the mbedtls_ssl_write() under TLS/mTLS. Statically allocated (no heap).
+// Not yet measured with ENABLE_STACK_HWM_LOGGING; sized above
+// STACK_MQTT_PUBLISH since TLS writes are its whole job.
+#define STACK_MQTT_OUTBOX 6144
 
 // BrokerDiscovery::searchTask — loops mdns_query_a() + occasional
 // setServer()/reconnectWithNewSettings() calls only, no JSON/getStateCopy.
@@ -156,5 +164,11 @@
 // the queues above) since dropping a control command is a real missed
 // user action, not a superseded stale value -- see EnqueueControlPublish().
 #define QUEUE_DEPTH_MQTT_PUBLISH 4
+// AtlasAsyncMqttClient outbox: number of fixed-size message slots (~612 bytes
+// each, static .bss -- ~7.3KB, no heap). Chosen 2026-10-21 against a measured
+// free=86288 largest_block=81920. When all slots are in use, new messages are
+// dropped (scoring must never wait on MQTT; a link that slow is unreliable
+// anyway).
+#define QUEUE_DEPTH_MQTT_OUTBOX 12
 
 #endif // RTOS_SETTINGS_H

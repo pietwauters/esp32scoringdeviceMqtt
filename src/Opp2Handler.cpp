@@ -770,9 +770,11 @@ void Opp2Handler::mqttPublishTask(void *pvParam) {
   while (true) {
     if (xQueueReceive(self->m_MqttPublishQueue, &req, portMAX_DELAY) ==
         pdTRUE) {
-      // The blocking QoS>0 esp-mqtt call happens here, off opp2_ui_evt --
-      // see Opp2Handler.h's comment on m_MqttPublishQueue.
-      mqttClient.publish(req.topic, req.qos, req.retain, req.payload);
+      // Off opp2_ui_evt -- see Opp2Handler.h's comment on m_MqttPublishQueue.
+      // Waits for a free outbox slot rather than dropping: a lost control
+      // command is a missed user action, and blocking here is harmless.
+      mqttClient.publishWaitForSlot(req.topic, req.qos, req.retain,
+                                    req.payload, portMAX_DELAY);
     }
   }
 }

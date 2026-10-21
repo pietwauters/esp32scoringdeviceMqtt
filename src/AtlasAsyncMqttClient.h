@@ -7,6 +7,8 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_tls.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "mqtt_client.h"
 #include <Preferences.h>
 #include <WiFi.h>
@@ -34,9 +36,17 @@ public:
   void onMessage(mqtt_message_cb_t);
   void onSubscribe(mqtt_subscribe_cb_t);
 
+  // Non-blocking: copies topic+payload into a free outbox slot and returns;
+  // outboxTask does the (possibly blocking) esp-mqtt call. If no slot is free
+  // the message is dropped. Messages too large for a slot fall back to a
+  // direct, blocking esp_mqtt_client_publish() as before.
   void publish(const char *topic, int qos, bool retain, const char *payload);
   void publish(const char *topic, int qos, bool retain, const void *payload,
                size_t length);
+  // Same, but waits up to `wait` for a free slot instead of dropping. Only for
+  // callers running on their own task that may block (opp2_mqtt_pub).
+  void publishWaitForSlot(const char *topic, int qos, bool retain,
+                          const char *payload, TickType_t wait);
 
   // Optional: for safer string handling
   void publishString(const char *topic, int qos, bool retain,
@@ -106,6 +116,15 @@ private:
   // before Tier A's provisioning response (two PEM certificates, ~1.3KB) needed it.
   std::string m_incomingTopic;
   std::string m_incomingPayload;
+
+  // Outbox: two queues of slot indices into a static slot pool (see .cpp).
+  // m_FreeSlots holds unused indices, m_ReadySlots filled ones in FIFO order.
+  QueueHandle_t m_FreeSlots = nullptr;
+  QueueHandle_t m_ReadySlots = nullptr;
+  void createOutbox();
+  void enqueuePublish(const char *topic, int qos, bool retain,
+                      const void *payload, size_t length, TickType_t wait);
+  static void outboxTask(void *pvParam);
 
   static esp_err_t mqttEventHandlerCb(esp_mqtt_event_handle_t event);
   static void eventHandler(void *handler_args, esp_event_base_t base,
