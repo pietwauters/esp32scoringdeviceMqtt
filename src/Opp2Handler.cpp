@@ -1222,6 +1222,19 @@ void Opp2Handler::ClearIdentifyingData() {
   notify(EVENT_CYRANO_SEND_INFO);
 }
 
+// Converts an EVENT_TIMER word (minutes/seconds/centiseconds) to milliseconds.
+// centiseconds == 100 is FencingTimer's "top of second" sentinel; treat as 0
+static uint32_t TimerEventToMs(uint32_t eventtype) {
+  mix_t TimeInfo;
+  TimeInfo.theDWord = eventtype & DATA_24BIT_MASK;
+  uint32_t minutes = TimeInfo.theBytes[2];
+  uint32_t seconds = TimeInfo.theBytes[1];
+  uint32_t centiseconds = TimeInfo.theBytes[0];
+  if (centiseconds > 99)
+    centiseconds = 0;
+  return (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
+}
+
 void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 
   uint32_t event_data = eventtype & SUB_TYPE_MASK;
@@ -1325,6 +1338,10 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
         bTransmit = false;
         break;
       }
+      // m_State.clock.time_ms is only refreshed by the ~1 Hz throttled
+      // EVENT_TIMER publishes, so it can be up to a second stale here. Read
+      // the live timer so start/stop messages carry the actual value.
+      clock.time_ms = TimerEventToMs(subject->MakeTimerEvent());
 
       if (eventtype & DATA_24BIT_MASK) {
         clock.running = true;
@@ -1349,37 +1366,20 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
     break;
 
   case EVENT_TIMER: {
-    // Throttle clock updates to approximately 1 Hz
+    // Throttle clock updates to approximately 1 Hz, but always publish the
+    // transition to zero (checked before the throttle, or expiry is dropped)
     uint32_t now = millis();
-    if (now < m_TimeToShowClock) {
-      bTransmit = false;
-      break;
-    }
-
-    // Always publish transition to zero
-    if (!event_data) {
-      bTransmit = true;
-    } else {
-      bTransmit = true;
+    if (event_data) {
+      if (now < m_TimeToShowClock) {
+        bTransmit = false;
+        break;
+      }
       if (m_TimeToShowClock > 0 && (now - m_TimeToShowClock) < 1000) {
         m_TimeToShowClock += 1000;
       } else {
         m_TimeToShowClock = now + 900;
       }
     }
-
-    // Extract time components
-    mix_t TimeInfo;
-    TimeInfo.theDWord = eventtype & DATA_24BIT_MASK;
-
-    // Convert to milliseconds
-    // centiseconds == 100 is FencingTimer's "top of second" sentinel; treat as
-    // 0
-    uint32_t minutes = TimeInfo.theBytes[2];
-    uint32_t seconds = TimeInfo.theBytes[1];
-    uint32_t centiseconds = TimeInfo.theBytes[0];
-    if (centiseconds > 99)
-      centiseconds = 0;
 
     OPP2::Clock clock;
     if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -1390,11 +1390,8 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
       bTransmit = false;
       break;
     }
-    clock.time_ms = (minutes * 60000) + (seconds * 1000) + (centiseconds * 10);
-
-    if (bTransmit) {
-      updateClockInternal(clock);
-    }
+    clock.time_ms = TimerEventToMs(eventtype);
+    updateClockInternal(clock);
     bTransmit = false;
     break;
   }
