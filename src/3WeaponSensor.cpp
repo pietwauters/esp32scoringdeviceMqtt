@@ -424,6 +424,11 @@ void MultiWeaponSensor::DoFullScan() {
     vTaskDelay(0);
   }
 
+  // Track blade contact also while locked: DoFoil()/DoSabre() keep updating
+  // Debounce_Parry during lock, and freezing it here hid every contact made
+  // while the lights were on (and reported a held one only at reset).
+  CurrentParryState = Debounce_Parry.isOK();
+
   if (IsLocked()) {
     SignalLeft = 1;  // Now no changes will be registered for left
     SignalRight = 1; // Same for right
@@ -434,8 +439,6 @@ void MultiWeaponSensor::DoFullScan() {
     }
 
     vTaskDelay(0);
-  } else {
-    CurrentParryState = Debounce_Parry.isOK();
   }
   HandleLights();
 
