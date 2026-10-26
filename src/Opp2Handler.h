@@ -172,7 +172,8 @@ public:
    * Bypasses all guards - internal events are authoritative.
    * Thread-safe with mutex protection.
    */
-  void updateLightsInternal(const OPP2::Lights &lights);
+  void updateLightsInternal(const OPP2::Lights &lights,
+                            const OPP2::Timestamp *eventTs = nullptr);
 
   /**
    * Update score from internal events (FSM).
@@ -313,7 +314,7 @@ private:
   /**
    * Publish a lights message.
    */
-  void PublishLights();
+  void PublishLights(const OPP2::Timestamp *eventTs = nullptr);
 
   /**
    * Publish a clock message.
@@ -378,14 +379,15 @@ private:
    * Publish a blade_contact message (QoS 0, not retained).
    * Published on transition only — active=true on contact, false on release.
    */
-  void PublishBladeContact(bool active);
+  void PublishBladeContact(bool active,
+                           const OPP2::Timestamp *eventTs = nullptr);
 
   // ── Event processing ──────────────────────────────────────────────────
 
   /**
    * Process light change events from FencingStateMachine.
    */
-  void ProcessLightsChange(uint32_t eventtype);
+  void ProcessLightsChange(uint32_t eventtype, const OPP2::Timestamp &eventTs);
 
   /**
    * Process UI events (buttons, controls).

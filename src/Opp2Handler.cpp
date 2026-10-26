@@ -16,6 +16,7 @@
 #include "TaskDiagnostics.h"
 #include "TierAProvisioning.h"
 #include <cstring>
+#include <esp_timer.h>
 #include <esp_log.h>
 #include <string>
 
@@ -519,7 +520,7 @@ void Opp2Handler::PublishApparatusState() {
            topicBuf);
 }
 
-void Opp2Handler::PublishLights() {
+void Opp2Handler::PublishLights(const OPP2::Timestamp *eventTs) {
   if (!mqttClient.isConnected()) {
     return;
   }
@@ -528,7 +529,8 @@ void Opp2Handler::PublishLights() {
   if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     snap = m_State.lights;
     snap.seq = NextSeq();
-    snap.ts = CreateTimestamp();
+    // Spec: ts is the time of the light change, not of this publication
+    snap.ts = eventTs ? *eventTs : CreateTimestamp();
     xSemaphoreGiveRecursive(m_StateMutex);
   } else {
     ESP_LOGW(OPP2_TAG, "[MUTEX] PublishLights() timeout");
@@ -709,13 +711,14 @@ void Opp2Handler::PublishUW2F() {
 
 // ── Event Processing ────────────────────────────────────────────────────────
 
-void Opp2Handler::PublishBladeContact(bool active) {
+void Opp2Handler::PublishBladeContact(bool active,
+                                      const OPP2::Timestamp *eventTs) {
   if (!mqttClient.isConnected())
     return;
 
   OPP2::BladeContact msg;
   msg.active = active;
-  msg.ts = CreateTimestamp();
+  msg.ts = eventTs ? *eventTs : CreateTimestamp();
 
   char payloadBuf[96];
   char topicBuf[64];
@@ -726,7 +729,8 @@ void Opp2Handler::PublishBladeContact(bool active) {
   ESP_LOGD(OPP2_TAG, "Published blade_contact: active=%d", active);
 }
 
-void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
+void Opp2Handler::ProcessLightsChange(uint32_t eventtype,
+                                      const OPP2::Timestamp &eventTs) {
   uint32_t event_data = eventtype & SUB_TYPE_MASK;
 
   // Build lights state from event data
@@ -744,13 +748,13 @@ void Opp2Handler::ProcessLightsChange(uint32_t eventtype) {
   lights.right.white = (event_data & MASK_WHITE_R) != 0;
 
   // Update through internal method (thread-safe, change detection, publish)
-  updateLightsInternal(lights);
+  updateLightsInternal(lights, &eventTs);
 
   // Blade contact: publish on transition only (QoS 0, momentary event)
   bool parry = (event_data & MASK_PARRY) != 0;
   if (parry != m_LastParryState) {
     m_LastParryState = parry;
-    PublishBladeContact(parry);
+    PublishBladeContact(parry, &eventTs);
   }
 }
 
@@ -1246,10 +1250,18 @@ void Opp2Handler::update(FencingStateMachine *subject, uint32_t eventtype) {
 
   switch (maineventtype) {
 
-  case EVENT_LIGHTS:
-    ProcessLightsChange(eventtype);
+  case EVENT_LIGHTS: {
+    // The FSM forwards lights from its 10 ms loop, and other observers may
+    // run first -- back-date ts to when the sensor reported the change.
+    OPP2::Timestamp eventTs = CreateTimestamp();
+    uint32_t ageMs =
+        ((uint32_t)esp_timer_get_time() - subject->GetLightsEventUs()) / 1000;
+    if (ageMs < 1000 && eventTs.value >= ageMs)
+      eventTs.value -= ageMs;
+    ProcessLightsChange(eventtype, eventTs);
     bTransmit = false; // Already published in ProcessLightsChange
     break;
+  }
 
   case EVENT_WEAPON:
     ESP_LOGI(OPP2_TAG, "EVENT_WEAPON received: event_data=0x%08X", event_data);
@@ -2181,7 +2193,8 @@ void Opp2Handler::PushCachedStatusToCyrano(bool force) {
 // Internal State Updates (from FSM/Sensor - bypass all guards)
 // ════════════════════════════════════════════════════════════════════════════
 
-void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights) {
+void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights,
+                                       const OPP2::Timestamp *eventTs) {
   bool changed = false;
 
   if (xSemaphoreTakeRecursive(m_StateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -2199,7 +2212,7 @@ void Opp2Handler::updateLightsInternal(const OPP2::Lights &lights) {
     ESP_LOGI(OPP2_TAG, "[Internal] Lights updated: L=%d/%d R=%d/%d",
              lights.left.on_target, lights.left.white, lights.right.on_target,
              lights.right.white);
-    PublishLights();
+    PublishLights(eventTs);
     PushCachedStatusToCyrano();
     notify(EVENT_CYRANO_SEND_INFO);
   }

@@ -4,6 +4,7 @@
 #include "RTOSSettings.h"
 #include "TaskDiagnostics.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
 #include <iostream>
@@ -95,9 +96,14 @@ void FencingStateMachine::update(MultiWeaponSensor *subject,
                                  uint32_t eventtype) {
   // SetMachineLights(subject->get_Lights());
   uint32_t maineventtype = eventtype & MAIN_TYPE_MASK;
-  if (EVENT_LIGHTS == maineventtype)
+  if (EVENT_LIGHTS == maineventtype) {
+    // Runs synchronously in the sensor task: this is the real event time.
+    // Keep the first change of a batch the 10 ms loop hasn't picked up yet.
+    if (!m_LightsChanged)
+      m_LightsEventUs = (uint32_t)esp_timer_get_time();
     SetMachineLights(
         eventtype); // I'm doing an implicit type cast from uint32_t to uint8_t
+  }
   if (EVENT_WEAPON == maineventtype)
     SetMachineWeapon(subject->GetActualWeapon());
 }

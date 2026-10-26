@@ -178,6 +178,9 @@ public:
       m_LightsChanged = true;
     }
   }
+  // esp_timer time (µs, low 32 bits) of the oldest lights change not yet
+  // processed by the 10 ms loop -- lets observers stamp the real event time.
+  uint32_t GetLightsEventUs() const { return m_LightsEventUs; }
   void RegisterMultiWeaponSensor(MultiWeaponSensor *MySensor) {
     m_TheSensor = MySensor;
     SetMachineWeapon(MySensor->GetActualWeapon());
@@ -241,6 +244,7 @@ private:
   bool m_WeaponChanged = true; //!< Member variable "m_StateChanged"
   uint32_t m_Lights = 0;
   bool m_LightsChanged = true; //!< Member variable "m_LightsChanged"
+  volatile uint32_t m_LightsEventUs = 0; // written on core 1, see above
   TimerState_t m_Timerstate;   //!< Member variable "m_Timerstate"
   uint32_t m_timeToRearm = 0;
 
